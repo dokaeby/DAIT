@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DAIT · 뉴스 상세</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="detail">
+    <header class="topbar"><a class="brand" href="/"><span>DAIT</span><small>AI TREND DESK</small></a><a class="header-link" href="/settings.html">설정</a></header>
+    <div class="shell">
+      <nav class="sidebar" aria-label="주요 메뉴"><p class="nav-label">DISCOVER</p><a class="nav-link" href="/">오늘의 AI 뉴스</a><a class="nav-link active" href="/detail.html?id=news_openai_001">뉴스 상세</a><p class="nav-label">WORKSPACE</p><a class="nav-link" href="/settings.html">설정</a></nav>
+      <main class="content">
+        <nav class="breadcrumb" aria-label="현재 위치"><a href="/">오늘의 AI 뉴스</a><span>/</span><strong>상세</strong></nav>
+        <p class="status" id="page-status" aria-live="polite">뉴스 상세를 불러오는 중입니다.</p>
+        <button class="button secondary hidden" id="retry-button" type="button">다시 시도</button>
+        <article id="detail-content" class="hidden">
+          <header class="article-head">
+            <div><div class="meta-row"><span class="category-pill">AI·기술</span><span id="detail-status" class="state-pill"></span><time id="published-at"></time></div><h1 id="article-title"></h1><p class="article-source" id="article-source"></p></div>
+            <div class="actions"><a class="button primary" id="original-link" target="_blank" rel="noopener noreferrer">원문 새 탭</a><button class="button secondary" id="copy-link" type="button">링크 복사</button></div>
+          </header>
+          <div class="detail-grid">
+            <div class="stack">
+              <section class="panel"><div class="panel-title"><h2>AI 3줄 요약</h2><span>검증된 처리 결과</span></div><ol class="summary-list" id="summary-list"></ol></section>
+              <section class="panel"><div class="panel-title"><h2>한국어 번역</h2><span id="processed-at"></span></div><p class="translation" id="translated-text"></p></section>
+              <section class="panel"><h2>처리 정보</h2><div class="metric-grid" id="processing-info"></div></section>
+            </div>
+            <aside class="stack">
+              <section class="panel"><h2>원본 정보</h2><dl class="source-info"><dt>Source</dt><dd id="source-name"></dd><dt>URL</dt><dd class="break" id="source-url"></dd></dl></section>
+              <section class="panel"><div class="panel-title"><h2>관련 뉴스</h2><span>주제 유사도 기준</span></div><div id="related-list" class="related-list"></div></section>
+            </aside>
+          </div>
+        </article>
+      </main>
+    </div>
+    <nav class="mobile-nav" aria-label="모바일 메뉴"><a href="/">뉴스</a><a class="active" href="/detail.html?id=news_openai_001">상세</a><a href="/settings.html">설정</a></nav>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

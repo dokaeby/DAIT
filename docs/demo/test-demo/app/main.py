@@ -10,7 +10,7 @@ from typing import Literal, Self
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .database import (
@@ -100,6 +100,7 @@ def error_body(request: Request, code: str, message: str, fields=None) -> dict[s
 
 def create_app(db_path: Path | None = None, static_dir: Path | None = None) -> FastAPI:
     database_path = Path(db_path or os.getenv("DAIT_DB_PATH", DEFAULT_DB_PATH))
+    public_path = Path(static_dir or ROOT / "public")
     initialize_database(database_path)
     application = FastAPI(title="DAIT Local Demo", version="1.0.1")
     application.state.db_path = database_path
@@ -294,6 +295,29 @@ def create_app(db_path: Path | None = None, static_dir: Path | None = None) -> F
                 content=error_body(request, "SCHEDULE_NOT_FOUND", "예약을 찾을 수 없습니다."),
             )
         return None
+
+    @application.get("/", include_in_schema=False)
+    async def main_page():
+        return HTMLResponse((public_path / "index.html").read_text(encoding="utf-8"))
+
+    @application.get("/detail.html", include_in_schema=False)
+    async def detail_page():
+        return HTMLResponse((public_path / "detail.html").read_text(encoding="utf-8"))
+
+    @application.get("/settings.html", include_in_schema=False)
+    async def settings_page():
+        return HTMLResponse((public_path / "settings.html").read_text(encoding="utf-8"))
+
+    @application.get("/styles.css", include_in_schema=False)
+    async def styles():
+        return Response((public_path / "styles.css").read_text(encoding="utf-8"), media_type="text/css")
+
+    @application.get("/app.js", include_in_schema=False)
+    async def script():
+        return Response(
+            (public_path / "app.js").read_text(encoding="utf-8"),
+            media_type="application/javascript",
+        )
 
     return application
 
