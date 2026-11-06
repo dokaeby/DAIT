@@ -178,6 +178,15 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
 NOW = "2026-11-06T00:00:00Z"
 
 
+def _decode_summary(raw_value: str) -> list[str]:
+    value = json.loads(raw_value)
+    if not isinstance(value, list) or len(value) != 3:
+        raise ValueError("summary_lines must contain exactly three strings")
+    if any(not isinstance(line, str) or not line.strip() for line in value):
+        raise ValueError("summary_lines must contain exactly three strings")
+    return value
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     """Open a row-mapped SQLite connection with referential integrity enabled."""
     connection = sqlite3.connect(db_path, timeout=10)
@@ -191,7 +200,7 @@ def initialize_database(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with connect(db_path) as connection:
         connection.executescript(SCHEMA)
-        connection.execute(
+        user_insert = connection.execute(
             "INSERT OR IGNORE INTO users VALUES (?, ?, NULL, 'ACTIVE', ?, ?, NULL)",
             (DEMO_USER_ID, "demo@dait.local", NOW, NOW),
         )
@@ -306,24 +315,25 @@ def initialize_database(db_path: Path) -> None:
                 ("rel_002", "news_openai_001", "news_arxiv_003", "모델 평가 주제", 0.71, NOW),
             ],
         )
-        connection.execute(
-            "INSERT OR IGNORE INTO schedules VALUES (?, ?, '08:30', 'Asia/Seoul', 1, ?, ?, ?, ?)",
-            (
-                "sch_demo_0830",
-                DEMO_USER_ID,
-                json.dumps(
-                    {
-                        "keywords": ["멀티모달", "AI 에이전트"],
-                        "source_ids": ["src_openai", "src_anthropic"],
-                        "categories": ["AI"],
-                    },
-                    ensure_ascii=False,
+        if user_insert.rowcount == 1:
+            connection.execute(
+                "INSERT INTO schedules VALUES (?, ?, '08:30', 'Asia/Seoul', 1, ?, ?, ?, ?)",
+                (
+                    "sch_demo_0830",
+                    DEMO_USER_ID,
+                    json.dumps(
+                        {
+                            "keywords": ["멀티모달", "AI 에이전트"],
+                            "source_ids": ["src_openai", "src_anthropic"],
+                            "categories": ["AI"],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    "2026-11-06T23:30:00Z",
+                    NOW,
+                    NOW,
                 ),
-                "2026-11-06T23:30:00Z",
-                NOW,
-                NOW,
-            ),
-        )
+            )
 
 
 def list_news(
@@ -358,7 +368,7 @@ def list_news(
     return [
         {
             **dict(row),
-            "summary_lines": json.loads(row["summary_lines"]),
+            "summary_lines": _decode_summary(row["summary_lines"]),
         }
         for row in rows
     ]
@@ -394,7 +404,7 @@ def get_news_detail(db_path: Path, news_id: str) -> dict[str, object] | None:
             (news_id,),
         ).fetchall()
     article = dict(row)
-    article["summary_lines"] = json.loads(row["summary_lines"])
+    article["summary_lines"] = _decode_summary(row["summary_lines"])
     article["related_news"] = [dict(item) for item in related]
     return article
 

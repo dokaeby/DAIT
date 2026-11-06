@@ -204,16 +204,24 @@ function renderSchedules(items) {
     copy.append(element("strong", "", `${schedule.local_time} · ${schedule.timezone}`), element("span", "", schedule.next_run_at ? `다음 실행 ${formatDate(schedule.next_run_at)}` : "다음 실행 미정"));
     const toggle = element("button", "button secondary", schedule.enabled ? "일시정지" : "활성화");
     toggle.type = "button";
-    toggle.onclick = async () => {
-      await api(`/v1/me/schedules/${encodeURIComponent(schedule.id)}`, { method: "PATCH", body: JSON.stringify({ enabled: !schedule.enabled }) });
-      await loadSettings();
-    };
+    toggle.onclick = () => performScheduleAction(
+      () => api(`/v1/me/schedules/${encodeURIComponent(schedule.id)}`, { method: "PATCH", body: JSON.stringify({ enabled: !schedule.enabled }) }),
+      loadSettings,
+      (error) => {
+        setStatus(error.message, "error");
+        setRetry(() => toggle.click());
+      },
+    );
     const remove = element("button", "button secondary", "삭제");
     remove.type = "button";
-    remove.onclick = async () => {
-      await api(`/v1/me/schedules/${encodeURIComponent(schedule.id)}`, { method: "DELETE" });
-      await loadSettings();
-    };
+    remove.onclick = () => performScheduleAction(
+      () => api(`/v1/me/schedules/${encodeURIComponent(schedule.id)}`, { method: "DELETE" }),
+      loadSettings,
+      (error) => {
+        setStatus(error.message, "error");
+        setRetry(() => remove.click());
+      },
+    );
     row.append(copy, toggle, remove);
     list.append(row);
   });

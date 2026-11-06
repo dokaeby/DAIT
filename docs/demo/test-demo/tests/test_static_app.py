@@ -1,3 +1,7 @@
+import json
+import subprocess
+from pathlib import Path
+
 from app.database import initialize_database
 from app.main import create_app
 from tests.client import ASGIClient
@@ -64,3 +68,24 @@ def test_frontend_contains_loading_error_retry_and_clipboard_fallback(tmp_path):
     assert "navigator.clipboard" in script
     assert "복사하지 못했습니다" in script
     assert 'id="retry-button"' in pages
+
+
+def test_schedule_action_reports_failure_and_does_not_run_success():
+    helper_path = Path(__file__).resolve().parents[1] / "public" / "schedule-actions.js"
+    program = f"""
+      const {{ performScheduleAction }} = require({json.dumps(str(helper_path))});
+      (async () => {{
+        const events = [];
+        const result = await performScheduleAction(
+          async () => {{ throw new Error('network down'); }},
+          async () => events.push('success'),
+          (error) => events.push(error.message)
+        );
+        console.log(JSON.stringify({{ result, events }}));
+      }})();
+    """
+
+    result = subprocess.run(["node", "-e", program], capture_output=True, text=True)
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {"result": False, "events": ["network down"]}

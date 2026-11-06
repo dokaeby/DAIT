@@ -48,12 +48,12 @@ class Criteria(StrictModel):
 
 
 class SettingsPatch(StrictModel):
-    default_count: Literal[5, 10] | None = None
-    keywords: list[str] | None = None
-    source_ids: list[str] | None = None
-    categories: list[Literal["AI"]] | None = None
-    in_app_notice: bool | None = None
-    email_notice: bool | None = None
+    default_count: Literal[5, 10] = None
+    keywords: list[str] = None
+    source_ids: list[str] = None
+    categories: list[Literal["AI"]] = None
+    in_app_notice: bool = None
+    email_notice: bool = None
 
     @field_validator("keywords", "source_ids")
     @classmethod
@@ -77,10 +77,10 @@ class ScheduleCreate(StrictModel):
 
 
 class SchedulePatch(StrictModel):
-    local_time: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    timezone: Literal["Asia/Seoul"] | None = None
-    enabled: bool | None = None
-    criteria: Criteria | None = None
+    local_time: str = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    timezone: Literal["Asia/Seoul"] = None
+    enabled: bool = None
+    criteria: Criteria = None
 
     @model_validator(mode="after")
     def require_change(self) -> Self:
@@ -316,6 +316,13 @@ def create_app(db_path: Path | None = None, static_dir: Path | None = None) -> F
     async def script():
         return Response(
             (public_path / "app.js").read_text(encoding="utf-8"),
+            media_type="application/javascript",
+        )
+
+    @application.get("/schedule-actions.js", include_in_schema=False)
+    async def schedule_actions_script():
+        return Response(
+            (public_path / "schedule-actions.js").read_text(encoding="utf-8"),
             media_type="application/javascript",
         )
 

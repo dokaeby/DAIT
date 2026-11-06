@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from app.database import connect, initialize_database
 from app.main import create_app
 from tests.client import ASGIClient
@@ -107,6 +111,25 @@ def test_malformed_content_returns_generalized_error(tmp_path):
     assert body["code"] == "INTERNAL_ERROR"
     assert "json" not in body["message"].lower()
     assert "traceback" not in response.text.lower()
+
+
+@pytest.mark.parametrize(
+    "stored_value",
+    [json.dumps({}), json.dumps(None), json.dumps("summary"), json.dumps(["one", 2, "three"])],
+)
+@pytest.mark.parametrize("endpoint", ["/v1/news", "/v1/news/news_openai_001"])
+def test_wrong_summary_shape_returns_generalized_error(tmp_path, stored_value, endpoint):
+    db_path, client = make_client(tmp_path)
+    with connect(db_path) as connection:
+        connection.execute(
+            "UPDATE content_results SET summary_lines = ? WHERE news_id = ?",
+            (stored_value, "news_openai_001"),
+        )
+
+    response = client.get(endpoint)
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "INTERNAL_ERROR"
 
 
 def test_unknown_error_does_not_expose_sql_or_traceback(tmp_path):

@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from app.database import connect, initialize_database
 from app.main import create_app
 from tests.client import ASGIClient
@@ -62,6 +64,21 @@ def test_settings_empty_and_extra_patch_rejected(tmp_path):
     assert all(response.json()["code"] == "VALIDATION_ERROR" for response in (empty, extra, bad_count))
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["default_count", "keywords", "source_ids", "categories", "in_app_notice", "email_notice"],
+)
+def test_settings_patch_rejects_explicit_null_without_changing_storage(tmp_path, field):
+    _, client = make_client(tmp_path)
+    before = client.get("/v1/me/settings").json()
+
+    response = client.patch("/v1/me/settings", json={field: None})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert client.get("/v1/me/settings").json() == before
+
+
 def test_schedule_create_update_list_delete(tmp_path):
     _, client = make_client(tmp_path)
     payload = {
@@ -116,6 +133,27 @@ def test_schedule_validation_and_extra_fields(tmp_path):
         assert response.json()["code"] == "VALIDATION_ERROR"
 
     assert client.patch("/v1/me/schedules/sch_demo_0830", json={}).status_code == 422
+
+
+@pytest.mark.parametrize("field", ["local_time", "timezone", "enabled", "criteria"])
+def test_schedule_patch_rejects_explicit_null_without_changing_storage(tmp_path, field):
+    _, client = make_client(tmp_path)
+    before = client.get("/v1/me/schedules").json()
+
+    response = client.patch("/v1/me/schedules/sch_demo_0830", json={field: None})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert client.get("/v1/me/schedules").json() == before
+
+
+def test_deleted_seed_schedule_stays_deleted_after_restart(tmp_path):
+    db_path, client = make_client(tmp_path)
+    assert client.delete("/v1/me/schedules/sch_demo_0830").status_code == 204
+
+    restarted = ASGIClient(create_app(db_path=db_path))
+
+    assert restarted.get("/v1/me/schedules").json() == {"items": []}
 
 
 def test_schedule_is_scoped_to_demo_user(tmp_path):
