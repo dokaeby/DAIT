@@ -6,16 +6,87 @@ import os
 import sqlite3
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .database import connect, get_news_detail, initialize_database, list_news
+from .database import (
+    DEMO_USER_ID,
+    connect,
+    create_schedule,
+    delete_schedule,
+    enabled_source_ids,
+    get_news_detail,
+    get_settings,
+    initialize_database,
+    list_news,
+    list_schedules,
+    update_schedule,
+    update_settings,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = ROOT / "data" / "dait.db"
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class Criteria(StrictModel):
+    keywords: list[str] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    categories: list[Literal["AI"]]
+
+    @field_validator("keywords", "source_ids")
+    @classmethod
+    def normalize_list(cls, values: list[str]) -> list[str]:
+        return list(dict.fromkeys(value.strip() for value in values if value.strip()))
+
+
+class SettingsPatch(StrictModel):
+    default_count: Literal[5, 10] | None = None
+    keywords: list[str] | None = None
+    source_ids: list[str] | None = None
+    categories: list[Literal["AI"]] | None = None
+    in_app_notice: bool | None = None
+    email_notice: bool | None = None
+
+    @field_validator("keywords", "source_ids")
+    @classmethod
+    def normalize_optional_list(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        return list(dict.fromkeys(value.strip() for value in values if value.strip()))
+
+    @model_validator(mode="after")
+    def require_change(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("at least one setting is required")
+        return self
+
+
+class ScheduleCreate(StrictModel):
+    local_time: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    timezone: Literal["Asia/Seoul"]
+    enabled: bool = True
+    criteria: Criteria
+
+
+class SchedulePatch(StrictModel):
+    local_time: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    timezone: Literal["Asia/Seoul"] | None = None
+    enabled: bool | None = None
+    criteria: Criteria | None = None
+
+    @model_validator(mode="after")
+    def require_change(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("at least one schedule field is required")
+        return self
 
 
 def error_body(request: Request, code: str, message: str, fields=None) -> dict[str, object]:
@@ -161,6 +232,68 @@ def create_app(db_path: Path | None = None, static_dir: Path | None = None) -> F
                 "summary_status": row["content_status"],
             },
         }
+
+    def invalid_sources(request: Request, source_ids: list[str]) -> JSONResponse | None:
+        if set(source_ids) != enabled_source_ids(database_path, source_ids):
+            return JSONResponse(
+                status_code=422,
+                content=error_body(
+                    request,
+                    "VALIDATION_ERROR",
+                    "활성화된 승인 출처만 선택할 수 있습니다.",
+                    {"source_ids": "unknown or disabled source"},
+                ),
+            )
+        return None
+
+    @application.get("/v1/me/settings")
+    async def settings_get():
+        return get_settings(database_path, DEMO_USER_ID)
+
+    @application.patch("/v1/me/settings")
+    async def settings_patch(payload: SettingsPatch, request: Request):
+        values = payload.model_dump(exclude_unset=True)
+        if "source_ids" in values:
+            error = invalid_sources(request, values["source_ids"])
+            if error:
+                return error
+        return update_settings(database_path, DEMO_USER_ID, values)
+
+    @application.get("/v1/me/schedules")
+    async def schedules_get():
+        return {"items": list_schedules(database_path, DEMO_USER_ID)}
+
+    @application.post("/v1/me/schedules", status_code=201)
+    async def schedules_post(payload: ScheduleCreate, request: Request):
+        values = payload.model_dump()
+        error = invalid_sources(request, values["criteria"]["source_ids"])
+        if error:
+            return error
+        return create_schedule(database_path, DEMO_USER_ID, values)
+
+    @application.patch("/v1/me/schedules/{schedule_id}")
+    async def schedules_patch(schedule_id: str, payload: SchedulePatch, request: Request):
+        values = payload.model_dump(exclude_unset=True)
+        if "criteria" in values:
+            error = invalid_sources(request, values["criteria"]["source_ids"])
+            if error:
+                return error
+        schedule = update_schedule(database_path, DEMO_USER_ID, schedule_id, values)
+        if schedule is None:
+            return JSONResponse(
+                status_code=404,
+                content=error_body(request, "SCHEDULE_NOT_FOUND", "예약을 찾을 수 없습니다."),
+            )
+        return schedule
+
+    @application.delete("/v1/me/schedules/{schedule_id}", status_code=204)
+    async def schedules_delete(schedule_id: str, request: Request):
+        if not delete_schedule(database_path, DEMO_USER_ID, schedule_id):
+            return JSONResponse(
+                status_code=404,
+                content=error_body(request, "SCHEDULE_NOT_FOUND", "예약을 찾을 수 없습니다."),
+            )
+        return None
 
     return application
 

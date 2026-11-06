@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 DEMO_USER_ID = "usr_demo_local"
 
@@ -394,3 +397,159 @@ def get_news_detail(db_path: Path, news_id: str) -> dict[str, object] | None:
     article["summary_lines"] = json.loads(row["summary_lines"])
     article["related_news"] = [dict(item) for item in related]
     return article
+
+
+def _decode_settings(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "default_count": row["default_count"],
+        "keywords": json.loads(row["keywords"]),
+        "source_ids": json.loads(row["source_ids"]),
+        "categories": json.loads(row["categories"]),
+        "in_app_notice": bool(row["in_app_notice"]),
+        "email_notice": bool(row["email_notice"]),
+        "updated_at": row["updated_at"],
+    }
+
+
+def get_settings(db_path: Path, user_id: str) -> dict[str, object]:
+    with connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if row is None:
+        raise LookupError("settings not found")
+    return _decode_settings(row)
+
+
+def enabled_source_ids(db_path: Path, source_ids: list[str]) -> set[str]:
+    if not source_ids:
+        return set()
+    placeholders = ",".join("?" for _ in source_ids)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            f"SELECT id FROM sources WHERE enabled = 1 AND id IN ({placeholders})",
+            source_ids,
+        ).fetchall()
+    return {row["id"] for row in rows}
+
+
+def update_settings(
+    db_path: Path, user_id: str, values: dict[str, object]
+) -> dict[str, object]:
+    encoded = {
+        key: json.dumps(value, ensure_ascii=False) if key in {"keywords", "source_ids", "categories"}
+        else int(value) if key in {"in_app_notice", "email_notice"}
+        else value
+        for key, value in values.items()
+    }
+    encoded["updated_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    assignments = ", ".join(f"{key} = ?" for key in encoded)
+    with connect(db_path) as connection:
+        connection.execute(
+            f"UPDATE user_settings SET {assignments} WHERE user_id = ?",
+            [*encoded.values(), user_id],
+        )
+    return get_settings(db_path, user_id)
+
+
+def _next_run(local_time: str, timezone: str) -> str:
+    zone = ZoneInfo(timezone)
+    now = datetime.now(UTC)
+    hour, minute = (int(part) for part in local_time.split(":"))
+    local_now = now.astimezone(zone)
+    candidate = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= local_now:
+        candidate += timedelta(days=1)
+    return candidate.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _decode_schedule(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "local_time": row["local_time"],
+        "timezone": row["timezone"],
+        "enabled": bool(row["enabled"]),
+        "criteria": json.loads(row["criteria_json"]),
+        "next_run_at": row["next_run_at"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def list_schedules(db_path: Path, user_id: str) -> list[dict[str, object]]:
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            "SELECT * FROM schedules WHERE user_id = ? ORDER BY local_time, id", (user_id,)
+        ).fetchall()
+    return [_decode_schedule(row) for row in rows]
+
+
+def create_schedule(
+    db_path: Path, user_id: str, values: dict[str, object]
+) -> dict[str, object]:
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    schedule_id = f"sch_{uuid.uuid4().hex[:16]}"
+    next_run = _next_run(str(values["local_time"]), str(values["timezone"]))
+    with connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO schedules
+                (id, user_id, local_time, timezone, enabled, criteria_json,
+                 next_run_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                schedule_id,
+                user_id,
+                values["local_time"],
+                values["timezone"],
+                int(bool(values.get("enabled", True))),
+                json.dumps(values["criteria"], ensure_ascii=False),
+                next_run,
+                now,
+                now,
+            ),
+        )
+        row = connection.execute(
+            "SELECT * FROM schedules WHERE id = ? AND user_id = ?", (schedule_id, user_id)
+        ).fetchone()
+    return _decode_schedule(row)
+
+
+def update_schedule(
+    db_path: Path, user_id: str, schedule_id: str, values: dict[str, object]
+) -> dict[str, object] | None:
+    with connect(db_path) as connection:
+        current = connection.execute(
+            "SELECT * FROM schedules WHERE id = ? AND user_id = ?", (schedule_id, user_id)
+        ).fetchone()
+        if current is None:
+            return None
+        encoded = {
+            key if key != "criteria" else "criteria_json":
+            json.dumps(value, ensure_ascii=False) if key == "criteria"
+            else int(value) if key == "enabled"
+            else value
+            for key, value in values.items()
+        }
+        local_time = str(values.get("local_time", current["local_time"]))
+        timezone = str(values.get("timezone", current["timezone"]))
+        encoded["next_run_at"] = _next_run(local_time, timezone)
+        encoded["updated_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        assignments = ", ".join(f"{key} = ?" for key in encoded)
+        connection.execute(
+            f"UPDATE schedules SET {assignments} WHERE id = ? AND user_id = ?",
+            [*encoded.values(), schedule_id, user_id],
+        )
+        row = connection.execute(
+            "SELECT * FROM schedules WHERE id = ? AND user_id = ?", (schedule_id, user_id)
+        ).fetchone()
+    return _decode_schedule(row)
+
+
+def delete_schedule(db_path: Path, user_id: str, schedule_id: str) -> bool:
+    with connect(db_path) as connection:
+        cursor = connection.execute(
+            "DELETE FROM schedules WHERE id = ? AND user_id = ?", (schedule_id, user_id)
+        )
+    return cursor.rowcount == 1
