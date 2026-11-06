@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import uuid
 from pathlib import Path
-from typing import Literal, Self
+from typing import Literal, cast
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .common import Criteria, ScheduleCreate, SchedulePatch, SettingsPatch, error_body
 from .database import (
     DEMO_USER_ID,
     connect,
@@ -30,72 +29,6 @@ from .database import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = ROOT / "data" / "dait.db"
-
-
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class Criteria(StrictModel):
-    keywords: list[str] = Field(default_factory=list)
-    source_ids: list[str] = Field(default_factory=list)
-    categories: list[Literal["AI"]]
-
-    @field_validator("keywords", "source_ids")
-    @classmethod
-    def normalize_list(cls, values: list[str]) -> list[str]:
-        return list(dict.fromkeys(value.strip() for value in values if value.strip()))
-
-
-class SettingsPatch(StrictModel):
-    default_count: Literal[5, 10] = None
-    keywords: list[str] = None
-    source_ids: list[str] = None
-    categories: list[Literal["AI"]] = None
-    in_app_notice: bool = None
-    email_notice: bool = None
-
-    @field_validator("keywords", "source_ids")
-    @classmethod
-    def normalize_optional_list(cls, values: list[str] | None) -> list[str] | None:
-        if values is None:
-            return None
-        return list(dict.fromkeys(value.strip() for value in values if value.strip()))
-
-    @model_validator(mode="after")
-    def require_change(self) -> Self:
-        if not self.model_fields_set:
-            raise ValueError("at least one setting is required")
-        return self
-
-
-class ScheduleCreate(StrictModel):
-    local_time: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    timezone: Literal["Asia/Seoul"]
-    enabled: bool = True
-    criteria: Criteria
-
-
-class SchedulePatch(StrictModel):
-    local_time: str = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
-    timezone: Literal["Asia/Seoul"] = None
-    enabled: bool = None
-    criteria: Criteria = None
-
-    @model_validator(mode="after")
-    def require_change(self) -> Self:
-        if not self.model_fields_set:
-            raise ValueError("at least one schedule field is required")
-        return self
-
-
-def error_body(request: Request, code: str, message: str, fields=None) -> dict[str, object]:
-    return {
-        "code": code,
-        "message": message,
-        "request_id": getattr(request.state, "request_id", f"req_{uuid.uuid4().hex[:16]}"),
-        "fields": fields,
-    }
 
 
 def create_app(db_path: Path | None = None, static_dir: Path | None = None) -> FastAPI:
@@ -203,7 +136,8 @@ def create_app(db_path: Path | None = None, static_dir: Path | None = None) -> F
                 status_code=404,
                 content=error_body(request, "NEWS_NOT_FOUND", "요청한 뉴스를 찾을 수 없습니다."),
             )
-        translated = row["translated_text"] or ""
+        translated = cast(str, row["translated_text"] or "")
+        canonical_url = cast(str, row["canonical_url"])
         return {
             "article": {
                 "id": row["id"],
@@ -222,8 +156,8 @@ def create_app(db_path: Path | None = None, static_dir: Path | None = None) -> F
                 "summary_model_version": row["prompt_version"],
             },
             "source": {
-                "original_url": row["canonical_url"],
-                "url_verified": row["canonical_url"].startswith("https://"),
+                "original_url": canonical_url,
+                "url_verified": canonical_url.startswith("https://"),
                 "source_type": row["source_type"],
             },
             "related_news": row["related_news"],

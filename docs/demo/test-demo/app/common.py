@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal, Self
 
 from fastapi import Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from typing import Literal, Self
 
 
 class StrictModel(BaseModel):
@@ -25,12 +25,27 @@ class Criteria(StrictModel):
 
 
 class SettingsPatch(StrictModel):
-    default_count: Literal[5, 10] = None
-    keywords: list[str] = None
-    source_ids: list[str] = None
-    categories: list[Literal["AI"]] = None
-    in_app_notice: bool = None
-    email_notice: bool = None
+    default_count: Literal[5, 10] | None = None
+    keywords: list[str] | None = None
+    source_ids: list[str] | None = None
+    categories: list[Literal["AI"]] | None = None
+    in_app_notice: bool | None = None
+    email_notice: bool | None = None
+
+    @field_validator(
+        "default_count",
+        "keywords",
+        "source_ids",
+        "categories",
+        "in_app_notice",
+        "email_notice",
+        mode="before",
+    )
+    @classmethod
+    def reject_null(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("setting fields cannot be null")
+        return value
 
     @field_validator("keywords", "source_ids")
     @classmethod
@@ -58,6 +73,13 @@ class SchedulePatch(StrictModel):
     timezone: Literal["Asia/Seoul"] | None = None
     enabled: bool | None = None
     criteria: Criteria | None = None
+
+    @field_validator("local_time", "timezone", "enabled", "criteria", mode="before")
+    @classmethod
+    def reject_null(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("schedule fields cannot be null")
+        return value
 
     @model_validator(mode="after")
     def require_change(self) -> Self:

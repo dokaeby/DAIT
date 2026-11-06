@@ -80,8 +80,9 @@ node --check public/app.js
 ```text
 test-demo/
 ├── app/
+│   ├── common.py     # 공통 API 요청 모델과 오류 응답
 │   ├── database.py   # 13개 테이블, 시드, SQLite 조회·저장
-│   └── main.py       # FastAPI API와 정적 화면 제공
+│   └── main.py       # FastAPI 엔드포인트와 정적 화면 제공
 ├── data/             # 실행 시 dait.db 생성
 ├── public/
 │   ├── index.html
