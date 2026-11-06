@@ -1,18 +1,25 @@
 import json
 
 import pytest
-
-from app.database import connect, initialize_database
+from app.database import initialize_database
+from app.db_common import connect
 from app.main import create_app
+
 from tests.client import ASGIClient
 
 
+# 입력: `tmp_path`.
+# 출력: 테스트용 ASGI 클라이언트.
+# 동작: 격리 DB를 초기화하고 테스트용 ASGI 클라이언트를 생성한다.
 def make_client(tmp_path):
     db_path = tmp_path / "dait.db"
     initialize_database(db_path)
     return db_path, ASGIClient(create_app(db_path=db_path))
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_settings_get_patch_and_reload(tmp_path):
     db_path, client = make_client(tmp_path)
 
@@ -31,6 +38,9 @@ def test_settings_get_patch_and_reload(tmp_path):
     assert reloaded.json()["email_notice"] is True
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_settings_normalizes_keywords_and_validates_sources(tmp_path):
     _, client = make_client(tmp_path)
 
@@ -51,6 +61,9 @@ def test_settings_normalizes_keywords_and_validates_sources(tmp_path):
     assert invalid.json()["code"] == "VALIDATION_ERROR"
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_settings_empty_and_extra_patch_rejected(tmp_path):
     _, client = make_client(tmp_path)
 
@@ -61,13 +74,18 @@ def test_settings_empty_and_extra_patch_rejected(tmp_path):
     assert empty.status_code == 422
     assert extra.status_code == 422
     assert bad_count.status_code == 422
-    assert all(response.json()["code"] == "VALIDATION_ERROR" for response in (empty, extra, bad_count))
+    assert all(
+        response.json()["code"] == "VALIDATION_ERROR" for response in (empty, extra, bad_count)
+    )
 
 
 @pytest.mark.parametrize(
     "field",
     ["default_count", "keywords", "source_ids", "categories", "in_app_notice", "email_notice"],
 )
+# 입력: `tmp_path`, `field`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_settings_patch_rejects_explicit_null_without_changing_storage(tmp_path, field):
     _, client = make_client(tmp_path)
     before = client.get("/v1/me/settings").json()
@@ -79,6 +97,9 @@ def test_settings_patch_rejects_explicit_null_without_changing_storage(tmp_path,
     assert client.get("/v1/me/settings").json() == before
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_schedule_create_update_list_delete(tmp_path):
     _, client = make_client(tmp_path)
     payload = {
@@ -112,6 +133,9 @@ def test_schedule_create_update_list_delete(tmp_path):
     assert missing.status_code == 404
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_schedule_validation_and_extra_fields(tmp_path):
     _, client = make_client(tmp_path)
     base = {
@@ -136,6 +160,9 @@ def test_schedule_validation_and_extra_fields(tmp_path):
 
 
 @pytest.mark.parametrize("field", ["local_time", "timezone", "enabled", "criteria"])
+# 입력: `tmp_path`, `field`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_schedule_patch_rejects_explicit_null_without_changing_storage(tmp_path, field):
     _, client = make_client(tmp_path)
     before = client.get("/v1/me/schedules").json()
@@ -147,6 +174,9 @@ def test_schedule_patch_rejects_explicit_null_without_changing_storage(tmp_path,
     assert client.get("/v1/me/schedules").json() == before
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_deleted_seed_schedule_stays_deleted_after_restart(tmp_path):
     db_path, client = make_client(tmp_path)
     assert client.delete("/v1/me/schedules/sch_demo_0830").status_code == 204
@@ -156,6 +186,9 @@ def test_deleted_seed_schedule_stays_deleted_after_restart(tmp_path):
     assert restarted.get("/v1/me/schedules").json() == {"items": []}
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_schedule_is_scoped_to_demo_user(tmp_path):
     db_path, client = make_client(tmp_path)
     now = "2026-11-06T00:00:00Z"

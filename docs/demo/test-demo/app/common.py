@@ -1,4 +1,4 @@
-"Shared API-layer types and error helpers."""
+"Shared API-layer types and error helpers."
 
 from __future__ import annotations
 
@@ -20,6 +20,9 @@ class Criteria(StrictModel):
 
     @field_validator("keywords", "source_ids")
     @classmethod
+    # 입력: `values`.
+    # 출력: `list[str]` 값.
+    # 동작: 문자열 목록의 공백을 제거하고 입력 순서를 유지하며 중복을 제거한다.
     def normalize_list(cls, values: list[str]) -> list[str]:
         return list(dict.fromkeys(value.strip() for value in values if value.strip()))
 
@@ -42,6 +45,9 @@ class SettingsPatch(StrictModel):
         mode="before",
     )
     @classmethod
+    # 입력: `value`.
+    # 출력: `object` 값.
+    # 동작: 명시적으로 전달된 null 값을 검증 오류로 거부한다.
     def reject_null(cls, value: object) -> object:
         if value is None:
             raise ValueError("setting fields cannot be null")
@@ -49,12 +55,18 @@ class SettingsPatch(StrictModel):
 
     @field_validator("keywords", "source_ids")
     @classmethod
+    # 입력: `values`.
+    # 출력: `list[str] | None` 값.
+    # 동작: 선택 문자열 목록이 있으면 공백과 중복을 정규화한다.
     def normalize_optional_list(cls, values: list[str] | None) -> list[str] | None:
         if values is None:
             return None
         return list(dict.fromkeys(value.strip() for value in values if value.strip()))
 
     @model_validator(mode="after")
+    # 입력: 없음.
+    # 출력: `Self` 값.
+    # 동작: 부분 변경 모델에 하나 이상의 변경 필드가 있는지 검증한다.
     def require_change(self) -> Self:
         if not self.model_fields_set:
             raise ValueError("at least one setting is required")
@@ -76,18 +88,27 @@ class SchedulePatch(StrictModel):
 
     @field_validator("local_time", "timezone", "enabled", "criteria", mode="before")
     @classmethod
+    # 입력: `value`.
+    # 출력: `object` 값.
+    # 동작: 명시적으로 전달된 null 값을 검증 오류로 거부한다.
     def reject_null(cls, value: object) -> object:
         if value is None:
             raise ValueError("schedule fields cannot be null")
         return value
 
     @model_validator(mode="after")
+    # 입력: 없음.
+    # 출력: `Self` 값.
+    # 동작: 부분 변경 모델에 하나 이상의 변경 필드가 있는지 검증한다.
     def require_change(self) -> Self:
         if not self.model_fields_set:
             raise ValueError("at least one schedule field is required")
         return self
 
 
+# 입력: `request`, `code`, `message`, `fields`.
+# 출력: `dict` 값.
+# 동작: 공통 오류 코드, 메시지, 요청 ID와 필드 오류를 응답 본문으로 구성한다.
 def error_body(request: Request, code: str, message: str, fields: dict | None = None) -> dict:
     return {
         "code": code,

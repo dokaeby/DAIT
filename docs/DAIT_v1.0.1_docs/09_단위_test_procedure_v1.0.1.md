@@ -193,8 +193,10 @@ pytest tests/unit/workers -vv
 @pytest.fixture
 def user_a(): ...
 
+
 @pytest.fixture
 def ready_news(): ...
+
 
 @pytest.fixture
 def fake_clock(): ...

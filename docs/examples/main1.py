@@ -1,4 +1,5 @@
 """FastAPI 응답을 화면에 표시하는 Streamlit 앱. 모델은 로드하지 않는다."""
+
 import os
 from urllib.parse import urlparse
 
@@ -7,6 +8,9 @@ import streamlit as st
 from dotenv import load_dotenv
 
 
+# 입력: 없음.
+# 출력: 검증된 백엔드 URL 문자열.
+# 동작: 환경변수에서 백엔드 URL을 읽고 HTTP 또는 HTTPS 주소인지 검증한다.
 def read_backend_url():
     """백엔드(FastAPI) 서버 주소를 환경변수 BACKEND_URL에서 읽고 검증한다.
 
@@ -25,6 +29,9 @@ def read_backend_url():
     return value
 
 
+# 입력: `backend_url`, `prompt`.
+# 출력: 백엔드가 반환한 답변 문자열.
+# 동작: 백엔드 chat API에 질문을 전송하고 유효한 answer 문자열을 반환한다.
 def request_answer(backend_url, prompt):
     """백엔드 /chat 엔드포인트에 질문을 POST로 보내 완성된 답변을 받아온다.
 
@@ -39,12 +46,18 @@ def request_answer(backend_url, prompt):
     ) as response:
         response.raise_for_status()  # HTTP 4xx/5xx는 답변으로 취급하지 않는다.
         data = response.json()  # 완성된 JSON 응답을 Python 값으로 변환한다.
-    if not isinstance(data, dict) or not isinstance(data.get("answer"), str) or not data["answer"].strip():
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("answer"), str)
+        or not data["answer"].strip()
+    ):
         raise ValueError("answer 문자열이 없는 응답입니다.")
     return data["answer"]
 
 
-
+# 입력: 없음.
+# 출력: 반환값 없음.
+# 동작: 프로그램의 예제 실행 흐름을 시작한다.
 def main():
     """Streamlit 앱의 화면(유저 인터페이스)을 렌더링하고 대화 흐름을 처리한다.
 
@@ -76,12 +89,12 @@ def main():
                 answer = request_answer(backend_url, prompt)
             st.write(answer)
         except requests.HTTPError as exc:
-            st.error(f"백엔드 요청 실패: HTTP {exc.response.status_code}. 실행 버전과 입력을 확인하세요.")
+            status_code = exc.response.status_code if exc.response is not None else "unknown"
+            st.error(f"백엔드 요청 실패: HTTP {status_code}. 실행 버전과 입력을 확인하세요.")
         except requests.RequestException:
             st.error("백엔드 연결이 끊겼거나 응답을 기다리다 실패했습니다. 서버 상태를 확인하세요.")
         except (ValueError, RuntimeError):
             st.error("답변 생성이 완료되지 않았습니다. 현재 표시된 내용은 완성된 답변이 아닙니다.")
-
 
 
 if __name__ == "__main__":

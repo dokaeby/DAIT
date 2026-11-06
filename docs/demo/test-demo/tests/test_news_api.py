@@ -1,18 +1,25 @@
 import json
 
 import pytest
-
-from app.database import connect, initialize_database
+from app.database import initialize_database
+from app.db_common import connect
 from app.main import create_app
+
 from tests.client import ASGIClient
 
 
+# 입력: `tmp_path`.
+# 출력: 임시 DB 경로와 테스트용 ASGI 클라이언트의 튜플.
+# 동작: 격리 DB를 초기화하고 테스트용 ASGI 클라이언트를 생성한다.
 def make_client(tmp_path):
     db_path = tmp_path / "dait.db"
     initialize_database(db_path)
     return db_path, ASGIClient(create_app(db_path=db_path))
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_health_and_readiness(tmp_path):
     _, client = make_client(tmp_path)
 
@@ -23,6 +30,9 @@ def test_health_and_readiness(tmp_path):
     }
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_news_default_rank_and_status_filter(tmp_path):
     db_path, client = make_client(tmp_path)
     with connect(db_path) as connection:
@@ -41,6 +51,9 @@ def test_news_default_rank_and_status_filter(tmp_path):
     assert body["meta"]["rank_basis"] == ["processing_status", "source_priority", "published_at"]
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_news_latest_search_and_empty_result(tmp_path):
     _, client = make_client(tmp_path)
 
@@ -59,6 +72,9 @@ def test_news_latest_search_and_empty_result(tmp_path):
     assert empty == []
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_news_validation_rejects_bad_query(tmp_path):
     _, client = make_client(tmp_path)
 
@@ -75,6 +91,9 @@ def test_news_validation_rejects_bad_query(tmp_path):
         assert response.json()["code"] == "VALIDATION_ERROR"
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_news_detail_and_missing_id(tmp_path):
     _, client = make_client(tmp_path)
 
@@ -95,6 +114,9 @@ def test_news_detail_and_missing_id(tmp_path):
     assert missing.json()["code"] == "NEWS_NOT_FOUND"
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_malformed_content_returns_generalized_error(tmp_path):
     db_path, client = make_client(tmp_path)
     with connect(db_path) as connection:
@@ -118,6 +140,9 @@ def test_malformed_content_returns_generalized_error(tmp_path):
     [json.dumps({}), json.dumps(None), json.dumps("summary"), json.dumps(["one", 2, "three"])],
 )
 @pytest.mark.parametrize("endpoint", ["/v1/news", "/v1/news/news_openai_001"])
+# 입력: `tmp_path`, `stored_value`, `endpoint`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_wrong_summary_shape_returns_generalized_error(tmp_path, stored_value, endpoint):
     db_path, client = make_client(tmp_path)
     with connect(db_path) as connection:
@@ -132,6 +157,9 @@ def test_wrong_summary_shape_returns_generalized_error(tmp_path, stored_value, e
     assert response.json()["code"] == "INTERNAL_ERROR"
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_unknown_error_does_not_expose_sql_or_traceback(tmp_path):
     db_path, client = make_client(tmp_path)
     moved_path = tmp_path / "moved.db"

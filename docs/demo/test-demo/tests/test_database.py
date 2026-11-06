@@ -1,9 +1,8 @@
 import sqlite3
 
 import pytest
-
-from app.database import connect, initialize_database
-
+from app.database import initialize_database
+from app.db_common import connect
 
 TABLES = {
     "audit_logs",
@@ -22,6 +21,9 @@ TABLES = {
 }
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_initialize_creates_all_13_tables_and_enables_foreign_keys(tmp_path):
     db_path = tmp_path / "dait.db"
 
@@ -40,6 +42,9 @@ def test_initialize_creates_all_13_tables_and_enables_foreign_keys(tmp_path):
     assert foreign_keys == 1
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_initialize_is_idempotent(tmp_path):
     db_path = tmp_path / "dait.db"
 
@@ -52,6 +57,9 @@ def test_initialize_is_idempotent(tmp_path):
         assert connection.execute("SELECT COUNT(*) FROM schedules").fetchone()[0] == 1
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_schema_enforces_default_count_relation_and_foreign_key_constraints(tmp_path):
     db_path = tmp_path / "dait.db"
     initialize_database(db_path)
@@ -64,14 +72,23 @@ def test_schema_enforces_default_count_relation_and_foreign_key_constraints(tmp_
             )
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
-                "INSERT INTO news_relations (id, news_id, related_news_id, reason, score, created_at) "
+                "INSERT INTO news_relations "
+                "(id, news_id, related_news_id, reason, score, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                ("rel_bad", "news_openai_001", "news_openai_001", "self", 1.0, "2026-11-06T00:00:00Z"),
+                (
+                    "rel_bad",
+                    "news_openai_001",
+                    "news_openai_001",
+                    "self",
+                    1.0,
+                    "2026-11-06T00:00:00Z",
+                ),
             )
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
                 "INSERT INTO schedules "
-                "(id, user_id, local_time, timezone, enabled, criteria_json, created_at, updated_at) "
+                "(id, user_id, local_time, timezone, enabled, criteria_json, "
+                "created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     "sch_bad",
@@ -86,6 +103,9 @@ def test_schema_enforces_default_count_relation_and_foreign_key_constraints(tmp_
             )
 
 
+# 입력: `tmp_path`.
+# 출력: 반환값 없음. assertion 실패 시 테스트가 실패한다.
+# 동작: 해당 이름의 테스트 시나리오와 기대 결과를 검증한다.
 def test_independent_connections_see_committed_seed(tmp_path):
     db_path = tmp_path / "dait.db"
     initialize_database(db_path)

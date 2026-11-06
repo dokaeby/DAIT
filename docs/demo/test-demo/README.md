@@ -75,13 +75,23 @@ JavaScript 구문 검사:
 node --check public/app.js
 ```
 
+공용 DB 연결 예제:
+
+```bash
+PYTHONPATH=. uv run python examples/db_common_usage.py
+```
+
+예제는 임시 SQLite DB에서 단건·목록 조회, CRUD 트랜잭션, 제약 오류 rollback,
+JSON 컬럼과 다중 연결 commit을 검증하고 종료 시 DB를 자동 삭제합니다.
+
 ## 구조
 
 ```text
 test-demo/
 ├── app/
 │   ├── common.py     # 공통 API 요청 모델과 오류 응답
-│   ├── database.py   # 13개 테이블, 시드, SQLite 조회·저장
+│   ├── db_common.py  # 공통 SQLite 연결 설정
+│   ├── database.py   # 13개 테이블, 시드, 업무 조회·저장
 │   └── main.py       # FastAPI 엔드포인트와 정적 화면 제공
 ├── data/             # 실행 시 dait.db 생성
 ├── public/

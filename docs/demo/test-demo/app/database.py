@@ -7,7 +7,10 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 from zoneinfo import ZoneInfo
+
+from .db_common import connect
 
 DEMO_USER_ID = "usr_demo_local"
 
@@ -178,6 +181,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
 NOW = "2026-11-06T00:00:00Z"
 
 
+# 입력: `raw_value`.
+# 출력: `list[str]` 값.
+# 동작: DB의 JSON 요약을 정확히 세 개의 문자열 목록으로 검증해 변환한다.
 def _decode_summary(raw_value: str) -> list[str]:
     value = json.loads(raw_value)
     if not isinstance(value, list) or len(value) != 3:
@@ -187,14 +193,9 @@ def _decode_summary(raw_value: str) -> list[str]:
     return value
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
-    """Open a row-mapped SQLite connection with referential integrity enabled."""
-    connection = sqlite3.connect(db_path, timeout=10)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
-
-
+# 입력: `db_path`.
+# 출력: 반환값 없음.
+# 동작: SQLite 스키마를 생성하고 결정적인 데모 데이터를 멱등하게 적재한다.
 def initialize_database(db_path: Path) -> None:
     """Create the full local schema and seed deterministic demo records."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,8 +219,26 @@ def initialize_database(db_path: Path) -> None:
         connection.executemany(
             "INSERT OR IGNORE INTO sources VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)",
             [
-                ("src_openai", "OpenAI Newsroom", "OFFICIAL_HTML", "https://openai.com/news", 1, NOW, NOW, NOW),
-                ("src_anthropic", "Anthropic News", "OFFICIAL_HTML", "https://www.anthropic.com/news", 2, NOW, NOW, NOW),
+                (
+                    "src_openai",
+                    "OpenAI Newsroom",
+                    "OFFICIAL_HTML",
+                    "https://openai.com/news",
+                    1,
+                    NOW,
+                    NOW,
+                    NOW,
+                ),
+                (
+                    "src_anthropic",
+                    "Anthropic News",
+                    "OFFICIAL_HTML",
+                    "https://www.anthropic.com/news",
+                    2,
+                    NOW,
+                    NOW,
+                    NOW,
+                ),
                 ("src_arxiv", "arXiv AI", "RSS", "https://arxiv.org", 3, NOW, NOW, NOW),
             ],
         )
@@ -262,17 +281,21 @@ def initialize_database(db_path: Path) -> None:
             ],
         )
         connection.executemany(
-            "INSERT OR IGNORE INTO content_results VALUES (?, ?, ?, ?, ?, ?, 'summary-v1', 'demo-model', ?, ?)",
+            "INSERT OR IGNORE INTO content_results "
+            "VALUES (?, ?, ?, ?, ?, ?, 'summary-v1', 'demo-model', ?, ?)",
             [
                 (
                     "news_openai_001",
                     "OpenAI announced a multimodal model.",
                     "OpenAI는 텍스트, 이미지, 음성을 함께 처리하는 새로운 모델을 발표했습니다.",
-                    json.dumps([
-                        "장문 추론과 복합 도구 호출 정확도가 향상됐다.",
-                        "텍스트·이미지·음성을 하나의 흐름에서 처리한다.",
-                        "개발자 API는 단계적으로 제공될 예정이다.",
-                    ], ensure_ascii=False),
+                    json.dumps(
+                        [
+                            "장문 추론과 복합 도구 호출 정확도가 향상됐다.",
+                            "텍스트·이미지·음성을 하나의 흐름에서 처리한다.",
+                            "개발자 API는 단계적으로 제공될 예정이다.",
+                        ],
+                        ensure_ascii=False,
+                    ),
                     "READY",
                     None,
                     "2026-11-04T00:35:14Z",
@@ -282,11 +305,14 @@ def initialize_database(db_path: Path) -> None:
                     "news_anthropic_002",
                     "Anthropic released safer agent tools.",
                     "Anthropic은 안전 장치를 포함한 AI 에이전트 도구를 공개했습니다.",
-                    json.dumps([
-                        "에이전트 도구에 권한 제한 기능이 추가됐다.",
-                        "실행 기록과 승인 단계를 관리할 수 있다.",
-                        "기업용 기능은 순차적으로 배포된다.",
-                    ], ensure_ascii=False),
+                    json.dumps(
+                        [
+                            "에이전트 도구에 권한 제한 기능이 추가됐다.",
+                            "실행 기록과 승인 단계를 관리할 수 있다.",
+                            "기업용 기능은 순차적으로 배포된다.",
+                        ],
+                        ensure_ascii=False,
+                    ),
                     "READY",
                     None,
                     "2026-11-03T23:10:00Z",
@@ -296,11 +322,14 @@ def initialize_database(db_path: Path) -> None:
                     "news_arxiv_003",
                     None,
                     None,
-                    json.dumps([
-                        "공개된 초록만으로 평가 결과를 정리했다.",
-                        "전체 본문 확인이 필요하다.",
-                        "요약 정보가 제한적일 수 있다.",
-                    ], ensure_ascii=False),
+                    json.dumps(
+                        [
+                            "공개된 초록만으로 평가 결과를 정리했다.",
+                            "전체 본문 확인이 필요하다.",
+                            "요약 정보가 제한적일 수 있다.",
+                        ],
+                        ensure_ascii=False,
+                    ),
                     "INSUFFICIENT",
                     "CONTENT_INSUFFICIENT",
                     "2026-11-02T08:10:00Z",
@@ -311,7 +340,14 @@ def initialize_database(db_path: Path) -> None:
         connection.executemany(
             "INSERT OR IGNORE INTO news_relations VALUES (?, ?, ?, ?, ?, ?)",
             [
-                ("rel_001", "news_openai_001", "news_anthropic_002", "AI 에이전트와 도구 사용", 0.82, NOW),
+                (
+                    "rel_001",
+                    "news_openai_001",
+                    "news_anthropic_002",
+                    "AI 에이전트와 도구 사용",
+                    0.82,
+                    NOW,
+                ),
                 ("rel_002", "news_openai_001", "news_arxiv_003", "모델 평가 주제", 0.71, NOW),
             ],
         )
@@ -336,6 +372,9 @@ def initialize_database(db_path: Path) -> None:
             )
 
 
+# 입력: `db_path`, `query`, `sort`, `page_size`.
+# 출력: `list[dict[str, object]]` 값.
+# 동작: 필터와 정렬 조건으로 공개 가능한 뉴스 목록을 조회한다.
 def list_news(
     db_path: Path, *, query: str | None, sort: str, page_size: int
 ) -> list[dict[str, object]]:
@@ -359,7 +398,7 @@ def list_news(
           FROM news AS n
           JOIN sources AS s ON s.id = n.source_id
           JOIN content_results AS c ON c.news_id = n.id
-         WHERE {' AND '.join(filters)}
+         WHERE {" AND ".join(filters)}
          ORDER BY {order}
          LIMIT ?
     """
@@ -374,6 +413,9 @@ def list_news(
     ]
 
 
+# 입력: `db_path`, `news_id`.
+# 출력: `dict[str, object] | None` 값.
+# 동작: 뉴스 한 건과 관련 뉴스 및 처리 결과를 조회한다.
 def get_news_detail(db_path: Path, news_id: str) -> dict[str, object] | None:
     """Return one article with processing details and related news."""
     with connect(db_path) as connection:
@@ -409,6 +451,9 @@ def get_news_detail(db_path: Path, news_id: str) -> dict[str, object] | None:
     return article
 
 
+# 입력: `row`.
+# 출력: `dict[str, object]` 값.
+# 동작: SQLite 설정 행을 API 응답 형태로 변환한다.
 def _decode_settings(row: sqlite3.Row) -> dict[str, object]:
     return {
         "default_count": row["default_count"],
@@ -421,6 +466,9 @@ def _decode_settings(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+# 입력: `db_path`, `user_id`.
+# 출력: `dict[str, object]` 값.
+# 동작: 사용자 설정 한 건을 조회한다.
 def get_settings(db_path: Path, user_id: str) -> dict[str, object]:
     with connect(db_path) as connection:
         row = connection.execute(
@@ -431,6 +479,9 @@ def get_settings(db_path: Path, user_id: str) -> dict[str, object]:
     return _decode_settings(row)
 
 
+# 입력: `db_path`, `source_ids`.
+# 출력: `set[str]` 값.
+# 동작: 입력 ID 중 활성화된 승인 출처 ID만 반환한다.
 def enabled_source_ids(db_path: Path, source_ids: list[str]) -> set[str]:
     if not source_ids:
         return set()
@@ -443,12 +494,15 @@ def enabled_source_ids(db_path: Path, source_ids: list[str]) -> set[str]:
     return {row["id"] for row in rows}
 
 
-def update_settings(
-    db_path: Path, user_id: str, values: dict[str, object]
-) -> dict[str, object]:
+# 입력: `db_path`, `user_id`, `values`.
+# 출력: `dict[str, object]` 값.
+# 동작: 사용자 설정의 전달된 필드만 갱신한다.
+def update_settings(db_path: Path, user_id: str, values: dict[str, object]) -> dict[str, object]:
     encoded = {
-        key: json.dumps(value, ensure_ascii=False) if key in {"keywords", "source_ids", "categories"}
-        else int(value) if key in {"in_app_notice", "email_notice"}
+        key: json.dumps(value, ensure_ascii=False)
+        if key in {"keywords", "source_ids", "categories"}
+        else int(cast(bool, value))
+        if key in {"in_app_notice", "email_notice"}
         else value
         for key, value in values.items()
     }
@@ -462,6 +516,9 @@ def update_settings(
     return get_settings(db_path, user_id)
 
 
+# 입력: `local_time`, `timezone`.
+# 출력: `str` 값.
+# 동작: 사용자 시간대의 예약 시각을 다음 UTC 실행 시각으로 계산한다.
 def _next_run(local_time: str, timezone: str) -> str:
     zone = ZoneInfo(timezone)
     now = datetime.now(UTC)
@@ -473,6 +530,9 @@ def _next_run(local_time: str, timezone: str) -> str:
     return candidate.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+# 입력: `row`.
+# 출력: `dict[str, object]` 값.
+# 동작: SQLite 예약 행을 API 응답 형태로 변환한다.
 def _decode_schedule(row: sqlite3.Row) -> dict[str, object]:
     return {
         "id": row["id"],
@@ -486,6 +546,9 @@ def _decode_schedule(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+# 입력: `db_path`, `user_id`.
+# 출력: `list[dict[str, object]]` 값.
+# 동작: 사용자 소유 예약을 시각 순서로 조회한다.
 def list_schedules(db_path: Path, user_id: str) -> list[dict[str, object]]:
     with connect(db_path) as connection:
         rows = connection.execute(
@@ -494,9 +557,10 @@ def list_schedules(db_path: Path, user_id: str) -> list[dict[str, object]]:
     return [_decode_schedule(row) for row in rows]
 
 
-def create_schedule(
-    db_path: Path, user_id: str, values: dict[str, object]
-) -> dict[str, object]:
+# 입력: `db_path`, `user_id`, `values`.
+# 출력: `dict[str, object]` 값.
+# 동작: 사용자 소유 예약을 생성하고 생성 결과를 반환한다.
+def create_schedule(db_path: Path, user_id: str, values: dict[str, object]) -> dict[str, object]:
     now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     schedule_id = f"sch_{uuid.uuid4().hex[:16]}"
     next_run = _next_run(str(values["local_time"]), str(values["timezone"]))
@@ -526,6 +590,9 @@ def create_schedule(
     return _decode_schedule(row)
 
 
+# 입력: `db_path`, `user_id`, `schedule_id`, `values`.
+# 출력: `dict[str, object] | None` 값.
+# 동작: 사용자 소유 예약을 부분 변경하고 최신 결과를 반환한다.
 def update_schedule(
     db_path: Path, user_id: str, schedule_id: str, values: dict[str, object]
 ) -> dict[str, object] | None:
@@ -536,9 +603,10 @@ def update_schedule(
         if current is None:
             return None
         encoded = {
-            key if key != "criteria" else "criteria_json":
-            json.dumps(value, ensure_ascii=False) if key == "criteria"
-            else int(value) if key == "enabled"
+            key if key != "criteria" else "criteria_json": json.dumps(value, ensure_ascii=False)
+            if key == "criteria"
+            else int(cast(bool, value))
+            if key == "enabled"
             else value
             for key, value in values.items()
         }
@@ -557,6 +625,9 @@ def update_schedule(
     return _decode_schedule(row)
 
 
+# 입력: `db_path`, `user_id`, `schedule_id`.
+# 출력: `bool` 값.
+# 동작: 사용자 소유 예약을 삭제하고 성공 여부를 반환한다.
 def delete_schedule(db_path: Path, user_id: str, schedule_id: str) -> bool:
     with connect(db_path) as connection:
         cursor = connection.execute(

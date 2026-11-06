@@ -1,13 +1,13 @@
+import hashlib
 import os
 import shutil
 import sys
-import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 
-import feedparser
 import chromadb
+import feedparser
 from sentence_transformers import SentenceTransformer
 
 DB_PATH = str(Path(__file__).parent / "news_db")
@@ -23,16 +23,25 @@ FEEDS = {
 MODEL_NAME = "intfloat/multilingual-e5-small"
 
 
+# 입력: 없음.
+# 출력: 반환값 없음.
+# 동작: 검색 데모 컬렉션의 기존 데이터를 제거한다.
 def reset_database():
     if os.path.exists(DB_PATH):
         shutil.rmtree(DB_PATH)
         print("기존 DB를 삭제했습니다.")
 
 
+# 입력: `url`.
+# 출력: `str` 값.
+# 동작: 기사 링크를 기반으로 결정적인 기사 ID를 생성한다.
 def article_id(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()
 
 
+# 입력: `article`.
+# 출력: `str` 값.
+# 동작: 기사 제목과 요약을 임베딩 입력 문자열로 결합한다.
 def make_embedding_text(article: dict) -> str:
     title = article.get("title", "").strip()
     summary = article.get("summary", "").strip()
@@ -41,6 +50,9 @@ def make_embedding_text(article: dict) -> str:
     return f"{title}\n{summary[:500]}"[:800]
 
 
+# 입력: 없음.
+# 출력: 반환값 없음.
+# 동작: RSS 기사를 수집·임베딩하여 ChromaDB 컬렉션에 저장한다.
 def ingest():
     started = perf_counter()
     client = chromadb.PersistentClient(path=DB_PATH)
@@ -67,15 +79,17 @@ def ingest():
             if not url or not title:
                 continue
 
-            new_articles.append({
-                "id": article_id(url),
-                "source": source,
-                "title": title,
-                "url": url,
-                "summary": summary,
-                "published": published,
-                "collected_at": datetime.now(timezone.utc).isoformat(),
-            })
+            new_articles.append(
+                {
+                    "id": article_id(url),
+                    "source": source,
+                    "title": title,
+                    "url": url,
+                    "summary": summary,
+                    "published": published,
+                    "collected_at": datetime.now(UTC).isoformat(),
+                }
+            )
 
     existing_ids = set(collection.get()["ids"])
     unique_articles = []
@@ -87,11 +101,13 @@ def ingest():
     new_articles = unique_articles
 
     if not new_articles:
-        collection.modify(metadata={
-            **(collection.metadata or {}),
-            "last_collected_at": datetime.now(timezone.utc).isoformat(),
-            "collection_duration_seconds": round(perf_counter() - started, 2),
-        })
+        collection.modify(
+            metadata={
+                **(collection.metadata or {}),
+                "last_collected_at": datetime.now(UTC).isoformat(),
+                "collection_duration_seconds": round(perf_counter() - started, 2),
+            }
+        )
         print("새로 저장할 기사가 없습니다.")
         print(f"현재 저장된 기사 수: {collection.count()}")
         return
@@ -121,11 +137,13 @@ def ingest():
         ],
     )
 
-    collection.modify(metadata={
-        **(collection.metadata or {}),
-        "last_collected_at": datetime.now(timezone.utc).isoformat(),
-        "collection_duration_seconds": round(perf_counter() - started, 2),
-    })
+    collection.modify(
+        metadata={
+            **(collection.metadata or {}),
+            "last_collected_at": datetime.now(UTC).isoformat(),
+            "collection_duration_seconds": round(perf_counter() - started, 2),
+        }
+    )
     print(f"{len(new_articles)}개 기사를 새로 저장했습니다.")
     print(f"현재 저장된 기사 수: {collection.count()}")
 
