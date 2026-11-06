@@ -321,3 +321,76 @@ def initialize_database(db_path: Path) -> None:
                 NOW,
             ),
         )
+
+
+def list_news(
+    db_path: Path, *, query: str | None, sort: str, page_size: int
+) -> list[dict[str, object]]:
+    """Return visible news rows with decoded summaries."""
+    filters = ["n.category = 'AI'", "c.status IN ('READY', 'INSUFFICIENT')"]
+    parameters: list[object] = []
+    if query:
+        filters.append("(LOWER(n.title) LIKE LOWER(?) OR LOWER(c.summary_lines) LIKE LOWER(?))")
+        pattern = f"%{query}%"
+        parameters.extend((pattern, pattern))
+    order = (
+        "c.status = 'READY' DESC, s.priority ASC, n.published_at DESC, n.id ASC"
+        if sort == "rank"
+        else "n.published_at DESC, n.id ASC"
+    )
+    parameters.append(page_size)
+    sql = f"""
+        SELECT n.id, n.title, n.published_at, n.category, n.canonical_url,
+               s.name AS source_name, s.priority AS source_priority,
+               c.summary_lines, c.status AS processing_status
+          FROM news AS n
+          JOIN sources AS s ON s.id = n.source_id
+          JOIN content_results AS c ON c.news_id = n.id
+         WHERE {' AND '.join(filters)}
+         ORDER BY {order}
+         LIMIT ?
+    """
+    with connect(db_path) as connection:
+        rows = connection.execute(sql, parameters).fetchall()
+    return [
+        {
+            **dict(row),
+            "summary_lines": json.loads(row["summary_lines"]),
+        }
+        for row in rows
+    ]
+
+
+def get_news_detail(db_path: Path, news_id: str) -> dict[str, object] | None:
+    """Return one article with processing details and related news."""
+    with connect(db_path) as connection:
+        row = connection.execute(
+            """
+            SELECT n.*, s.name AS source_name, s.kind AS source_type,
+                   c.summary_lines, c.translated_text, c.status AS content_status,
+                   c.processed_at, c.prompt_version, c.model_id
+              FROM news AS n
+              JOIN sources AS s ON s.id = n.source_id
+              JOIN content_results AS c ON c.news_id = n.id
+             WHERE n.id = ? AND c.status IN ('READY', 'INSUFFICIENT')
+            """,
+            (news_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        related = connection.execute(
+            """
+            SELECT n.id, n.title, s.name AS source_name, n.published_at,
+                   r.reason, r.score
+              FROM news_relations AS r
+              JOIN news AS n ON n.id = r.related_news_id
+              JOIN sources AS s ON s.id = n.source_id
+             WHERE r.news_id = ?
+             ORDER BY r.score DESC, n.id ASC
+            """,
+            (news_id,),
+        ).fetchall()
+    article = dict(row)
+    article["summary_lines"] = json.loads(row["summary_lines"])
+    article["related_news"] = [dict(item) for item in related]
+    return article
