@@ -1,0 +1,73 @@
+{
+  "contract": "정적 화면 목업만 제공한다. 메인, 뉴스 상세, 설정 화면이 1440x900과 390x844에서 가로 넘침 없이 렌더링되고, 실제 검색·저장·API·JavaScript 기능은 포함하지 않는다.",
+  "targetViewports": [
+    "1440x900",
+    "390x844"
+  ],
+  "accessibility": {
+    "status": "pass",
+    "evidence": "브라우저 DOM에서 각 화면의 main·heading·navigation·button 이름을 확인했다. CSS에 focus-visible 표시와 reduced-motion 대응이 있고 모바일의 표시되는 버튼·링크 터치 높이는 44px 이상이다."
+  },
+  "responsive": {
+    "status": "pass",
+    "evidence": "1440x900과 390x844 모두 document scrollWidth가 clientWidth를 넘지 않았다. 모바일에서 sidebar는 숨고 mobile-tabs가 표시되며, 상세와 설정은 단일 열로 전환됐다."
+  },
+  "contentStates": {
+    "loading": {
+      "status": "not-applicable",
+      "reason": "사용자가 요청한 세 개의 예상 화면은 정적 완료 상태 목업이며 별도 로딩 화면은 범위에 포함되지 않았다."
+    },
+    "empty": {
+      "status": "not-applicable",
+      "reason": "빈 결과 화면은 이번 세 개 화면 목업 범위에 포함되지 않았다."
+    },
+    "error": {
+      "status": "not-applicable",
+      "reason": "오류 화면은 이번 세 개 화면 목업 범위에 포함되지 않았다."
+    },
+    "partial": {
+      "status": "pass",
+      "evidence": "메인 화면의 세 번째 뉴스 카드에서 일부 출처 지연을 색상과 텍스트로 함께 표시했다."
+    },
+    "success": {
+      "status": "pass",
+      "evidence": "메인 목록, 뉴스 상세, 설정 예상 화면의 정적 완료 상태를 데스크톱과 모바일에서 확인했다."
+    },
+    "permission": {
+      "status": "not-applicable",
+      "reason": "인증·권한 화면과 실제 접근 제어는 정적 목업 범위에서 제외됐다."
+    }
+  },
+  "renderedEvidence": [
+    {
+      "viewport": "1440x900",
+      "artifact": "index.html",
+      "observation": "좌측 탐색, 검색, 필터와 3개 랭킹 카드가 한 화면에 겹침 없이 표시됐다."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "index.html",
+      "observation": "좌측 탐색이 하단 탭으로 전환되고 뉴스 카드가 단일 열로 배치됐다."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "detail.html",
+      "observation": "기사 헤더, 요약·번역 본문과 원본 정보·관련 뉴스 사이드 패널이 2열로 표시됐다."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "detail.html",
+      "observation": "기사 헤더 행동과 모든 콘텐츠 패널이 단일 열로 전환되고 가로 넘침이 없었다."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "settings.html",
+      "observation": "설정 메뉴와 예약·관심·알림·정책 카드가 안정적인 너비로 표시됐다."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "settings.html",
+      "observation": "설정 메뉴는 가로형으로, 입력 필드는 단일 열로 전환됐고 가로 넘침이 없었다."
+    }
+  ]
+}

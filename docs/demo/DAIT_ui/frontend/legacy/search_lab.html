@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DAIT | 임베딩 유사도 비교</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f6f7f5;color:#18251d;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}header{background:white;border-bottom:1px solid #e1e7e1}.bar,main{max-width:1240px;margin:auto;padding:22px 24px}.bar{display:flex;justify-content:space-between;align-items:center}.logo{font-size:25px;font-weight:900;color:#176d43;text-decoration:none}a{color:#176d43}main{padding-top:42px;padding-bottom:70px}h1{font-size:32px;letter-spacing:-.05em;margin:0 0 12px}.help,.status,.scope{font-size:14px;color:#68776c;line-height:1.8}.controls{background:white;border:1px solid #dde6df;border-radius:14px;padding:24px;margin:25px 0}.row{display:flex;gap:14px;flex-wrap:wrap;align-items:end}label{display:block;font-size:13px;font-weight:700;margin-bottom:8px}.query{flex:1;min-width:220px}input{padding:12px;border:1px solid #cddbcf;border-radius:8px;font:inherit;width:100%}input[type=number]{width:130px}button{padding:12px 18px;border:1px solid #176d43;background:#176d43;color:white;border-radius:8px;font:inherit;cursor:pointer}button.secondary{background:white;color:#176d43;margin-bottom:20px}button:disabled{opacity:.5;cursor:wait}.status{min-height:25px;white-space:pre-wrap;overflow-wrap:anywhere}.error{color:#a12e2e}.columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.column{background:white;padding:20px;border:1px solid #dde6df;border-radius:14px}h2{font-size:19px;margin:0 0 8px}ol{padding:0;list-style:none}li{padding:18px 0;border-top:1px solid #e5ebe5}.title{display:block;font-size:15px;line-height:1.7;font-weight:700;color:#263e2f;text-decoration:none;overflow-wrap:anywhere}.title:hover{text-decoration:underline}.source{font-size:12px;color:#7a877e;margin-top:7px}.score{margin-top:12px;padding:8px 10px;background:#edf5ef;border-radius:7px;font-size:13px;font-variant-numeric:tabular-nums}.score strong{font-size:17px}.rrf{font-size:12px;color:#69796d;margin-top:6px}#summary{line-height:1.8;font-size:14px;margin-bottom:18px}.empty{font-size:14px;color:#7a877e}a:focus-visible,button:focus-visible{outline:2px solid #176d43;outline-offset:3px}@media(max-width:900px){.columns{grid-template-columns:1fr}h1{font-size:27px}}
+</style></head><body>
+<header><div class="bar"><a class="logo" href="/">DAIT.</a><a href="/">← 뉴스 목록</a></div></header>
+<main><h1>검색어와 기사, 얼마나 비슷할까요?</h1>
+<p class="help">코사인 유사도는 <strong>-1부터 1</strong> 사이의 점수이며, 높을수록 의미가 비슷하다는 뜻입니다. 정확도나 확률의 백분율이 아닙니다.</p>
+<p class="scope" id="scope">검색 범위를 확인하고 있습니다.</p>
+<section class="controls" aria-label="검색 비교 설정">
+<button class="secondary" id="build" type="button">1. 색인 준비·갱신</button>
+<p class="help">처음 준비할 때 모델을 다운로드할 수 있습니다. 기존에 같은 모델과 입력으로 만든 색인은 재사용합니다.</p>
+<form id="compare"><div class="row"><div class="query"><label for="query">검색어</label><input id="query" maxlength="200" placeholder="예: 개인정보를 안전하게 지키는 기술" required></div>
+<div><label for="threshold">최소 코사인 유사도</label><input id="threshold" type="number" min="-1" max="1" step="0.01" value="0.35" required></div>
+<button id="run" type="submit">2. 유사도 비교</button></div></form>
+<p class="help">0.35는 임시 테스트 기준입니다. 의미 유사도 후보에만 적용하며, 키워드 일치 기사는 기준보다 낮아도 혼합 결과에 포함될 수 있습니다.</p>
+<p id="status" class="status" role="status" aria-live="polite">색인을 준비한 뒤 유사도 비교를 눌러 주세요.</p></section>
+<div id="summary" aria-live="polite"></div>
+<div class="columns"><section class="column"><h2>키워드 검색</h2><p class="help">문자 일치 · 최신순</p><ol id="keyword"></ol></section>
+<section class="column"><h2>의미 유사도 검색</h2><p class="help">최소 유사도 이상 · 유사도순</p><ol id="semantic"></ol></section>
+<section class="column"><h2>키워드 + 임베딩</h2><p class="help">두 순위를 결합한 RRF 점수순</p><ol id="hybrid"></ol></section></div>
+<p class="help">모든 결과는 현재 로그인 사용자의 관심사 범위에서 비교합니다. 계정 변경은 뉴스 목록에서 할 수 있습니다. 기사 제목을 누르면 상세 정보를 새 탭에서 확인합니다.</p></main>
+<script>
+const status = document.querySelector('#status');
+const buildButton = document.querySelector('#build');
+const runButton = document.querySelector('#run');
+const queryInput = document.querySelector('#query');
+const thresholdInput = document.querySelector('#threshold');
+const summary = document.querySelector('#summary');
+let active = false;
+function busy(value) {
+  active = value;
+  for (const control of [buildButton, runButton, queryInput, thresholdInput]) control.disabled = value;
+}
+async function info() {
+  const response = await fetch('/api/search-lab/info', {cache:'no-store'});
+  if (!response.ok) throw new Error('검색 범위를 확인하지 못했습니다.');
+  const data = await response.json();
+  document.querySelector('#scope').textContent = (data.user ? data.user + ' · 관심사: ' + data.interests.join(', ') : '비로그인 · 전체 기사') + ' | 모델: ' + data.model + ' | CPU';
+}
+function render(data) {
+  for (const name of ['keyword', 'semantic', 'hybrid']) {
+    const list = document.getElementById(name);
+    list.replaceChildren();
+    if (!data[name].length) {
+      const empty = document.createElement('li'); empty.className = 'empty'; empty.textContent = '조건에 맞는 기사가 없습니다.'; list.append(empty);
+    }
+    data[name].forEach((article, index) => {
+      const item = document.createElement('li');
+      const title = document.createElement('a'); title.className = 'title'; title.textContent = (index+1) + '. ' + article.title;
+      title.href = '/article/' + encodeURIComponent(article.id); title.target = '_blank'; title.rel = 'noopener noreferrer';
+      const source = document.createElement('div'); source.className = 'source'; source.textContent = article.source;
+      const score = document.createElement('div'); score.className = 'score'; score.append('코사인 유사도 ');
+      const number = document.createElement('strong'); number.textContent = Number.isFinite(article.cosine) ? article.cosine.toFixed(4) : '계산값 없음'; score.append(number);
+      item.append(title, source, score);
+      if (name === 'hybrid') {
+        const rrf = document.createElement('div'); rrf.className = 'rrf'; rrf.textContent = '순위 결합 점수(RRF): ' + article.rrf_score.toFixed(6); item.append(rrf);
+      }
+      list.append(item);
+    });
+  }
+  summary.textContent = '검색 범위: ' + data.user + ' · 검색어: “' + data.query + '” · 후보 ' + data.candidate_count + '개 · 최소 유사도 ' + data.min_cosine + ' · 키워드/혼합 공통 기사 ' + data.overlap_count + '개. 검색어 인코딩 ' + data.query_embedding_seconds.toFixed(3) + '초.';
+}
+async function start(action) {
+  if (active) return;
+  const query = queryInput.value.trim();
+  const minScore = Number(thresholdInput.value);
+  if (action === 'compare' && (!query || !Number.isFinite(minScore) || minScore < -1 || minScore > 1)) return;
+  busy(true); status.classList.remove('error'); status.textContent = '작업을 요청하고 있습니다…';
+  if (action === 'compare') {
+    summary.textContent = '새 검색 결과를 계산하고 있습니다.';
+    for (const name of ['keyword','semantic','hybrid']) document.getElementById(name).replaceChildren();
+  }
+  try {
+    await info();
+    const response = await fetch('/api/search-lab/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action, query, min_score:minScore})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '작업 요청에 실패했습니다.');
+    while (true) {
+      const poll = await fetch('/api/search-lab/jobs/' + data.job_id, {cache:'no-store'});
+      const job = await poll.json();
+      if (!poll.ok) throw new Error(job.error || '작업 상태 조회에 실패했습니다.');
+      status.textContent = job.message;
+      if (job.status === 'error') throw new Error(job.message);
+      if (job.status === 'completed') {
+        if (action === 'compare') render(job.result);
+        else status.textContent = job.result.message;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 900));
+    }
+  } catch (error) {
+    status.classList.add('error'); status.textContent = error.message;
+    if (action === 'compare') summary.textContent = '유사도를 계산하지 못했습니다. 표시된 오류를 확인해 주세요.';
+  } finally { busy(false); }
+}
+buildButton.addEventListener('click', () => start('build'));
+document.querySelector('#compare').addEventListener('submit', event => {event.preventDefault(); start('compare');});
+info().catch(error => {status.classList.add('error'); status.textContent = error.message;});
+</script></body></html>

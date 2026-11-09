@@ -1,0 +1,1 @@
+"""DAIT local demo application."""

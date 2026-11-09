@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DAIT · 오늘의 AI 뉴스</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="main">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DAIT 홈"><span>DAIT</span><small>AI TREND DESK</small></a>
+      <a class="header-link" href="/settings.html">설정</a>
+    </header>
+    <div class="shell">
+      <nav class="sidebar" aria-label="주요 메뉴">
+        <p class="nav-label">DISCOVER</p>
+        <a class="nav-link active" href="/">오늘의 AI 뉴스</a>
+        <a class="nav-link" href="/detail.html?id=news_openai_001">뉴스 상세</a>
+        <p class="nav-label">WORKSPACE</p>
+        <a class="nav-link" href="/settings.html">설정</a>
+        <div class="demo-user"><strong>로컬 데모</strong><span>demo@dait.local</span></div>
+      </nav>
+      <main class="content">
+        <section class="hero">
+          <div><p class="eyebrow">DAILY BRIEFING</p><h1>오늘의 AI 뉴스</h1><p>검증된 출처의 핵심 흐름을 빠르게 읽어보세요.</p></div>
+          <span class="date-chip">2026.11.06 · KST</span>
+        </section>
+        <form class="toolbar" id="news-filter" role="search">
+          <label class="search-field"><span class="sr-only">뉴스 검색</span><input id="search-input" type="search" maxlength="100" placeholder="제목과 AI 요약 검색" /></label>
+          <label><span class="sr-only">정렬</span><select id="sort-select"><option value="rank">랭킹순</option><option value="latest">최신순</option></select></label>
+          <button class="button secondary" id="reset-button" type="button">초기화</button>
+        </form>
+        <div class="section-head"><div><span class="category-pill">AI·기술</span><strong id="result-count">0개의 뉴스</strong></div><span class="rank-note">처리 완성도 · 출처 · 최신성 기준</span></div>
+        <p class="status" id="page-status" aria-live="polite">뉴스를 불러오는 중입니다.</p>
+        <button class="button secondary hidden" id="retry-button" type="button">다시 시도</button>
+        <section class="news-list" id="news-list" aria-label="AI 뉴스 목록"></section>
+      </main>
+    </div>
+    <nav class="mobile-nav" aria-label="모바일 메뉴"><a class="active" href="/">뉴스</a><a href="/detail.html?id=news_openai_001">상세</a><a href="/settings.html">설정</a></nav>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project-dait"
+version = "0.1.0"
+requires-python = ">=3.15"
+dependencies = [
+  "fastapi==0.162.2",
+  "pydantic>=2.14,<3",
+  "httpx>=0.28,<1",
+  "redis>=8.1,<9",
+  "SQLAlchemy[asyncio]==2.0.57",
+  "aiosqlite==0.22.1",
+  "psycopg[binary]==3.3.8",
+  "deep-translator==1.11.4",
+  "trafilatura==2.3.1",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.17,<1", "pyright>=1.1,<2", "pytest>=9.2,<10", "pytest-asyncio>=1,<2"]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pyright]
+include = ["src", "tests"]
+stubPath = "typings"
+pythonVersion = "3.15"
+typeCheckingMode = "strict"
+enableTypeIgnoreComments = false
+reportUnnecessaryTypeIgnoreComment = "error"
+reportAny = "error"
+
+[tool.ruff]
+line-length = 100
+target-version = "py315"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF",
+  "S", "DTZ", "T20", "BLE", "ASYNC", "TRY", "LOG", "G", "PT", "ANN401", "PLE", "PLW"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
