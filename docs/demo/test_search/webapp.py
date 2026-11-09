@@ -2,8 +2,8 @@ from pathlib import Path
 from time import perf_counter
 from urllib.parse import urlsplit
 
-from flask import Flask, jsonify, render_template, request
 import chromadb
+from flask import Flask, jsonify, render_template, request
 from sentence_transformers import SentenceTransformer
 
 app = Flask(__name__)
@@ -14,6 +14,9 @@ model.max_seq_length = 256
 model.encode(["워밍업"])
 
 
+# 입력: `meta`, `doc`.
+# 출력: 화면 표시용 기사 정보 사전.
+# 동작: 검색 저장 데이터를 화면 표시용 기사 사전으로 변환한다.
 def article(meta, doc=""):
     meta = meta or {}
     url = meta.get("url", "")
@@ -23,24 +26,38 @@ def article(meta, doc=""):
         valid_url = False
     if not valid_url:
         url = ""
-    return {"title": meta.get("title", "제목 없음"), "url": url,
-            "source": meta.get("source", "출처 미상"),
-            "published": meta.get("published", ""),
-            "collected_at": meta.get("collected_at", ""),
-            "summary": (doc or "")[:300]}
+    return {
+        "title": meta.get("title", "제목 없음"),
+        "url": url,
+        "source": meta.get("source", "출처 미상"),
+        "published": meta.get("published", ""),
+        "collected_at": meta.get("collected_at", ""),
+        "summary": (doc or "")[:300],
+    }
 
 
 @app.get("/")
+# 입력: 없음.
+# 출력: 최근 기사 목록이 포함된 HTML 응답.
+# 동작: 저장된 최근 기사와 전체 기사 수를 홈 화면에 렌더링한다.
 def home():
     total = collection.count()
     saved = collection.get(include=["metadatas", "documents"], limit=10) if total else {}
-    articles = [article(meta, doc) for meta, doc in zip(
-        saved.get("metadatas") or [], saved.get("documents") or [])]
-    return render_template("index.html", total=total, articles=articles,
-                           collection_info=collection.metadata or {})
+    articles = [
+        article(meta, doc)
+        for meta, doc in zip(
+            saved.get("metadatas") or [], saved.get("documents") or [], strict=True
+        )
+    ]
+    return render_template(
+        "index.html", total=total, articles=articles, collection_info=collection.metadata or {}
+    )
 
 
 @app.post("/search")
+# 입력: JSON 요청 본문의 검색어와 결과 개수.
+# 출력: 검색 결과 JSON 응답 또는 오류 JSON과 HTTP 상태 코드.
+# 동작: 검색 요청을 검증하고 벡터 검색 결과를 JSON으로 반환한다.
 def search():
     started = perf_counter()
     data = request.get_json(silent=True)
@@ -58,18 +75,34 @@ def search():
     results = []
     if total:
         embeddings = model.encode([query], normalize_embeddings=True).tolist()
-        result = collection.query(query_embeddings=embeddings, n_results=min(limit, total),
-                                  include=["metadatas", "documents", "distances"])
+        result = collection.query(
+            query_embeddings=embeddings,
+            n_results=min(limit, total),
+            include=["metadatas", "documents", "distances"],
+        )
+        metadatas = result["metadatas"]
+        documents = result["documents"]
+        distances = result["distances"]
+        if metadatas is None or documents is None or distances is None:
+            return jsonify(error="검색 결과 형식을 확인해 주세요."), 500
         space = (collection.metadata or {}).get("hnsw:space", "l2")
-        for meta, doc, distance in zip(result["metadatas"][0],
-                                       result["documents"][0], result["distances"][0]):
+        for meta, doc, distance in zip(
+            metadatas[0],
+            documents[0],
+            distances[0],
+            strict=True,
+        ):
             item = article(meta, doc)
             # 기본 제곱 L2 거리: 정규화된 벡터의 cosine = 1 - L2² / 2.
             score = 1 - float(distance) / 2 if space == "l2" else 1 - float(distance)
             item["similarity"] = round(max(0.0, min(1.0, score)), 4)
             results.append(item)
-    return jsonify(results=results, total=total, limit=limit,
-                   elapsed_ms=round((perf_counter() - started) * 1000, 1))
+    return jsonify(
+        results=results,
+        total=total,
+        limit=limit,
+        elapsed_ms=round((perf_counter() - started) * 1000, 1),
+    )
 
 
 if __name__ == "__main__":

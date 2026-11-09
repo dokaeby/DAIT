@@ -59,6 +59,7 @@
 | `SOURCE_UNAVAILABLE` | 200 partial / 작업 실패 | 일부 출처 장애 |
 | `CONTENT_INSUFFICIENT` | 200 | 본문 부족 |
 | `DEPENDENCY_UNAVAILABLE` | 503 | DB/Redis 등 필수 의존성 장애 |
+| `SCHEDULE_NOT_FOUND` | 404 | 요청한 스케줄이 존재하지 않을 때 사용 |
 | `INTERNAL_ERROR` | 500 | 내부 오류 일반화 응답 |
 
 ---

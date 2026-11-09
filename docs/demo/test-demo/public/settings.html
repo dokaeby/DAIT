@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DAIT · 설정</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="settings">
+    <header class="topbar"><a class="brand" href="/"><span>DAIT</span><small>AI TREND DESK</small></a><span class="header-link active">설정</span></header>
+    <div class="shell">
+      <nav class="sidebar" aria-label="주요 메뉴"><p class="nav-label">DISCOVER</p><a class="nav-link" href="/">오늘의 AI 뉴스</a><a class="nav-link" href="/detail.html?id=news_openai_001">뉴스 상세</a><p class="nav-label">WORKSPACE</p><a class="nav-link active" href="/settings.html">설정</a><div class="demo-user"><strong>로컬 데모</strong><span>demo@dait.local</span></div></nav>
+      <main class="content">
+        <section class="hero compact"><div><p class="eyebrow">PERSONAL WORKSPACE</p><h1>설정</h1><p>뉴스 수집 조건, 표시 방식과 알림 채널을 관리합니다.</p></div><span class="state-pill ready">로컬 저장</span></section>
+        <p class="status" id="page-status" aria-live="polite">설정을 불러오는 중입니다.</p>
+        <button class="button secondary hidden" id="retry-button" type="button">다시 시도</button>
+        <div class="settings-grid">
+          <nav class="settings-nav" aria-label="설정 구역"><a href="#schedule">예약 수집</a><a href="#interests">관심 설정</a><a href="#display">노출·알림</a></nav>
+          <div class="stack">
+            <form id="settings-form" class="stack">
+              <section class="panel" id="interests"><div class="panel-title"><h2>검색·관심 설정</h2><span>제목과 검증 요약에 적용</span></div><label class="field"><span>관심 키워드</span><input id="keywords-input" placeholder="쉼표로 구분" /></label><fieldset><legend>승인 출처</legend><label class="check"><input type="checkbox" name="source" value="src_openai" /> OpenAI Newsroom</label><label class="check"><input type="checkbox" name="source" value="src_anthropic" /> Anthropic News</label><label class="check"><input type="checkbox" name="source" value="src_arxiv" /> arXiv AI</label></fieldset></section>
+              <section class="panel" id="display"><div class="panel-title"><h2>노출·알림</h2><span>목록과 전달 채널</span></div><div class="form-grid"><label class="field"><span>기본 노출 수</span><select id="default-count"><option value="10">10개</option><option value="5">5개</option></select></label><div class="field"><span>알림 채널</span><label class="check"><input id="in-app-notice" type="checkbox" /> 인앱 알림</label><label class="check"><input id="email-notice" type="checkbox" /> 이메일 알림</label></div></div></section>
+              <div class="form-actions"><button class="button primary" type="submit">설정 저장</button></div>
+            </form>
+            <section class="panel" id="schedule"><div class="panel-title"><div><h2>예약 수집</h2><span>Asia/Seoul 기준</span></div></div><form id="schedule-form" class="inline-form"><label class="field"><span>예약 시각</span><input id="schedule-time" type="time" value="08:30" required /></label><button class="button primary" type="submit">예약 추가</button></form><div id="schedule-list" class="schedule-list"></div></section>
+            <section class="panel muted-panel"><h2>계정·정책</h2><p>이 MVP는 고정 로컬 데모 사용자를 사용합니다. 회원탈퇴와 인증은 구현 범위에 포함되지 않습니다.</p></section>
+          </div>
+        </div>
+      </main>
+    </div>
+    <nav class="mobile-nav" aria-label="모바일 메뉴"><a href="/">뉴스</a><a href="/detail.html?id=news_openai_001">상세</a><a class="active" href="/settings.html">설정</a></nav>
+    <script src="/schedule-actions.js" defer></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
