@@ -1,16 +1,23 @@
-# Backend 개발 목업
+# DAIT 백엔드
 
-FastAPI, 서비스, 저장소, worker, collector, migration 책임을 모은 비실행 스캐폴드다. Python 파일에는 구현 가이드만 있으며 실제 함수·클래스·API 동작은 없다.
+실행 코드는 app/에 모은다. FastAPI가 API와 정적 화면을 제공하고, 뉴스 수집·본문 추출·번역·요약·랭킹·DB·캐시를 처리한다.
 
-| 경로 | 책임 |
+| 경로 | 역할 |
 |---|---|
-| `src/dait/api/v1/` | HTTP 요청·응답 경계와 인증 의존성 |
-| `src/dait/services/` | 16개 기능별 유스케이스와 트랜잭션 조정 |
-| `src/dait/repositories/` | PostgreSQL/SQLite와 Redis 접근 |
-| `src/dait/schemas/` | Pydantic v2 경계 모델 |
-| `src/dait/core/` | 설정, 보안, 로깅, 오류 정책 |
-| `src/dait/workers/` | 수집·AI 처리·알림·예약 비동기 실행 |
-| `src/dait/collectors/` | 승인 뉴스 소스 어댑터 |
-| `tests/` | 단위·통합 테스트 계획 |
-| `migrations/` | Alembic 변경 계획 |
-| `config/` | 비밀값 없는 환경변수 명세 |
+| app/api/main.py | 앱 생성·환경설정·생명주기·화면 제공 |
+| app/api/v1/news.py | 뉴스 목록·상세 API |
+| app/collectors/ | RSS 수집·본문 추출 |
+| app/core/ | 뉴스 분류·제목 번역 규칙 |
+| app/repositories/ | DB 접근 |
+| app/schemas/ | 데이터 계약 |
+| app/services/ | 뉴스 조회·캐시·랭킹 |
+| app/workers/ | 수집·번역·요약 파이프라인 |
+| src/dait/ | 기존 기능별 개발 가이드 (미구현) |
+| migrations/ | 기존 마이그레이션 가이드 |
+
+프로젝트 루트에서 실행:
+
+    python -m uvicorn src.backend.app.api.main:app --reload
+    python -m pytest tests/backend/tests -q
+
+화면은 src/frontend/public/, 테스트는 tests/backend/tests/에 있다. 의존성과 검사 설정은 루트에서 관리한다.

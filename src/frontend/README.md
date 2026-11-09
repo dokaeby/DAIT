@@ -1,17 +1,22 @@
-# Frontend 개발 목업
+# DAIT 프론트엔드
 
-브라우저 앱의 라우팅, API 연결, 세션 상태, 뉴스 조회 상태, 설정 연결 책임을 모은 비실행 스캐폴드다. UI 마크업·스타일은 `docs/v1.0.0/mockup/`에서 별도로 관리하며, TypeScript 파일에는 구현 가이드만 있다.
+실제 화면은 public/의 HTML·CSS 및 HTML 내부 JavaScript로 구성한다. 별도 Node.js 빌드 설정은 없으며 백엔드가 파일을 제공한다.
 
-| 경로 | 기능 ID | 책임 |
+| 경로 | 역할 | 상태 |
 |---|---|---|
-| `src/app/routes.ts` | 화면 기능 전체 | 메인·상세·설정·인증 경로와 접근 정책 |
-| `src/core/api_client.ts` | 전체 | `/v1` API 통신, 오류·인증·요청 ID 처리 |
-| `src/core/runtime_config.ts` | 전체 | 공개 런타임 설정 검증 |
-| `src/features/auth/auth_api.ts` | FR-AUTH-01~04 | 가입·로그인·로그아웃·탈퇴 API 연결 |
-| `src/features/auth/session_store.ts` | FR-AUTH-02~04 | 세션 상태와 인증 전환 |
-| `src/features/news/news_api.ts` | FR-HOME-01~02, FR-SEARCH-01, FR-DETAIL-01~02 | 목록·검색·상세 API 연결 |
-| `src/features/news/news_view_state.ts` | FR-HOME-02 | 로딩·빈·오류·성공 상태 모델 |
-| `src/features/settings/settings_api.ts` | FR-SET-01~03 | 예약·관심·알림·정책 API 연결 |
-| `tests/` | 사용자 기능 | 브라우저 수준 흐름 테스트 계획 |
+| public/index.html | 뉴스 목록·검색·필터·요약 토글 | 실행 화면 |
+| public/detail.html | 뉴스 상세·원문·번역·요약 | 실행 화면 |
+| public/mockup.css | 공통 테마·반응형 스타일 | 실행 스타일 |
+| src/app/ | 라우팅·접근 정책 | 기존 미구현 가이드 |
+| src/core/ | API 클라이언트·공개 런타임 설정 | 기존 미구현 가이드 |
+| src/features/ | 인증·뉴스·설정 기능 | 기존 미구현 가이드 |
 
-FR-PIPE-01~04는 서버 전용 기능이므로 frontend에 중복 파일을 만들지 않는다.
+src/의 Python·TypeScript 파일은 현재 화면에서 실행되지 않는 개발 가이드다. 실제 화면은 public/에서 수정한다.
+
+프로젝트 루트에서 실행:
+
+    python -m uvicorn src.backend.app.api.main:app --reload
+
+http://127.0.0.1:8000/ 에 접속한다. 화면 URL /, /detail.html 및 정적 파일 URL /mockup/*는 유지한다. API는 /v1을 사용한다. DB·Redis 접근과 뉴스 처리는 백엔드가 담당한다.
+
+브라우저 테스트 가이드는 tests/frontend/tests/에 있다.

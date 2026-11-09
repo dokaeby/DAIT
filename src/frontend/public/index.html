@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DAIT · 뉴스 큐레이션</title>
+    <link rel="stylesheet" href="/mockup/mockup.css" />
+    <style>
+      :root {
+        --bg-app: #f8fafc;
+        --bg-surface: #ffffff;
+        --border: #e2e8f0;
+        --text-primary: #0f172a;
+        --text-muted: #64748b;
+        --primary: #2563eb;
+      }
+      body {
+        background-color: var(--bg-app);
+        color: var(--text-primary);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        margin: 0;
+      }
+      .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+      .app-header {
+        height: 60px;
+        background: var(--bg-surface);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+      }
+      .brand { font-weight: 800; font-size: 18px; color: var(--primary); text-decoration: none; }
+      .app-body { display: flex; flex: 1; max-width: 1400px; width: 100%; margin: 0 auto; }
+      .sidebar { width: 260px; background: var(--bg-surface); border-right: 1px solid var(--border); padding: 20px 16px; }
+      .main { flex: 1; padding: 24px 32px; }
+      .cat-item { margin-bottom: 6px; }
+      .cat-btn {
+        width: 100%;
+        padding: 10px 12px;
+        background: transparent;
+        border: none;
+        text-align: left;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 6px;
+        cursor: pointer;
+        color: var(--text-primary);
+      }
+      .cat-btn:hover { background: #f1f5f9; }
+      .cat-btn.active { background: #eff6ff; color: var(--primary); }
+      .kw-list { list-style: none; padding-left: 14px; margin: 4px 0; display: none; }
+      .kw-list.open { display: block; }
+      .kw-btn {
+        width: 100%;
+        padding: 6px 10px;
+        background: transparent;
+        border: none;
+        text-align: left;
+        font-size: 13px;
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      .kw-btn:hover { background: #f8fafc; color: var(--text-primary); }
+      .kw-btn.active { color: var(--primary); font-weight: 600; }
+      .origin-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+      .origin-btn {
+        padding: 8px 16px;
+        border: 1px solid var(--border);
+        background: var(--bg-surface);
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .origin-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+      .news-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+      }
+      .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px; }
+      .badge-origin { padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+      .badge-origin.domestic { background: #ecfdf5; color: #059669; }
+      .badge-origin.global { background: #f5f3ff; color: #7c3aed; }
+
+      /* 기사 원제목 및 번역문 스타일 분리 */
+      .card-title-container {
+        margin-bottom: 12px;
+      }
+      .card-title-main {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-primary);
+        line-height: 1.45;
+      }
+      .card-title-sub {
+        font-size: 14px;
+        font-weight: 400; /* 굵기 강조 해제 */
+        color: #475569;   /* 가독성 높은 차분한 색상 */
+        line-height: 1.5;
+        margin-top: 6px;  /* 원문 아래 줄바꿈 간격 */
+      }
+
+      .summary-box { background: #f8fafc; border-left: 3px solid var(--primary); padding: 12px 16px; border-radius: 0 6px 6px 0; margin-top: 12px; }
+      .summary-list { margin: 0; padding-left: 18px; font-size: 14px; color: #334155; line-height: 1.6; }
+      .card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; border-top: 1px solid #f1f5f9; padding-top: 12px; }
+      .btn-toggle { background: #f1f5f9; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-primary); }
+      .btn-toggle:hover { background: #e2e8f0; }
+      .btn-original { background: var(--primary); color: #fff; text-decoration: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+      .btn-original:hover { background: #1d4ed8; }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="/">DAIT 뉴스 큐레이션</a>
+      </header>
+      <div class="app-body">
+        <aside class="sidebar">
+          <div style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-bottom: 12px;">카테고리 & 키워드</div>
+          <div class="cat-item">
+            <button class="cat-btn active" data-cat="AI">✦ AI (인공지능)</button>
+            <ul class="kw-list open">
+              <li><button class="kw-btn" data-cat="AI" data-kw="모델·연구">모델·연구</button></li>
+              <li><button class="kw-btn" data-cat="AI" data-kw="AI 에이전트">AI 에이전트</button></li>
+              <li><button class="kw-btn" data-cat="AI" data-kw="개발 도구">개발 도구</button></li>
+              <li><button class="kw-btn" data-cat="AI" data-kw="오픈소스·로컬 모델">오픈소스·로컬 모델</button></li>
+              <li><button class="kw-btn" data-cat="AI" data-kw="AI 인프라">AI 인프라</button></li>
+            </ul>
+          </div>
+          <div class="cat-item">
+            <button class="cat-btn" data-cat="ECONOMY">✦ 경제·비즈니스</button>
+            <ul class="kw-list">
+              <li><button class="kw-btn" data-cat="ECONOMY" data-kw="산업 동향">산업 동향</button></li>
+              <li><button class="kw-btn" data-cat="ECONOMY" data-kw="기업·경영">기업·경영</button></li>
+              <li><button class="kw-btn" data-cat="ECONOMY" data-kw="스타트업·투자">스타트업·투자</button></li>
+              <li><button class="kw-btn" data-cat="ECONOMY" data-kw="금융시장">금융시장</button></li>
+              <li><button class="kw-btn" data-cat="ECONOMY" data-kw="일자리">일자리</button></li>
+            </ul>
+          </div>
+          <div class="cat-item">
+            <button class="cat-btn" data-cat="SOCIETY">✦ 사회·문화</button>
+            <ul class="kw-list">
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="정책·제도">정책·제도</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="교육">교육</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="건강·의료">건강·의료</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="환경·기후">환경·기후</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="문화·콘텐츠">문화·콘텐츠</button></li>
+            </ul>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div class="origin-tabs">
+            <button class="origin-btn active" data-origin="ALL">전체 보기</button>
+            <button class="origin-btn" data-origin="DOMESTIC">국내 뉴스 (14곳)</button>
+            <button class="origin-btn" data-origin="GLOBAL">해외 뉴스 (3곳)</button>
+          </div>
+
+          <div id="news-container">
+            <div style="text-align: center; padding: 40px; color: #94a3b8;">뉴스를 불러오는 중입니다...</div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      let currentCategory = "AI";
+      let currentKeyword = "";
+      let currentOrigin = "ALL";
+      let articles = [];
+      const globalSources = ["TechCrunch", "MIT Technology Review", "MIT Tech Review", "The Verge"];
+
+      // 사이드바 카테고리/키워드 아코디언 핸들러
+      document.querySelectorAll(".cat-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const list = btn.nextElementSibling;
+          const isOpen = list.classList.contains("open");
+          document.querySelectorAll(".kw-list").forEach(l => l.classList.remove("open"));
+          document.querySelectorAll(".cat-btn").forEach(b => b.classList.remove("active"));
+          document.querySelectorAll(".kw-btn").forEach(b => b.classList.remove("active"));
+
+          if (!isOpen) {
+            list.classList.add("open");
+            btn.classList.add("active");
+          }
+          currentCategory = btn.dataset.cat;
+          currentKeyword = "";
+          fetchNews();
+        });
+      });
+
+      document.querySelectorAll(".kw-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          document.querySelectorAll(".kw-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentCategory = btn.dataset.cat;
+          currentKeyword = btn.dataset.kw;
+          fetchNews();
+        });
+      });
+
+      // 국내/해외 탭 핸들러
+      document.querySelectorAll(".origin-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".origin-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentOrigin = btn.dataset.origin;
+          render();
+        });
+      });
+
+      async function fetchNews() {
+        const container = document.getElementById("news-container");
+        container.innerHTML = `<div style="text-align:center; padding: 40px; color: #94a3b8;">최신 기사를 분석 중입니다...</div>`;
+
+        const params = new URLSearchParams({
+          category: currentCategory,
+          sort: "rank",
+          page_size: "30"
+        });
+        if (currentKeyword) params.set("q", currentKeyword);
+
+        try {
+          const res = await fetch(`/v1/news?${params.toString()}`);
+          if (!res.ok) throw new Error("API 요청 실패");
+          const data = await res.json();
+          articles = data.items || [];
+          render();
+        } catch (err) {
+          container.innerHTML = `<div style="text-align:center; padding: 40px; color: #ef4444;">오류 발생: ${err.message}</div>`;
+        }
+      }
+
+      function render() {
+        const container = document.getElementById("news-container");
+        let list = articles;
+
+        if (currentOrigin === "DOMESTIC") {
+          list = articles.filter(a => !globalSources.includes(a.source_name));
+        } else if (currentOrigin === "GLOBAL") {
+          list = articles.filter(a => globalSources.includes(a.source_name));
+        }
+
+        if (list.length === 0) {
+          container.innerHTML = `<div style="text-align:center; padding: 60px; color: #94a3b8;">해당 조건의 기사가 없습니다.</div>`;
+          return;
+        }
+
+        container.innerHTML = list.map(item => {
+          const isGlobal = globalSources.includes(item.source_name);
+          const btnText = "요약문 보기";
+          const summaryTitle = isGlobal ? "✦ 구글 번역 3줄 요약" : "✦ AI 3줄 요약";
+
+          // 제목 분리 처리: '|||' 구분자가 포함되어 있는 경우 분리
+          let mainTitle = item.title;
+          let subTitle = "";
+
+          if (mainTitle.includes("|||")) {
+            const parts = mainTitle.split("|||");
+            mainTitle = parts[0].trim();
+            subTitle = parts.slice(1).join("|||").trim();
+          } else if (item.translated_title && item.translated_title !== item.title) {
+            subTitle = item.translated_title.trim();
+          }
+
+          return `
+            <article class="news-card">
+              <div class="card-top">
+                <div>
+                  <span class="badge-origin ${isGlobal ? 'global' : 'domestic'}">
+                    ${isGlobal ? '해외 외신' : '국내 언론'}
+                  </span>
+                  <strong style="margin-left: 6px;">${item.source_name}</strong>
+                  <span style="color: #94a3b8; margin: 0 4px;">·</span>
+                  <span style="color: #64748b;">${item.published_at}</span>
+                </div>
+                <span style="color: #059669; font-weight: 600;">✓ 분석 완료</span>
+              </div>
+
+              <!-- 1. 기사 제목 (원문 메인 볼드 + 줄바꿈된 작은 일반 번역문) -->
+              <div class="card-title-container">
+                <div class="card-title-main">${mainTitle}</div>
+                ${subTitle ? `<div class="card-title-sub">${subTitle}</div>` : ''}
+              </div>
+
+              <!-- 2. 순수 본문 3줄 요약 (기본 숨김) -->
+              <div class="summary-box" id="summary-${item.id}" style="display: none;">
+                <div style="font-size: 12px; font-weight: 700; color: #2563eb; margin-bottom: 6px;">${summaryTitle}</div>
+                <ul class="summary-list">
+                  ${item.summary_lines.map(line => `<li>${line}</li>`).join('')}
+                </ul>
+              </div>
+
+              <!-- 3. 하단 액션 버튼 -->
+              <div class="card-footer">
+                <button class="btn-toggle" type="button" onclick="toggleSummary('${item.id}', this)">
+                  ${btnText}
+                </button>
+                <a class="btn-original" href="${item.original_url}" target="_blank" rel="noopener noreferrer">
+                  원문 보기 →
+                </a>
+              </div>
+            </article>
+          `;
+        }).join('');
+      }
+
+      function toggleSummary(id, btn) {
+        const box = document.getElementById(`summary-${id}`);
+        if (!box) return;
+        const isHidden = box.style.display === "none";
+        box.style.display = isHidden ? "block" : "none";
+        btn.textContent = isHidden ? "요약문 닫기" : "요약문 보기";
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchNews);
+    </script>
+  </body>
+</html>
