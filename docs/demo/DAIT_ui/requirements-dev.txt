@@ -1,0 +1,2 @@
+# Unit test tooling only. No AI/embedding model runtime is installed.
+-r requirements-dev.lock.txt
