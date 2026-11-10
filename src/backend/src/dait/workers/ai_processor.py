@@ -287,8 +287,8 @@ class AIProcessor:
         digest: str,
         model_id: str,
     ) -> ProcessedContent:
-        if not self._settings.xai_api_key.get_secret_value():
-            logger.info("XAI_API_KEY is not configured; using regex fallback summary")
+        if not self._settings.grok_enabled:
+            logger.info("Grok engine disabled; using regex fallback summary")
             return self._fallback(article, digest, model_id)
         try:
             raw = await self._client.complete(

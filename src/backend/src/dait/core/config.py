@@ -32,3 +32,8 @@ class Settings(BaseSettings):
     grok_max_tokens: int = 1200
     min_summary_content_length: int = 80
     summary_max_body_chars: int = 6000
+
+    @property
+    def grok_enabled(self) -> bool:
+        """XAI_API_KEY가 실질적으로 설정된 경우에만 Grok 엔진 호출을 허용한다."""
+        return bool(self.xai_api_key.get_secret_value().strip())

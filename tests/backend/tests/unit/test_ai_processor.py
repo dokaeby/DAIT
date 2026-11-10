@@ -219,6 +219,22 @@ def test_processed_content_is_immutable() -> None:
         content.status = ContentStatus.INSUFFICIENT  # type: ignore[misc]
 
 
+def test_grok_enabled_reflects_api_key_presence() -> None:
+    assert _settings(api_key="real-key").grok_enabled is True
+    assert _settings(api_key="").grok_enabled is False
+    assert _settings(api_key="   ").grok_enabled is False
+
+
+def test_whitespace_api_key_uses_regex_fallback() -> None:
+    client = FakeGrokClient(_completion_payload())
+    processor = AIProcessor(_settings(api_key="   "), client=client)
+
+    result = asyncio.run(processor.process(_domestic_article()))
+
+    assert result.engine == "regex-fallback"
+    assert client.calls == []
+
+
 def test_settings_keeps_secret_out_of_repr() -> None:
     settings = _settings(api_key="super-secret-value")
 
