@@ -1,10 +1,97 @@
-"""Redis 접근 저장소 구현 가이드.
+"""Redis 접근 저장소: 분산 락(SET NX PX + 소유권 확인 해제)과 JSON 캐시."""
 
-담당 기능: 캐시, 큐, 속도 제한, 인증 TTL, 분산 락 접근을 캡슐화한다.
-구현 로직: namespaced key 생성 → 타입화 직렬화 → TTL 필수 읽기/쓰기
-→ 원자 명령 또는 Lua 실행 순으로 처리한다.
-보안·검증: 키에 개인정보·토큰 원문을 넣지 않고 TTL 없는 임시 데이터와
-안전하지 않은 락 해제를 금지한다.
-테스트: TTL, 직렬화 실패, 락 소유권, 동시 요청, Redis 장애를 검증한다.
-실제 Redis 명령은 운영 정책 승인 후 구현한다.
+import json
+import uuid
+from typing import Protocol, cast
+
+
+class RedisLike(Protocol):
+    """redis-py 클라이언트 중 이 모듈이 쓰는 부분만 타입으로 고정한다."""
+
+    def set(self, name: str, value: str, *, nx: bool = False, px: int | None = None) -> object: ...
+
+    def get(self, name: str) -> object: ...
+
+    def delete(self, *names: str) -> object: ...
+
+    def eval(self, script: str, numkeys: int, *keys_and_args: object) -> object: ...
+
+
+_LOCK_RELEASE_LUA = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+else
+    return 0
+end
 """
+
+
+def connect(redis_url: str, timeout: float = 2.0) -> RedisLike | None:
+    """Redis 클라이언트를 만들고 ping으로 연결을 확인한다.
+
+    입력: redis_url (redis://...), timeout (초)
+    출력: RedisLike 또는 None (미설정·연결 실패 시)
+    기능: 스텁이 불완전한 redis-py 경계라 이 함수 안에서만 캐스팅한다.
+    """
+    try:
+        import redis
+    except ImportError:
+        return None
+    try:
+        client = redis.Redis.from_url(  # pyright: ignore[reportUnknownMemberType] - redis-py 스텁 불완전
+            redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
+        )
+        client.ping()  # pyright: ignore[reportUnknownMemberType] - redis-py 스텁 불완전
+        return cast(RedisLike, client)
+    except (redis.RedisError, OSError):
+        return None
+
+
+def new_lock_token() -> str:
+    """락 소유권 토큰을 만든다. 값이 내 것일 때만 해제하기 위한 비교값이다."""
+    return uuid.uuid4().hex
+
+
+def acquire_lock(client: RedisLike, key: str, token: str, ttl_ms: int) -> bool:
+    """분산 락을 원자적으로 획득한다.
+
+    입력: client, key (namespaced), token (소유권 값), ttl_ms (자동 만료)
+    출력: bool (획득 성공 여부)
+    기능: SET NX PX라 TTL 없는 락은 생기지 않고, 만료 전 해제는 소유자만 한다.
+    """
+    result = client.set(key, token, nx=True, px=ttl_ms)
+    return bool(result)
+
+
+def release_lock(client: RedisLike, key: str, token: str) -> bool:
+    """내 토큰일 때만 락을 해제한다.
+
+    입력: client, key, token
+    출력: bool (실제로 지웠으면 True)
+    기능: Lua compare-and-delete로 TTL 만료 후 다른 주체의 락을 지우는 사고를 막는다.
+    """
+    result = client.eval(_LOCK_RELEASE_LUA, 1, key, token)
+    return bool(result)
+
+
+def cache_get(client: RedisLike, key: str) -> str | None:
+    """캐시 값을 문자열로 읽는다."""
+    value = client.get(key)
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value) if value is not None else None
+
+
+def cache_set(client: RedisLike, key: str, payload: str, ttl_seconds: int) -> None:
+    """TTL을 붙여 캐시 값을 쓴다. TTL 없는 쓰기는 이 모듈에서 허용하지 않는다."""
+    client.set(key, payload, px=max(1, ttl_seconds) * 1000)
+
+
+def dumps_json(value: object) -> str:
+    """캐시 payload를 JSON 문자열로 직렬화한다."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def loads_json(raw: str) -> object:
+    """캐시 JSON 문자열을 객체로 되돌린다."""
+    return json.loads(raw)
