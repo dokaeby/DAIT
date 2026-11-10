@@ -1,0 +1,15 @@
+{
+  "files.exclude": {
+    "**/.venv": true,
+    "**/.venv-test": true,
+    "**/.test-venv": true,
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true,
+    "**/.tmp": true,
+    "**/.coverage": true,
+    "**/.coverage.*": true,
+    "**/*.egg-info": true,
+    "archive": true
+  }
+}
