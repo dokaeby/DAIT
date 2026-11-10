@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DAIT · 설정</title>
+    <link rel="stylesheet" href="/mockup/mockup.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="/">DAIT 뉴스 큐레이션</a>
+        <div class="header-actions"><a class="settings-gear" href="/settings.html" aria-label="설정" title="설정">⚙</a><span id="auth-area"></span></div>
+      </header>
+      <main class="settings-page" id="settings-main">
+        <div class="auth-required" id="auth-required" hidden>
+          <p>설정은 로그인 후 이용할 수 있습니다.</p>
+          <p><a href="/">메인으로 돌아가기</a></p>
+        </div>
+        <div id="settings-body" hidden>
+          <div class="page-head">
+            <h1 class="page-title">설정</h1>
+            <p class="page-description">뉴스 노출과 알림, 예약 수집을 관리합니다.</p>
+          </div>
+
+          <section class="settings-card">
+            <h2>노출·알림</h2>
+            <p class="card-note">변경 사항은 저장 버튼을 눌러야 적용됩니다.</p>
+            <form id="settings-form">
+              <div class="form-grid">
+                <label class="form-field">
+                  <span class="field-label">기본 노출 수</span>
+                  <select class="field-control" id="set-default-count">
+                    <option value="5">5개</option>
+                    <option value="10">10개</option>
+                  </select>
+                </label>
+                <label class="form-field">
+                  <span class="field-label">관심 키워드</span>
+                  <input class="field-control" id="set-keywords" type="text" placeholder="쉼표로 구분 (예: AI, 로봇)" maxlength="500">
+                  <span class="field-help">최대 20개, 각 50자까지</span>
+                </label>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-copy"><strong>인앱 알림</strong><span>처리 결과를 DAIT 안에서 확인합니다.</span></div>
+                <label class="switch-control"><input id="set-in-app" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-copy"><strong>메일 알림</strong><span>이메일로 요약 결과를 받습니다.</span></div>
+                <label class="switch-control"><input id="set-email" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
+              </div>
+              <div style="margin-top: 1rem; display: flex; gap: 0.6rem; align-items: center;">
+                <button class="primary-button" type="submit">설정 저장</button>
+                <span id="settings-feedback" class="settings-feedback" role="status" aria-live="polite"></span>
+              </div>
+            </form>
+          </section>
+
+          <section class="settings-card">
+            <h2>예약 수집</h2>
+            <p class="card-note">매일 지정한 시각(KST)에 맞춤 뉴스 알림을 예약합니다. 사용자당 최대 10개.</p>
+            <form id="schedule-form" class="form-grid">
+              <label class="form-field">
+                <span class="field-label">시각</span>
+                <input class="field-control" id="sched-time" type="time" required>
+              </label>
+              <label class="form-field">
+                <span class="field-label">시간대</span>
+                <input class="field-control" id="sched-tz" type="text" value="Asia/Seoul" required>
+              </label>
+              <label class="form-field">
+                <span class="field-label">키워드 (선택)</span>
+                <input class="field-control" id="sched-keywords" type="text" placeholder="쉼표로 구분" maxlength="500">
+              </label>
+              <div class="form-field" style="justify-content: flex-end;">
+                <button class="secondary-button" type="submit">예약 추가</button>
+              </div>
+            </form>
+            <p id="schedule-feedback" class="settings-feedback" role="status" aria-live="polite"></p>
+            <ul class="schedule-list" id="schedule-list"></ul>
+          </section>
+        </div>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+    <script>
+      (async function () {
+        const user = await DAIT.currentUser();
+        const required = document.getElementById("auth-required");
+        const body = document.getElementById("settings-body");
+        if (!user) {
+          required.hidden = false;
+          return;
+        }
+        body.hidden = false;
+
+        const feedback = document.getElementById("settings-feedback");
+        const schedFeedback = document.getElementById("schedule-feedback");
+        const listEl = document.getElementById("schedule-list");
+
+        function show(el, msg, ok) {
+          el.textContent = msg || "";
+          el.classList.toggle("is-error", !ok);
+        }
+
+        async function loadSettings() {
+          const res = await DAIT.api("/v1/me/settings");
+          if (!res.ok) { show(feedback, "설정을 불러오지 못했습니다.", false); return; }
+          const s = await res.json();
+          document.getElementById("set-default-count").value = String(s.default_count);
+          document.getElementById("set-keywords").value = (s.keywords || []).join(", ");
+          document.getElementById("set-in-app").checked = !!s.in_app_notice;
+          document.getElementById("set-email").checked = !!s.email_notice;
+        }
+
+        document.getElementById("settings-form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const keywords = document.getElementById("set-keywords").value
+            .split(",").map((k) => k.trim()).filter(Boolean);
+          const res = await DAIT.api("/v1/me/settings", {
+            method: "PATCH",
+            body: JSON.stringify({
+              default_count: Number(document.getElementById("set-default-count").value),
+              keywords,
+              in_app_notice: document.getElementById("set-in-app").checked,
+              email_notice: document.getElementById("set-email").checked,
+            }),
+          });
+          if (res.ok) { show(feedback, "저장했습니다.", true); await loadSettings(); }
+          else {
+            const b = await res.json().catch(() => ({}));
+            show(feedback, (b.message) || "저장에 실패했습니다.", false);
+          }
+        });
+
+        async function loadSchedules() {
+          const res = await DAIT.api("/v1/me/schedules");
+          if (!res.ok) { show(schedFeedback, "예약 목록을 불러오지 못했습니다.", false); return; }
+          const data = await res.json();
+          const items = data.items || [];
+          listEl.innerHTML = "";
+          if (!items.length) {
+            listEl.innerHTML = '<li class="schedule-item schedule-meta">등록된 예약이 없습니다.</li>';
+            return;
+          }
+          for (const s of items) {
+            const li = document.createElement("li");
+            li.className = "schedule-item";
+            const next = s.next_run_at ? new Date(s.next_run_at).toLocaleString("ko-KR") : "-";
+            li.innerHTML =
+              '<span class="schedule-meta"><strong>' + s.local_time + "</strong> " +
+              s.timezone + " · 다음 실행 " + next +
+              (s.criteria && s.criteria.keywords && s.criteria.keywords.length
+                ? " · 키워드 " + s.criteria.keywords.join(", ") : "") +
+              "</span>";
+            const del = document.createElement("button");
+            del.className = "danger-button";
+            del.type = "button";
+            del.textContent = "삭제";
+            del.addEventListener("click", async () => {
+              const r = await DAIT.api("/v1/me/schedules/" + encodeURIComponent(s.id), { method: "DELETE" });
+              if (r.ok) { show(schedFeedback, "삭제했습니다.", true); loadSchedules(); }
+              else show(schedFeedback, "삭제에 실패했습니다.", false);
+            });
+            li.appendChild(del);
+            listEl.appendChild(li);
+          }
+        }
+
+        document.getElementById("schedule-form").addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const keywords = document.getElementById("sched-keywords").value
+            .split(",").map((k) => k.trim()).filter(Boolean);
+          const res = await DAIT.api("/v1/me/schedules", {
+            method: "POST",
+            body: JSON.stringify({
+              local_time: document.getElementById("sched-time").value,
+              timezone: document.getElementById("sched-tz").value.trim() || "Asia/Seoul",
+              enabled: true,
+              criteria: { categories: ["AI"], keywords, source_ids: [] },
+            }),
+          });
+          if (res.ok) {
+            show(schedFeedback, "예약을 추가했습니다.", true);
+            document.getElementById("sched-keywords").value = "";
+            loadSchedules();
+          } else {
+            const b = await res.json().catch(() => ({}));
+            show(schedFeedback, (b.message) || "예약 추가에 실패했습니다.", false);
+          }
+        });
+
+        await loadSettings();
+        await loadSchedules();
+      })();
+    </script>
+  </body>
+</html>

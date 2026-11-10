@@ -17,7 +17,7 @@ _INVALID_CURSOR = "invalid cursor"
 
 
 class NewsCategory(StrEnum):
-    """카테고리 Enum. MVP에서 수집·노출하는 것은 AI뿐이다."""
+    """카테고리 Enum. WEATHER는 아직 수집·노출하지 않는다."""
 
     AI = "AI"
     WEATHER = "WEATHER"
@@ -25,7 +25,9 @@ class NewsCategory(StrEnum):
     POLITICS = "POLITICS"
 
 
-ACTIVE_CATEGORIES: frozenset[NewsCategory] = frozenset({NewsCategory.AI})
+ACTIVE_CATEGORIES: frozenset[NewsCategory] = frozenset(
+    {NewsCategory.AI, NewsCategory.ECONOMY, NewsCategory.POLITICS}
+)
 
 
 class ContentStatus(StrEnum):

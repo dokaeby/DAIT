@@ -128,10 +128,11 @@ class TestNewsList:
         assert response.status_code == 422
 
     def test_inactive_category_is_422(self, settings: Settings) -> None:
-        """활성 카테고리는 AI뿐이다."""
+        """활성 카테고리는 AI·ECONOMY·POLITICS이고 WEATHER는 비활성이다."""
         client = client_for(settings)
-        for code in ("ECONOMY", "POLITICS", "WEATHER"):
-            assert client.request("GET", "/v1/news", params={"category": code}).status_code == 422
+        for code in ("AI", "ECONOMY", "POLITICS"):
+            assert client.request("GET", "/v1/news", params={"category": code}).status_code == 200
+        assert client.request("GET", "/v1/news", params={"category": "WEATHER"}).status_code == 422
 
 
 class TestNewsDetail:

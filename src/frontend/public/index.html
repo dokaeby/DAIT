@@ -119,6 +119,7 @@
     <div class="app-shell">
       <header class="app-header">
         <a class="brand" href="/">DAIT 뉴스 큐레이션</a>
+        <div class="header-actions"><a class="settings-gear" href="/settings.html" aria-label="설정" title="설정">⚙</a><span id="auth-area"></span></div>
       </header>
       <div class="app-body">
         <aside class="sidebar">
@@ -144,18 +145,22 @@
             </ul>
           </div>
           <div class="cat-item">
-            <button class="cat-btn" data-cat="SOCIETY">✦ 사회·문화</button>
+            <button class="cat-btn" data-cat="POLITICS">✦ 사회·문화</button>
             <ul class="kw-list">
-              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="정책·제도">정책·제도</button></li>
-              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="교육">교육</button></li>
-              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="건강·의료">건강·의료</button></li>
-              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="환경·기후">환경·기후</button></li>
-              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="문화·콘텐츠">문화·콘텐츠</button></li>
+              <li><button class="kw-btn" data-cat="POLITICS" data-kw="정책·제도">정책·제도</button></li>
+              <li><button class="kw-btn" data-cat="POLITICS" data-kw="교육">교육</button></li>
+              <li><button class="kw-btn" data-cat="POLITICS" data-kw="건강·의료">건강·의료</button></li>
+              <li><button class="kw-btn" data-cat="POLITICS" data-kw="환경·기후">환경·기후</button></li>
+              <li><button class="kw-btn" data-cat="POLITICS" data-kw="문화·콘텐츠">문화·콘텐츠</button></li>
             </ul>
           </div>
         </aside>
 
         <main class="main">
+          <form class="search-bar" id="search-form" role="search">
+            <input class="search-input" id="search-input" type="search" maxlength="100" placeholder="뉴스 검색 (제목·요약)" aria-label="뉴스 검색">
+            <button class="primary-button" type="submit">검색</button>
+          </form>
           <div class="origin-tabs">
             <button class="origin-btn active" data-origin="ALL">전체 보기</button>
             <button class="origin-btn" data-origin="DOMESTIC">국내 뉴스 (14곳)</button>
@@ -172,6 +177,7 @@
     <script>
       let currentCategory = "AI";
       let currentKeyword = "";
+      let currentQuery = "";
       let currentOrigin = "ALL";
       let articles = [];
       const globalSources = ["TechCrunch", "MIT Technology Review", "MIT Tech Review", "The Verge"];
@@ -191,6 +197,9 @@
           }
           currentCategory = btn.dataset.cat;
           currentKeyword = "";
+          currentQuery = "";
+          const si = document.getElementById("search-input");
+          if (si) si.value = "";
           fetchNews();
         });
       });
@@ -202,9 +211,23 @@
           btn.classList.add("active");
           currentCategory = btn.dataset.cat;
           currentKeyword = btn.dataset.kw;
+          currentQuery = btn.dataset.kw;
+          const si = document.getElementById("search-input");
+          if (si) si.value = btn.dataset.kw;
           fetchNews();
         });
       });
+
+      const searchForm = document.getElementById("search-form");
+      if (searchForm) {
+        searchForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          currentQuery = (document.getElementById("search-input").value || "").trim();
+          currentKeyword = "";
+          document.querySelectorAll(".kw-btn").forEach((b) => b.classList.remove("active"));
+          fetchNews();
+        });
+      }
 
       // 국내/해외 탭 핸들러
       document.querySelectorAll(".origin-btn").forEach(btn => {
@@ -225,7 +248,7 @@
           sort: "rank",
           page_size: "30"
         });
-        if (currentKeyword) params.set("q", currentKeyword);
+        if (currentQuery) params.set("q", currentQuery);
 
         try {
           const res = await fetch(`/v1/news?${params.toString()}`);
@@ -315,12 +338,32 @@
       function toggleSummary(id, btn) {
         const box = document.getElementById(`summary-${id}`);
         if (!box) return;
+        const list = box.querySelector(".summary-list");
         const isHidden = box.style.display === "none";
         box.style.display = isHidden ? "block" : "none";
+        if (list) list.classList.toggle("open", isHidden);
         btn.textContent = isHidden ? "요약문 닫기" : "요약문 보기";
       }
 
-      document.addEventListener("DOMContentLoaded", fetchNews);
+      document.addEventListener("DOMContentLoaded", () => {
+        const params = new URLSearchParams(window.location.search);
+        const cat = params.get("category");
+        const q = (params.get("q") || "").trim();
+        if (cat) {
+          const btn = document.querySelector(`.cat-btn[data-cat="${cat}"]`);
+          if (btn) btn.click();
+          else fetchNews();
+        } else {
+          fetchNews();
+        }
+        if (q) {
+          currentQuery = q.slice(0, 100);
+          const si = document.getElementById("search-input");
+          if (si) si.value = currentQuery;
+          fetchNews();
+        }
+      });
     </script>
+    <script src="/app.js" defer></script>
   </body>
 </html>

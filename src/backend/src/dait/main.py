@@ -1,7 +1,11 @@
 """FastAPI 앱을 조립한다. 라우터는 한 줄씩 등록하며 업무 로직은 두지 않는다."""
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from dait.api.deps import get_throttles
 from dait.api.v1 import (
@@ -55,4 +59,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(interest_routes.router)
     app.include_router(news_routes.router)
     app.include_router(settings_routes.router)
+    frontend_dir = Path(__file__).resolve().parents[3] / "frontend" / "public"
+    if frontend_dir.is_dir():
+        app.mount("/mockup", StaticFiles(directory=str(frontend_dir)), name="mockup-static")
+
+        for route_path, filename in (
+            ("/", "index.html"),
+            ("/detail.html", "detail.html"),
+            ("/settings.html", "settings.html"),
+            ("/app.js", "app.js"),
+        ):
+            app.add_api_route(
+                route_path,
+                lambda f=frontend_dir / filename: FileResponse(
+                    path=str(f), media_type=_media_type(f)
+                ),
+                include_in_schema=False,
+                methods=["GET"],
+            )
     return app
+
+
+def _media_type(path: Path) -> str:
+    """정적 파일 경로의 Content-Type을 정한다."""
+    return {
+        ".html": "text/html",
+        ".js": "text/javascript",
+        ".css": "text/css",
+    }.get(path.suffix.lower(), "application/octet-stream")
