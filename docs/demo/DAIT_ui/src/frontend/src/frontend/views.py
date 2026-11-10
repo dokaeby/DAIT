@@ -1,4 +1,6 @@
 """화면설계서 v1.0.3의 메인·상세 구조와 실제 데이터 표시."""
+import json
+from datetime import datetime, timedelta, timezone
 from html import escape
 from urllib.parse import quote, urlencode, urlsplit
 
@@ -16,7 +18,7 @@ def summary_status(summary):
             "invalid": ("partial", "! 형식 확인"), "unavailable": ("partial", "! 조회 불가")}.get(summary.get("status"), ("pending", "○ 요약 준비 전"))
 
 
-def shell(content, user=None, query="", active="home", dialogs="", script=False, category=""):
+def shell(content, user=None, query="", active="home", dialogs="", script=False, category="", inbox_unseen=0):
     status = f"{escape(user)} 로그인 중" if user else "비로그인"
     logout = '<form method="post" action="/logout"><button class="secondary-button" type="submit">로그아웃</button></form>' if user else ""
     user_button = '<button class="primary-button" type="button" id="login-open">' + ("계정 전환" if user else "로그인") + '</button>' if script else '<a class="primary-button" href="/">메인으로</a>'
@@ -25,41 +27,152 @@ def shell(content, user=None, query="", active="home", dialogs="", script=False,
     settings_tab = '<a class="mobile-tab ' + ('active' if active == 'settings' else '') + '" href="/settings">⚙<span>설정</span></a>' if user else ''
     interests_nav = ('<a class="nav-item ' + ('active' if active == 'interests' else '') + '" href="/interests">☆ 관심 카테고리</a>') if user else '<span class="nav-item muted">☆ 관심 뉴스 <small>로그인 후</small></span>'
     categories = '<a class="nav-item ' + ('active' if category else '') + '" href="/?category=' + quote('인공지능') + '">✦ AI·기술</a>'
+    badge = f'<small class="inbox-badge" aria-label="새 소식 {inbox_unseen}개">새 {inbox_unseen}</small>' if inbox_unseen else ''
+    inbox_nav = ('<a class="nav-item ' + ('active' if active == 'inbox' else '') + '" href="/inbox" id="inbox-nav">🔔 예약 소식함' + badge + '</a>') if user else ''
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DAIT · 오늘의 AI 뉴스</title><link rel="stylesheet" href="/assets/design.css"><link rel="stylesheet" href="/assets/app.css"></head><body>
     <div class="app-shell"><header class="app-header"><a class="brand" href="/" aria-label="DAIT 메인"><span class="brand-mark">DAIT</span><span class="brand-divider"></span><span class="brand-copy">AI 뉴스 큐레이션 서비스</span></a><div class="header-actions"><span class="session-status">{status}</span>{user_button}{logout}{settings_button}</div></header>
-    <div class="app-body"><aside class="sidebar" aria-label="주요 탐색"><nav class="nav-group"><span class="nav-label">Discover</span><a class="nav-item {'active' if active == 'home' and not category else ''}" href="/">⌂ 오늘의 AI 뉴스</a>{categories}</nav><nav class="nav-group"><span class="nav-label">Library</span>{interests_nav}<span class="nav-item muted">♧ 저장한 뉴스 <small>단계 2</small></span></nav>{settings_nav}<p class="nav-note">RSS 기반 뉴스와 AI 요약을 제공합니다.<br>정확한 내용은 원문을 확인해 주세요.</p></aside><main class="main">{content}</main></div></div>
+    <div class="app-body"><aside class="sidebar" aria-label="주요 탐색"><nav class="nav-group"><span class="nav-label">Discover</span><a class="nav-item {'active' if active == 'home' and not category else ''}" href="/">⌂ 오늘의 AI 뉴스</a>{categories}</nav><nav class="nav-group"><span class="nav-label">Library</span>{interests_nav}{inbox_nav}<span class="nav-item muted">♧ 저장한 뉴스 <small>단계 2</small></span></nav>{settings_nav}<p class="nav-note">RSS 기반 뉴스와 AI 요약을 제공합니다.<br>정확한 내용은 원문을 확인해 주세요.</p></aside><main class="main">{content}</main></div></div>
     <nav class="mobile-tabs {'guest-tabs' if not user else ''}" aria-label="모바일 탐색"><a class="mobile-tab {'active' if not category and active == 'home' else ''}" href="/">⌂<span>오늘의 뉴스</span></a><a class="mobile-tab {'active' if category else ''}" href="/?category={quote('인공지능')}">✦<span>AI·기술</span></a>{settings_tab}</nav>{dialogs}{'<script src="/assets/app.js" defer></script>' if script else ''}</body></html>'''
 
 
-def render_settings_entry(user, interests):
-    keywords = escape(', '.join(interests), quote=True)
-    tags = ''.join(f'<span class="input-tag">{escape(item)}</span>' for item in interests)
-    content = f'''<div class="page-head"><div><p class="eyebrow">Personal Workspace</p><h1 class="page-title">설정</h1><p class="page-description">뉴스 수집 조건, 표시 방식과 알림 채널을 관리합니다.</p></div><span class="phase-tag">단계 2 · 화면 미리보기</span></div>
-    <div class="mockup-note"><strong>안내</strong><span>설정 화면 확인 단계입니다. 입력과 토글을 바꿔볼 수 있지만, 아직 저장되거나 뉴스 수집·추천·알림에 적용되지 않습니다.</span></div>
-    <div class="settings-layout"><nav class="settings-menu" aria-label="설정 구역"><a class="active" aria-current="location" href="#schedule">예약 수집</a><a href="#interests">관심 설정</a><a href="#display">노출·알림</a><a href="#account">계정·정책</a></nav>
-    <form id="settings-form" class="settings-sections">
-      <section class="settings-card" id="schedule"><div class="settings-card-head"><div><h2>예약 수집</h2><p>선택한 시각에 관심 조건으로 뉴스를 수집하도록 설정합니다.</p></div><span class="status-tag ready" id="schedule-state">사용 · 미리보기</span></div>
-        <div class="form-grid"><label class="form-field"><span class="field-label">예약 시각</span><input class="field-control" type="time" name="collection_time" id="collection-time" value="08:30" required><span class="field-help" id="schedule-preview">예약 예시: 매일 08:30 KST · 실제 예약은 등록되지 않았습니다.</span></label><label class="form-field"><span class="field-label">시간대</span><select class="field-control" name="timezone"><option value="Asia/Seoul">Asia/Seoul (KST)</option></select><span class="field-help">한국 표준시를 기준으로 표시합니다.</span></label></div>
-        <div class="toggle-row"><div class="toggle-copy"><strong>예약 수집 사용</strong><span>예약 사용 여부를 미리 확인합니다.</span></div><label class="switch-control"><input class="sr-only" id="schedule-enabled" name="schedule_enabled" type="checkbox" checked aria-label="예약 수집 사용"><span class="switch" aria-hidden="true"></span></label></div>
-      </section>
-      <section class="settings-card" id="interests"><div class="settings-card-head"><div><h2>검색·관심 설정</h2><p>관심 키워드와 수집 출처, 카테고리를 선택합니다.</p></div></div>
-        <div class="form-grid"><div class="form-field full"><label class="field-label" for="interest-keywords">관심 키워드</label><div class="tag-input" id="keyword-preview" aria-label="관심 키워드 미리보기">{tags}</div><input class="field-control" id="interest-keywords" name="keywords" value="{keywords}" maxlength="120" placeholder="예: 멀티모달, AI 에이전트, 오픈소스 LLM" aria-describedby="keyword-help"><span class="field-help" id="keyword-help">쉼표로 구분하여 최대 3개를 입력합니다. 현재 계정의 관심사로 시작하며, 변경 내용은 아직 맞춤 뉴스에 적용되지 않습니다.</span></div>
-        <label class="form-field"><span class="field-label">수집 출처</span><select class="field-control" name="source_group"><option value="all">승인 출처 전체</option><option value="official">공식 기업 블로그</option><option value="research">연구·개발 플랫폼</option></select><span class="field-help">출처 그룹 선택은 화면 예시입니다.</span></label><label class="form-field"><span class="field-label">카테고리</span><select class="field-control" name="category"><option value="ai-tech">AI·기술</option></select></label></div>
-      </section>
-      <section class="settings-card" id="display"><div class="settings-card-head"><div><h2>노출·알림</h2><p>기본 뉴스 개수와 알림을 받을 채널을 선택합니다.</p></div></div><div class="form-grid"><label class="form-field"><span class="field-label">기본 노출 수</span><select class="field-control" name="display_count"><option value="10">10개</option><option value="5">5개</option></select></label><div class="form-field"><span class="field-label">알림 채널</span><span class="field-help">알림 발송 기능은 아직 연결되지 않았습니다.</span></div></div>
-        <div class="toggle-row"><div class="toggle-copy"><strong>인앱 알림</strong><span>처리 결과를 DAIT 안에서 확인합니다.</span></div><label class="switch-control"><input class="sr-only" name="in_app_notification" type="checkbox" checked aria-label="인앱 알림"><span class="switch" aria-hidden="true"></span></label></div>
-        <div class="toggle-row"><div class="toggle-copy"><strong>메일 알림</strong><span>이메일로 요약 결과를 받습니다. 이메일 등록·인증은 후속 단계입니다.</span></div><label class="switch-control"><input class="sr-only" name="email_notification" type="checkbox" aria-label="메일 알림"><span class="switch" aria-hidden="true"></span></label></div>
-      </section>
-      <section class="settings-card" id="account"><div class="settings-card-head"><div><h2>계정·정책</h2><p>현재 계정과 개인정보·탈퇴 관련 안내를 확인합니다.</p></div><span class="category-tag ai">{escape(user)}</span></div>
-        <div class="toggle-row"><div class="toggle-copy"><strong>개인정보 처리 안내</strong><span>현재 테스트 환경에서 사용하는 정보를 확인합니다.</span></div><button class="secondary-button" type="button" data-open-dialog="privacy-dialog">내용 보기</button></div>
-        <div class="toggle-row danger-zone"><div class="toggle-copy"><strong>회원탈퇴</strong><span>테스트 계정과 운영용 회원탈퇴 기능 안내</span></div><button class="secondary-button" type="button" data-open-dialog="withdrawal-dialog">탈퇴 안내</button></div>
-      </section>
-      <div class="settings-footer"><p id="settings-feedback" class="settings-feedback" role="status" aria-live="polite"></p><div class="settings-actions"><button class="secondary-button" type="reset">변경 취소</button><button class="primary-button" type="submit">설정 저장</button></div></div>
-    </form></div>'''
-    dialogs = '''<dialog class="settings-dialog" id="privacy-dialog" aria-labelledby="privacy-title"><div class="login-card"><div class="login-top"><h2 id="privacy-title">개인정보 처리 안내</h2><button class="card-close" type="button" data-close-dialog aria-label="안내 닫기">×</button></div><p class="card-note">현재 회원 계정·로그인 세션과 계정별 관심 카테고리를 사용합니다. 관심 카테고리 선택 화면에서 저장한 값은 계정별로 보관됩니다. 이 설정 화면의 입력·토글 변경은 아직 저장되지 않습니다.</p><p class="card-note">이메일 인증 및 운영용 개인정보 처리방침은 아직 제공되지 않습니다. 보관 기간과 삭제 정책은 운영 기능을 구현할 때 확정합니다.</p><button class="primary-button" type="button" data-close-dialog>확인</button></div></dialog>
-    <dialog class="settings-dialog" id="withdrawal-dialog" aria-labelledby="withdrawal-title"><div class="login-card"><div class="login-top"><h2 id="withdrawal-title">회원탈퇴 안내</h2><button class="card-close" type="button" data-close-dialog aria-label="안내 닫기">×</button></div><p class="card-note">회원탈퇴 기능은 아직 제공되지 않으며, 이 화면에서 계정이나 기사가 삭제되지 않습니다.</p><p class="card-note">실제 회원 관리 도입 후 탈퇴 확인과 데이터 처리 절차를 연결할 예정입니다.</p><button class="primary-button" type="button" data-close-dialog>확인</button></div></dialog>'''
-    result = shell(content, user, active='settings', dialogs=dialogs)
+def _json_for_script(data):
+    # <script> 안에 넣는 JSON은 </script> 조기 종료를 막기 위해 < 를 이스케이프합니다.
+    return json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+
+
+WEEKDAY_NAMES = ('월', '화', '수', '목', '금', '토', '일')
+
+
+def render_settings_entry(user, interests, state, inbox_unseen=0):
+    """KAN-10 설정 화면. 저장한 값을 서버에서 읽어 채우고, 저장 시 /api/settings로 보냅니다."""
+    settings = state.settings
+    schedule = settings.schedule
+    data = _json_for_script({"settings": settings.model_dump(mode="json"),
+                             "available_categories": state.available_categories,
+                             "next_run": state.next_run})
+    days = ''.join(f'<button type="button" class="chip day-chip" data-day="{index}" aria-pressed="false">{name}</button>'
+                   for index, name in enumerate(WEEKDAY_NAMES))
+    sources = ''.join(f'<button type="button" class="chip source-chip" data-source="{value}" aria-pressed="false">{label}</button>'
+                      for value, label in (('interests', '관심 카테고리'), ('keywords', '선호 검색어')))
+    max_options = ''.join(f'<option value="{n}" {"selected" if schedule.max_items == n else ""}>{n}건</option>' for n in (5, 10, 20))
+    count_options = ''.join(f'<option value="{n}" {"selected" if settings.display_count == n else ""}>{n}개</option>' for n in (10, 5))
+    interest_text = ' · '.join(interests) if interests else '설정한 관심 카테고리가 없습니다'
+    checked = lambda on: 'checked' if on else ''  # noqa: E731
+    content = (
+        '<div class="page-head"><div><p class="eyebrow">Personal Workspace</p><h1 class="page-title">설정</h1>'
+        '<p class="page-description">예약 알림, 선호 검색어, 카테고리 표시 순서와 노출 방식을 관리합니다.</p></div></div>'
+        '<div class="settings-layout"><nav class="settings-menu" aria-label="설정 구역">'
+        '<a class="active" aria-current="location" href="#schedule">예약 알림</a><a href="#interests">관심 설정</a>'
+        '<a href="#display">노출·알림</a><a href="#account">계정·정책</a></nav>'
+        '<form id="settings-form" class="settings-sections" novalidate>'
+        # 예약 알림
+        '<section class="settings-card" id="schedule"><div class="settings-card-head"><div><h2>예약 알림</h2>'
+        '<p>정한 요일·시각마다 새 기사를 골라 예약 소식함에 넣어 드립니다.</p></div>'
+        '<span class="status-tag ready" id="schedule-state">사용</span></div>'
+        '<div class="form-grid"><label class="form-field"><span class="field-label">예약 시각</span>'
+        f'<input class="field-control" type="time" name="collection_time" id="collection-time" value="{escape(schedule.time, quote=True)}" required></label>'
+        '<label class="form-field"><span class="field-label">시간대</span><select class="field-control" name="timezone" id="schedule-timezone">'
+        '<option value="Asia/Seoul">Asia/Seoul (KST)</option></select><span class="field-help">한국 표준시를 기준으로 실행합니다.</span></label></div>'
+        '<div class="toggle-row"><div class="toggle-copy"><strong>예약 알림 사용</strong><span>끄면 예약 시각이 되어도 소식을 만들지 않습니다.</span></div>'
+        f'<label class="switch-control"><input class="sr-only" id="schedule-enabled" name="schedule_enabled" type="checkbox" {checked(schedule.enabled)} aria-label="예약 알림 사용"><span class="switch" aria-hidden="true"></span></label></div>'
+        f'<div class="choice-row"><span class="field-label" id="days-label">요일</span><div class="chips" role="group" aria-labelledby="days-label" id="schedule-days">{days}</div></div>'
+        f'<div class="choice-row"><span class="field-label" id="sources-label">받을 기사</span><div class="chips" role="group" aria-labelledby="sources-label" id="schedule-sources">{sources}</div></div>'
+        f'<div class="form-grid"><label class="form-field"><span class="field-label">한 번에 최대</span><select class="field-control" id="schedule-max">{max_options}</select></label>'
+        '<div class="form-field"><span class="field-label">다음 예약</span><span class="field-help" id="schedule-preview" role="status"></span></div></div>'
+        '<div class="settings-actions inline-actions"><button class="secondary-button" type="button" id="run-now">지금 한 번 받아보기</button>'
+        '<a class="text-button" href="/inbox">예약 소식함 보기</a></div>'
+        '<p class="settings-feedback" id="run-feedback" role="status" aria-live="polite"></p></section>'
+        # 검색·관심 설정
+        '<section class="settings-card" id="interests"><div class="settings-card-head"><div><h2>검색·관심 설정</h2>'
+        f'<p>선호 검색어와 카테고리 표시 순서를 정합니다. 관심 카테고리: {escape(interest_text)}</p></div></div>'
+        '<div class="form-grid"><div class="form-field full"><label class="field-label" for="keyword-input">선호 검색어</label>'
+        '<div class="tag-input" id="keyword-preview" aria-label="선호 검색어 목록"></div>'
+        '<div class="keyword-add"><input class="field-control" id="keyword-input" maxlength="30" placeholder="예: 멀티모달, AI 에이전트, HBM" aria-describedby="keyword-help keyword-error">'
+        '<button class="secondary-button" type="button" id="keyword-add">추가</button></div>'
+        '<span class="field-help" id="keyword-help">최대 3개까지 저장합니다. 메인 검색창 아래 칩으로 보이고, 예약 알림의 기사 고르기에 쓰입니다.</span>'
+        '<span class="field-error" id="keyword-error" role="alert"></span></div>'
+        '<label class="form-field"><span class="field-label">수집 출처</span><select class="field-control" name="source_group">'
+        '<option value="all">승인 출처 전체</option><option value="official">공식 기업 블로그</option><option value="research">연구·개발 플랫폼</option></select>'
+        '<span class="field-help">출처 그룹 선택은 화면 예시입니다.</span></label>'
+        '<div class="form-field full"><span class="field-label" id="category-order-label">카테고리 표시·순서</span>'
+        '<ol class="category-order" id="category-order" aria-labelledby="category-order-label"></ol>'
+        '<span class="field-help">메인 화면의 카테고리 칩이 이 순서로 보이며, 끈 카테고리는 숨겨집니다. '
+        '<button type="button" class="auth-link" id="category-reset">기본 순서로</button></span></div></div></section>'
+        # 노출·알림
+        '<section class="settings-card" id="display"><div class="settings-card-head"><div><h2>노출·알림</h2>'
+        '<p>기본 뉴스 개수와 알림을 받을 채널을 선택합니다.</p></div></div><div class="form-grid">'
+        f'<label class="form-field"><span class="field-label">기본 노출 수</span><select class="field-control" name="display_count" id="display-count">{count_options}</select>'
+        '<span class="field-help">메인 목록에 보이는 기사 수입니다.</span></label>'
+        '<div class="form-field"><span class="field-label">알림 채널</span><span class="field-help">인앱 알림은 왼쪽 메뉴의 예약 소식함에 "새" 표시로 알려 드립니다.</span></div></div>'
+        '<div class="toggle-row"><div class="toggle-copy"><strong>인앱 알림</strong><span>새 예약 소식을 DAIT 안에서 표시합니다.</span></div>'
+        f'<label class="switch-control"><input class="sr-only" id="in-app-notification" name="in_app_notification" type="checkbox" {checked(settings.in_app_notification)} aria-label="인앱 알림"><span class="switch" aria-hidden="true"></span></label></div>'
+        '<div class="toggle-row"><div class="toggle-copy"><strong>메일 알림</strong><span>선택은 저장되지만 메일 발송은 이메일 등록·인증과 함께 후속 단계에서 연결합니다.</span></div>'
+        f'<label class="switch-control"><input class="sr-only" id="email-notification" name="email_notification" type="checkbox" {checked(settings.email_notification)} aria-label="메일 알림"><span class="switch" aria-hidden="true"></span></label></div></section>'
+        # 계정·정책 (변경 없음)
+        '<section class="settings-card" id="account"><div class="settings-card-head"><div><h2>계정·정책</h2><p>현재 계정과 개인정보·탈퇴 관련 안내를 확인합니다.</p></div>'
+        f'<span class="category-tag ai">{escape(user)}</span></div>'
+        '<div class="toggle-row"><div class="toggle-copy"><strong>개인정보 처리 안내</strong><span>현재 테스트 환경에서 사용하는 정보를 확인합니다.</span></div><button class="secondary-button" type="button" data-open-dialog="privacy-dialog">내용 보기</button></div>'
+        '<div class="toggle-row danger-zone"><div class="toggle-copy"><strong>회원탈퇴</strong><span>테스트 계정과 운영용 회원탈퇴 기능 안내</span></div><button class="secondary-button" type="button" data-open-dialog="withdrawal-dialog">탈퇴 안내</button></div></section>'
+        '<div class="settings-footer"><p id="settings-feedback" class="settings-feedback" role="status" aria-live="polite"></p>'
+        '<div class="settings-actions"><button class="secondary-button" type="reset">변경 취소</button><button class="primary-button" type="submit" id="settings-save">설정 저장</button></div></div>'
+        '</form></div>'
+        f'<script type="application/json" id="settings-data">{data}</script>'
+    )
+    dialogs = (
+        '<dialog class="settings-dialog" id="privacy-dialog" aria-labelledby="privacy-title"><div class="login-card"><div class="login-top"><h2 id="privacy-title">개인정보 처리 안내</h2><button class="card-close" type="button" data-close-dialog aria-label="안내 닫기">×</button></div>'
+        '<p class="card-note">현재 회원 계정·로그인 세션과 계정별 관심 카테고리를 사용합니다. 설정 화면에서 저장한 선호 검색어·카테고리 표시 순서·예약 알림·노출 설정과 예약 소식함은 계정별로 보관됩니다.</p>'
+        '<p class="card-note">이메일 인증 및 운영용 개인정보 처리방침은 아직 제공되지 않습니다. 보관 기간과 삭제 정책은 운영 기능을 구현할 때 확정합니다.</p><button class="primary-button" type="button" data-close-dialog>확인</button></div></dialog>'
+        '<dialog class="settings-dialog" id="withdrawal-dialog" aria-labelledby="withdrawal-title"><div class="login-card"><div class="login-top"><h2 id="withdrawal-title">회원탈퇴 안내</h2><button class="card-close" type="button" data-close-dialog aria-label="안내 닫기">×</button></div>'
+        '<p class="card-note">회원탈퇴 기능은 아직 제공되지 않으며, 이 화면에서 계정이나 기사가 삭제되지 않습니다.</p><p class="card-note">실제 회원 관리 도입 후 탈퇴 확인과 데이터 처리 절차를 연결할 예정입니다.</p><button class="primary-button" type="button" data-close-dialog>확인</button></div></dialog>'
+    )
+    result = shell(content, user, active='settings', dialogs=dialogs, inbox_unseen=inbox_unseen)
     return result.replace('</body>', '<script src="/assets/settings.js" defer></script></body>')
+
+
+def _digest_time(stamp):
+    local = datetime.fromtimestamp(stamp, timezone(timedelta(hours=9)))
+    return f"{local.month}월 {local.day}일 ({WEEKDAY_NAMES[local.weekday()]}) {local:%H:%M}"
+
+
+def _kst_text(raw):
+    # 메인 카드와 같은 "2026.11.09 18:30 KST" 형식으로 맞춥니다.
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone(timedelta(hours=9))).strftime("%Y.%m.%d %H:%M KST")
+
+
+def _digest_card(rank, item):
+    link = '/article/' + quote(item.article_id, safe='')
+    published = escape(_kst_text(item.published_at))
+    return (f'<li class="article news-card digest-card"><div class="rank" aria-label="목록 {rank}번째">{rank}</div>'
+            f'<div class="news-main"><p class="category-tag ai">{escape(item.categories)}</p>'
+            f'<h3 class="news-title"><a href="{link}">{escape(item.title)}</a></h3>'
+            f'<div class="news-meta"><span>{escape(item.source)}</span><span class="meta-dot"></span><time>{published}</time></div>'
+            f'<p class="digest-reason">받은 이유: {escape(item.reason)}</p></div>'
+            f'<div class="card-actions"><a class="primary-button" href="{link}">상세 보기</a></div></li>')
+
+
+def render_inbox(user, state):
+    """KAN-10 예약 소식함. 열 때 새 소식 표시를 보여주고, 저장 상태는 라우터가 읽음으로 바꿉니다."""
+    sections = []
+    for digest in state.digests:
+        cards = ''.join(_digest_card(rank, item) for rank, item in enumerate(digest.items, 1))
+        body = f'<ol class="news-list">{cards}</ol>' if cards else '<p class="card-note digest-empty">이번에는 조건에 맞는 새 기사가 없었습니다.</p>'
+        new_tag = '' if digest.seen else '<span class="status-tag ready">새 소식</span>'
+        title = f'{_digest_time(digest.created_at)} {"미리 받기" if digest.manual else "예약 소식"} · {len(digest.items)}건'
+        sections.append(f'<section class="digest" aria-label="{escape(title, quote=True)}"><div class="result-meta"><strong>{escape(title)}</strong>{new_tag}</div>{body}</section>')
+    empty = ('<section class="panel digest-empty-state"><h2 class="panel-title">아직 받은 예약 소식이 없습니다</h2>'
+             '<p class="card-note">설정에서 요일과 시각을 정하면 그때마다 새 기사를 골라 드립니다.</p>'
+             '<a class="primary-button" href="/settings#schedule">예약 알림 설정</a></section>')
+    content = ('<div class="page-head"><div><p class="eyebrow">Scheduled Briefing</p><h1 class="page-title">예약 소식함</h1>'
+               '<p class="page-description">예약 알림이 골라 둔 기사입니다. 최근 30개까지 보관합니다.</p></div>'
+               '<div class="page-head-actions"><a class="secondary-button" href="/settings#schedule">예약 알림 설정</a></div></div>'
+               + (''.join(sections) or empty))
+    return shell(content, user, active='inbox')
 
 
 def render_cards(cards, query, scores):
@@ -78,7 +191,7 @@ def render_cards(cards, query, scores):
     return ''.join(items)
 
 
-def render_main(cards, user, query, scores, interests, category="", sort="rank", categories=()):
+def render_main(cards, user, query, scores, interests, category="", sort="rank", categories=(), prefs=None):
     if not query:
         sort = "latest"
     heading = f"{user}님을 위한 뉴스" if user and interests else "오늘의 AI 뉴스"
@@ -98,11 +211,22 @@ def render_main(cards, user, query, scores, interests, category="", sort="rank",
     empty_title = "검색 결과가 없습니다"
     results = render_cards(cards, query, scores) or f'<li class="empty-result"><strong>{empty_title}</strong><p>{empty}</p><a href="/">기본 목록으로 돌아가기</a></li>'
     customize = ('<a class="secondary-button interest-edit" href="/interests">' + ('관심 카테고리 변경' if interests else '관심 카테고리 설정') + '</a>') if user else ''
-    content = f'''<div class="page-head"><div><p class="eyebrow">Daily Intelligence</p><h1 class="page-title">{escape(heading)}</h1><p class="page-description">{escape(intro)}</p></div><div class="page-head-actions"><span class="date-chip">RSS 기반 · 최대 10개</span>{customize}</div></div>
-    <section aria-label="뉴스 검색"><form class="search toolbar" method="get" action="/" role="search"><label class="search-box"><span class="sr-only">기사 검색</span><span class="search-symbol" aria-hidden="true">⌕</span><input class="search-input" id="query" name="q" type="search" maxlength="200" value="{escape(query, quote=True)}" placeholder="통합 검색 (키워드, 기업, 기술 등)" aria-controls="search-results"></label><button class="primary-button" type="submit">통합 검색</button><a id="clear-search" class="clear-search" href="/">검색 초기화</a></form><div class="filter-row"><div class="chips" aria-label="카테고리">{''.join(chips)}</div><label class="sr-only" for="sort">정렬</label><select id="sort" class="select-like"><option value="rank" {'selected' if sort == 'rank' else ''}>검색 관련도순</option><option value="latest" {'selected' if sort == 'latest' else ''}>최신순</option></select></div><p class="search-note">키워드와 의미를 함께 검색합니다. 의미 유사도는 -1~1이며 정확도나 확률이 아닙니다.</p><p id="search-status" class="search-status" role="status" aria-live="polite"></p></section>
+    content = f'''<div class="page-head"><div><p class="eyebrow">Daily Intelligence</p><h1 class="page-title">{escape(heading)}</h1><p class="page-description">{escape(intro)}</p></div><div class="page-head-actions"><span class="date-chip">RSS 기반 · 최대 {prefs.display_count if prefs else 10}개</span>{customize}</div></div>
+    <section aria-label="뉴스 검색"><form class="search toolbar" method="get" action="/" role="search"><label class="search-box"><span class="sr-only">기사 검색</span><span class="search-symbol" aria-hidden="true">⌕</span><input class="search-input" id="query" name="q" type="search" maxlength="200" value="{escape(query, quote=True)}" placeholder="통합 검색 (키워드, 기업, 기술 등)" aria-controls="search-results"></label><button class="primary-button" type="submit">통합 검색</button><a id="clear-search" class="clear-search" href="/">검색 초기화</a></form>{keyword_chips(prefs)}<div class="filter-row"><div class="chips" aria-label="카테고리">{''.join(chips)}</div><label class="sr-only" for="sort">정렬</label><select id="sort" class="select-like"><option value="rank" {'selected' if sort == 'rank' else ''}>검색 관련도순</option><option value="latest" {'selected' if sort == 'latest' else ''}>최신순</option></select></div><p class="search-note">키워드와 의미를 함께 검색합니다. 의미 유사도는 -1~1이며 정확도나 확률이 아닙니다.</p><p id="search-status" class="search-status" role="status" aria-live="polite"></p></section>
     <div><button id="summary-batch" type="button" hidden>요약 준비 다시 시도</button><p id="summary-batch-status" class="card-note" role="status" aria-live="polite"></p></div>
     <section id="search-results" aria-label="기사 목록"><div class="result-meta"><strong>{'검색 결과' if query else '맞춤 추천' if user and interests else '최신 뉴스'} {len(cards)}건</strong><span>{escape(order)}{(' · ' + escape(category)) if category else ''}</span></div><ol class="news-list">{results}</ol></section>'''
-    return shell(content, user, query, dialogs=main_dialogs(query), script=True, category=category)
+    return shell(content, user, query, dialogs=main_dialogs(query), script=True, category=category,
+                 inbox_unseen=prefs.inbox_unseen if prefs else 0)
+
+
+def keyword_chips(prefs):
+    """KAN-10: 설정에 저장한 선호 검색어를 검색창 아래 칩으로 보여줍니다. 누르면 그 단어로 검색합니다."""
+    if not prefs or not prefs.keywords:
+        return ''
+    chips = ''.join(f'<button type="button" class="chip keyword-chip" data-keyword="{escape(word, quote=True)}">{escape(word)}</button>'
+                    for word in prefs.keywords)
+    return (f'<div class="keyword-row" aria-label="선호 검색어"><span class="keyword-label">선호 검색어</span>{chips}'
+            '<a class="keyword-edit" href="/settings#interests">설정에서 변경</a></div>')
 
 
 def render_interests(user, categories, selected, onboarding=False):

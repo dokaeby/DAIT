@@ -131,12 +131,15 @@ def display_date(raw):
         return raw
 
 
-def page(articles, user=None, query="", scores=None, category="", sort="rank", interests=None):
+def page(articles, user=None, query="", scores=None, category="", sort="rank", interests=None, prefs=None):
     urls = {}
     try:
         urls = news_repository.original_urls(DB)
     except sqlite3.Error:
         pass
+    if prefs is not None:
+        # KAN-10: 설정의 기본 노출 수를 메인 목록에 적용합니다.
+        articles = articles[:prefs.display_count]
     cards = []
     for article_id, title, source, published, categories, foreign, description in articles:
         summary = get_saved_summary(article_id, title, description, foreign)
@@ -145,7 +148,13 @@ def page(articles, user=None, query="", scores=None, category="", sort="rank", i
                           url=urls.get(article_id), summary=summary))
     selected = USERS.get(user, ()) if interests is None else tuple(interests)
     categories = [item for item in available_categories() if not user or not selected or item in selected]
-    return render_main(cards, user, query, scores, selected, category, sort, categories)
+    if prefs is not None:
+        # KAN-10: 설정한 카테고리 순서를 따르고 숨긴 카테고리는 칩에서 뺍니다.
+        rank = {name: index for index, name in enumerate(prefs.category_order)}
+        hidden = set(prefs.hidden_categories)
+        categories = sorted((c for c in categories if c not in hidden or c == category),
+                            key=lambda c: (rank.get(c, len(rank)), categories.index(c)))
+    return render_main(cards, user, query, scores, selected, category, sort, categories, prefs=prefs)
 
 
 def available_categories():
