@@ -14,6 +14,7 @@ from dait import news
 from dait.core.config import ASSETS_DIR
 from dait.schemas import SearchJobRequest, SummaryJobRequest
 from dait.preferences import user_interests
+from dait.services import settings_service
 
 router = APIRouter(tags=["기존 화면 연결"])
 CurrentUser = Annotated[str | None, Depends(current_user)]
@@ -53,7 +54,8 @@ def homepage(user: CurrentUser,
             rows.sort(key=lambda row: row[3], reverse=True)
     else:
         rows = news.recommended_articles(user, query, category, interests=selected) if user else news.latest_articles(query, category)
-    return HTMLResponse(news.page(rows, user, query, scores, category, sort, interests=selected))
+    prefs = settings_service.main_preferences(user)
+    return HTMLResponse(news.page(rows, user, query, scores, category, sort, interests=selected, prefs=prefs))
 
 
 @router.get("/article/{article_id}", response_class=HTMLResponse, summary="기사 상세·팝업 데이터")

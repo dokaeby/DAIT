@@ -346,6 +346,16 @@
       event.preventDefault();
       searchOnChange();
     });
+    // KAN-10: 선호 검색어 칩을 누르면 그 단어로 바로 검색합니다. 같은 칩을 다시 누르면 검색을 지웁니다.
+    document.querySelectorAll('[data-keyword]').forEach(chip => chip.addEventListener('click', () => {
+      const word = chip.dataset.keyword;
+      const clearing = searchInput.value.trim() === word;
+      searchInput.value = clearing ? '' : word;
+      hadQuery = !clearing;
+      sortControl.value = clearing ? 'latest' : 'rank';
+      document.querySelectorAll('[data-keyword]').forEach(item => item.classList.toggle('active', !clearing && item === chip));
+      searchOnChange();
+    }));
     document.querySelector('#clear-search').addEventListener('click', event => {
       event.preventDefault();
       searchInput.value = '';
