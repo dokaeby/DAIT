@@ -21,11 +21,11 @@ import logging
 import re
 from enum import StrEnum
 from itertools import pairwise
-from typing import Literal, Protocol
+from typing import Literal, Protocol, Self
 
 import httpx
 from dait.core.config import Settings
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class ProcessedContent(BaseModel):
     cached: bool = False
 
 
-class GrokClient(Protocol):
+class LLMClient(Protocol):
     """LLM 호출 경계. 어댑터는 시스템 지시와 사용자 프롬프트를 분리해 전달한다."""
 
     async def complete(self, *, system_instruction: str, user_prompt: str) -> str:
@@ -110,26 +110,57 @@ class GrokClient(Protocol):
         ...
 
 
-class HttpxGrokClient:
-    """`https://api.x.ai/v1/chat/completions` OpenAI 호환 비동기 클라이언트."""
+class GrokClient:
+    """`https://api.x.ai/v1/chat/completions` OpenAI 호환 비동기 클라이언트.
+
+    `from_settings()`는 `settings.grok_enabled`가 False이거나 API 키가 비어
+    있을 때 `None`을 반환하여 호출 측이 안전하게 Fallback할 수 있게 한다.
+    """
 
     def __init__(
         self,
-        settings: Settings,
         *,
+        api_key: str,
+        model: str,
+        base_url: str = "https://api.x.ai/v1",
+        timeout_seconds: float = 30.0,
+        max_tokens: int = 1200,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self._settings = settings
+        self._api_key = SecretStr(api_key)
+        self._model = model
+        self._base_url = base_url.rstrip("/")
+        self._timeout_seconds = timeout_seconds
+        self._max_tokens = max_tokens
         self._transport = transport
         self._client: httpx.AsyncClient | None = None
+
+    @classmethod
+    def from_settings(
+        cls,
+        s: Settings | None = None,
+        *,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> Self | None:
+        target_settings = s if s is not None else Settings()
+        if not target_settings.grok_enabled:
+            return None
+        return cls(
+            api_key=target_settings.xai_api_key.get_secret_value(),
+            model=target_settings.grok_model,
+            base_url=target_settings.xai_base_url,
+            timeout_seconds=target_settings.grok_timeout_seconds,
+            max_tokens=target_settings.grok_max_tokens,
+            transport=transport,
+        )
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
-                base_url=self._settings.xai_base_url.rstrip("/"),
-                timeout=httpx.Timeout(self._settings.grok_timeout_seconds),
+                base_url=self._base_url,
+                timeout=httpx.Timeout(self._timeout_seconds),
                 headers={
-                    "Authorization": f"Bearer {self._settings.xai_api_key.get_secret_value()}",
+                    "Authorization": f"Bearer {self._api_key.get_secret_value()}",
                     "Content-Type": "application/json",
                 },
                 transport=self._transport,
@@ -141,7 +172,7 @@ class HttpxGrokClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> HttpxGrokClient:
+    async def __aenter__(self) -> GrokClient:
         return self
 
     async def __aexit__(self, *_exc_info: object) -> None:
@@ -150,13 +181,13 @@ class HttpxGrokClient:
     async def complete(self, *, system_instruction: str, user_prompt: str) -> str:
         client = await self._get_client()
         payload = {
-            "model": self._settings.grok_model,
+            "model": self._model,
             "messages": [
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0,
-            "max_tokens": self._settings.grok_max_tokens,
+            "max_tokens": self._max_tokens,
             "response_format": {"type": "json_object"},
         }
         response = await client.post("/chat/completions", json=payload)
@@ -246,12 +277,12 @@ def _regex_summary_lines(body_text: str) -> list[str]:
 class AIProcessor:
     """Grok 요약·번역 오케스트레이터. 클라이언트와 캐시를 주입할 수 있다."""
 
-    def __init__(self, settings: Settings, *, client: GrokClient | None = None) -> None:
+    def __init__(self, settings: Settings, *, client: LLMClient | None = None) -> None:
         self._settings = settings
-        self._client: GrokClient = (
-            client if client is not None else HttpxGrokClient(settings)
+        self._client: LLMClient | None = (
+            client if client is not None else GrokClient.from_settings(settings)
         )
-        self._http_client = self._client if isinstance(self._client, HttpxGrokClient) else None
+        self._http_client = self._client if isinstance(self._client, GrokClient) else None
         self._cache: dict[str, ProcessedContent] = {}
 
     async def aclose(self) -> None:
@@ -287,7 +318,7 @@ class AIProcessor:
         digest: str,
         model_id: str,
     ) -> ProcessedContent:
-        if not self._settings.grok_enabled:
+        if not self._settings.grok_enabled or self._client is None:
             logger.info("Grok engine disabled; using regex fallback summary")
             return self._fallback(article, digest, model_id)
         try:

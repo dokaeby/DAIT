@@ -15,8 +15,8 @@ from dait.workers.ai_processor import (
     AIProcessor,
     ArticleContent,
     ContentStatus,
+    GrokClient,
     GrokSummaryCompletion,
-    HttpxGrokClient,
     ProcessedContent,
     ProcessingError,
 )
@@ -260,7 +260,10 @@ def test_httpx_client_sends_openai_compatible_request() -> None:
         )
 
     async def run() -> str:
-        client = HttpxGrokClient(_settings(), transport=httpx.MockTransport(handler))
+        client = GrokClient.from_settings(
+            _settings(), transport=httpx.MockTransport(handler)
+        )
+        assert client is not None
         try:
             return await client.complete(system_instruction="sys", user_prompt="usr")
         finally:
@@ -278,12 +281,36 @@ def test_httpx_client_sends_openai_compatible_request() -> None:
     assert payload["messages"][1] == {"role": "user", "content": "usr"}
 
 
+def test_grok_client_from_settings_returns_none_without_api_key() -> None:
+    assert GrokClient.from_settings(_settings(api_key="")) is None
+    assert GrokClient.from_settings(_settings(api_key="   ")) is None
+
+
+def test_grok_client_from_settings_returns_client_with_api_key() -> None:
+    client = GrokClient.from_settings(_settings())
+
+    assert isinstance(client, GrokClient)
+
+
+def test_grok_disabled_without_api_key_falls_back() -> None:
+    processor = AIProcessor(_settings(api_key=""))
+
+    result = asyncio.run(processor.process(_domestic_article()))
+
+    assert result.status is ContentStatus.READY
+    assert result.engine == "regex-fallback"
+    assert len(result.summary_lines) == 3
+
+
 def test_httpx_client_raises_processing_error_on_bad_payload() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"unexpected": True})
 
     async def run() -> None:
-        client = HttpxGrokClient(_settings(), transport=httpx.MockTransport(handler))
+        client = GrokClient.from_settings(
+            _settings(), transport=httpx.MockTransport(handler)
+        )
+        assert client is not None
         try:
             await client.complete(system_instruction="s", user_prompt="u")
         finally:
