@@ -1,0 +1,21 @@
+{
+  "verified_at_kst": "2026-11-08T21:25:57.167740+09:00",
+  "source_commit": "2837555e5386201db500957f81c58990e7672524",
+  "root_http": 200,
+  "list_api_http": 200,
+  "detail_http": 200,
+  "health_http": 200,
+  "article_id": "a27fdfa7-d1d9-460d-ae09-62ab5f0dcbec",
+  "original_title": "After the midterms, things are looking rocky for Elon Musk and data centers",
+  "translated_title": "중간선거 이후 Elon Musk와 데이터 센터의 상황은 험난해 보입니다.",
+  "summary_lines": [
+    "이번 주 중간선거에서 민주당의 역사적인 승리는 기술 산업에도 극적인 영향을 미칠 수 있습니다.",
+    "수십 개의 지역 투표 법안에서 유권자들은 데이터 센터를 거부했습니다.",
+    "그리고 그들이 이 문제에 대해 직접 투표하지 않을 때에도 데이터 센터 제한을 약속하는 캠페인을 벌인 텍사스의 새로운 주지사 당선인 Gina Hinojosa와 같은 정치인을 선출했습니다."
+  ],
+  "detail_translated_title": "번역 : 중간선거 이후 Elon Musk와 데이터 센터의 상황은 험난해 보입니다.",
+  "detail_url": "https://project-dait.onrender.com/detail.html?id=a27fdfa7-d1d9-460d-ae09-62ab5f0dcbec",
+  "browser_errors": [],
+  "source_version_evidence": "origin/main SHA verified; production HTML byte hash matches local file; corrected production API and browser behavior verified",
+  "render_control_plane_status": "No authenticated Render/GitHub status access; public production readiness verified"
+}

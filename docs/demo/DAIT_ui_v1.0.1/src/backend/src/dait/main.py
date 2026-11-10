@@ -13,6 +13,7 @@ from .settings import router as settings_router
 from dait.repositories.user_repository import initialize_auth_db
 from .interests import router as interests_router
 from . import news
+from dait.services.schedule_worker import worker as schedule_worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,9 +21,11 @@ async def lifespan(app: FastAPI):
     ensure_runtime_dirs()
     initialize_auth_db()
     news.summary_service.worker.start()
+    schedule_worker.start()
     try:
         yield
     finally:
+        schedule_worker.stop()
         news.summary_service.worker.stop()
 
 

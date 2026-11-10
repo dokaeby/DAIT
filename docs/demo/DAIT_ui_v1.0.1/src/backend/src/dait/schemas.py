@@ -107,3 +107,102 @@ class SummaryJobRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     article_path: str = Field(min_length=10, max_length=2048, pattern=r"^/article/.+")
+
+
+# --- KAN-10: 설정·카테고리 표시 순서·선호 검색어·예약 알림 ---
+MAX_KEYWORDS = 3
+KEYWORD_MAX_LENGTH = 30
+DigestSource = Literal["interests", "keywords"]
+
+
+class ScheduleSettings(BaseModel):
+    """예약 알림. 시간대는 화면에서 선택 가능한 Asia/Seoul만 받습니다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = True
+    time: str = Field(default="08:30", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    timezone: Literal["Asia/Seoul"] = "Asia/Seoul"
+    # 파이썬 weekday 기준: 월=0 … 일=6
+    days: tuple[Annotated[int, Field(ge=0, le=6)], ...] = (0, 1, 2, 3, 4, 5, 6)
+    sources: tuple[DigestSource, ...] = Field(default=("interests", "keywords"), min_length=1)
+    max_items: Literal[5, 10, 20] = 10
+
+    @field_validator("days")
+    @classmethod
+    def sorted_days(cls, value: tuple[int, ...]) -> tuple[int, ...]:
+        return tuple(sorted(set(value)))
+
+    @field_validator("sources")
+    @classmethod
+    def unique_sources(cls, value: tuple[DigestSource, ...]) -> tuple[DigestSource, ...]:
+        return tuple(dict.fromkeys(value))
+
+
+class UserSettings(BaseModel):
+    """설정 화면 전체 저장 단위. 화면과 API가 같은 모델을 씁니다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    keywords: tuple[Annotated[str, Field(max_length=200)], ...] = Field(default=(), max_length=20)
+    category_order: tuple[Annotated[str, Field(min_length=1, max_length=40)], ...] = Field(default=(), max_length=100)
+    hidden_categories: tuple[Annotated[str, Field(min_length=1, max_length=40)], ...] = Field(default=(), max_length=100)
+    display_count: Literal[5, 10] = 10
+    in_app_notification: bool = True
+    email_notification: bool = False
+    schedule: ScheduleSettings = ScheduleSettings()
+
+    @field_validator("keywords")
+    @classmethod
+    def clean_keywords(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        # 공백 정리 후 대소문자 무시 중복 제거. 4개 이상은 저장하지 않고 오류로 돌려보냅니다.
+        seen: set[str] = set()
+        words: list[str] = []
+        for raw in value:
+            word = " ".join(raw.split())
+            if not word or word.casefold() in seen:
+                continue
+            if len(word) > KEYWORD_MAX_LENGTH:
+                raise ValueError(f"선호 검색어는 {KEYWORD_MAX_LENGTH}자 이하로 입력해주세요.")
+            seen.add(word.casefold())
+            words.append(word)
+        if len(words) > MAX_KEYWORDS:
+            raise ValueError(f"선호 검색어는 최대 {MAX_KEYWORDS}개까지 저장할 수 있습니다.")
+        return tuple(words)
+
+    @field_validator("category_order", "hidden_categories")
+    @classmethod
+    def unique_categories(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(value))
+
+
+class SettingsState(BaseModel):
+    settings: UserSettings
+    available_categories: list[str]
+    next_run: str | None
+
+
+class DigestItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    article_id: str
+    title: str
+    source: str
+    published_at: str
+    categories: str
+    reason: str
+
+
+class Digest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    created_at: int
+    manual: bool
+    seen: bool
+    items: tuple[DigestItem, ...]
+
+
+class InboxState(BaseModel):
+    unseen: int
+    digests: list[Digest]
