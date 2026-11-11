@@ -6,6 +6,7 @@ import pytest
 from alembic import command
 
 from dait.core.config import Settings, get_settings
+from dait.services import cache_retry_service
 from support import alembic_config
 
 TEST_JWT_SECRET = "unit-test-secret-0123456789-abcdefghijklmnop"  # noqa: S105 - 테스트 전용 가짜 키
@@ -29,6 +30,7 @@ def _isolated_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     get_settings.cache_clear()  # env.py와 앱이 쓰는 캐시가 테스트 사이에 남지 않게 한다.
+    cache_retry_service.clear_memory_state()  # 모듈 레벨 캐시·락도 테스트 간 격리한다.
 
 
 @pytest.fixture

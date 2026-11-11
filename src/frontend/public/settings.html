@@ -72,8 +72,9 @@
                 <span class="field-label">키워드 (선택)</span>
                 <input class="field-control" id="sched-keywords" type="text" placeholder="쉼표로 구분" maxlength="500">
               </label>
-              <div class="form-field" style="justify-content: flex-end;">
-                <button class="secondary-button" type="submit">예약 추가</button>
+              <div class="form-field" style="justify-content: flex-end; gap: 8px;">
+                <button class="secondary-button" type="button" id="sched-cancel-edit" hidden>수정 취소</button>
+                <button class="secondary-button" type="submit" id="sched-submit">예약 추가</button>
               </div>
             </form>
             <p id="schedule-feedback" class="settings-feedback" role="status" aria-live="polite"></p>
@@ -97,6 +98,10 @@
         const feedback = document.getElementById("settings-feedback");
         const schedFeedback = document.getElementById("schedule-feedback");
         const listEl = document.getElementById("schedule-list");
+        const schedForm = document.getElementById("schedule-form");
+        const schedSubmit = document.getElementById("sched-submit");
+        const schedCancel = document.getElementById("sched-cancel-edit");
+        let editingScheduleId = null;
 
         function show(el, msg, ok) {
           el.textContent = msg || "";
@@ -162,31 +167,63 @@
               if (r.ok) { show(schedFeedback, "삭제했습니다.", true); loadSchedules(); }
               else show(schedFeedback, "삭제에 실패했습니다.", false);
             });
+            const edit = document.createElement("button");
+            edit.className = "secondary-button";
+            edit.type = "button";
+            edit.textContent = "수정";
+            edit.addEventListener("click", () => {
+              editingScheduleId = s.id;
+              document.getElementById("sched-time").value = s.local_time || "";
+              document.getElementById("sched-tz").value = s.timezone || "Asia/Seoul";
+              document.getElementById("sched-keywords").value =
+                (s.criteria && s.criteria.keywords ? s.criteria.keywords : []).join(", ");
+              schedSubmit.textContent = "예약 수정";
+              schedCancel.hidden = false;
+              schedFeedback.textContent = "";
+              schedForm.scrollIntoView({ behavior: "smooth", block: "center" });
+            });
+            li.appendChild(edit);
             li.appendChild(del);
             listEl.appendChild(li);
           }
         }
 
-        document.getElementById("schedule-form").addEventListener("submit", async (e) => {
+        function resetScheduleForm() {
+          editingScheduleId = null;
+          schedSubmit.textContent = "예약 추가";
+          schedCancel.hidden = true;
+          schedForm.reset();
+          document.getElementById("sched-tz").value = "Asia/Seoul";
+        }
+
+        schedCancel.addEventListener("click", resetScheduleForm);
+
+        schedForm.addEventListener("submit", async (e) => {
           e.preventDefault();
           const keywords = document.getElementById("sched-keywords").value
             .split(",").map((k) => k.trim()).filter(Boolean);
-          const res = await DAIT.api("/v1/me/schedules", {
-            method: "POST",
-            body: JSON.stringify({
-              local_time: document.getElementById("sched-time").value,
-              timezone: document.getElementById("sched-tz").value.trim() || "Asia/Seoul",
-              enabled: true,
-              criteria: { categories: ["AI"], keywords, source_ids: [] },
-            }),
-          });
+          const payload = {
+            local_time: document.getElementById("sched-time").value,
+            timezone: document.getElementById("sched-tz").value.trim() || "Asia/Seoul",
+            criteria: { categories: ["AI"], keywords, source_ids: [] },
+          };
+          const isEdit = editingScheduleId !== null;
+          const res = await DAIT.api(
+            isEdit ? "/v1/me/schedules/" + encodeURIComponent(editingScheduleId) : "/v1/me/schedules",
+            {
+              method: isEdit ? "PATCH" : "POST",
+              body: JSON.stringify(isEdit
+                ? { local_time: payload.local_time, timezone: payload.timezone, criteria: payload.criteria }
+                : { ...payload, enabled: true }),
+            },
+          );
           if (res.ok) {
-            show(schedFeedback, "예약을 추가했습니다.", true);
-            document.getElementById("sched-keywords").value = "";
+            show(schedFeedback, isEdit ? "예약을 수정했습니다." : "예약을 추가했습니다.", true);
+            resetScheduleForm();
             loadSchedules();
           } else {
             const b = await res.json().catch(() => ({}));
-            show(schedFeedback, (b.message) || "예약 추가에 실패했습니다.", false);
+            show(schedFeedback, (b.message) || (isEdit ? "예약 수정에 실패했습니다." : "예약 추가에 실패했습니다."), false);
           }
         });
 

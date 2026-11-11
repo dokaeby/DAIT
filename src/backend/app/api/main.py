@@ -32,6 +32,10 @@ from src.backend.app.workers.ai_processor import (
     GoogleTranslateContentProcessor,
     TranslatingNewsCollector,
 )
+from src.backend.app.workers.cloud_llm import (
+    CloudLLMContentProcessor,
+    CloudLLMSettings,
+)
 from src.backend.app.workers.collector_worker import CollectorWorker, NewsCollector, WorkerPolicy
 
 logger = logging.getLogger(__name__)
@@ -176,9 +180,15 @@ class _ManagedRuntime(NewsApiService):
             base_collector,
             enable_network=enable_network_translation,
         )
-        self._processor = GoogleTranslateContentProcessor(
-            enable_network_translation=enable_network_translation
-        )
+        self._cloud_settings = CloudLLMSettings.from_env() if enable_network_translation else None
+        if self._cloud_settings is not None:
+            self._processor: GoogleTranslateContentProcessor | CloudLLMContentProcessor = (
+                CloudLLMContentProcessor(self._cloud_settings)
+            )
+        else:
+            self._processor = GoogleTranslateContentProcessor(
+                enable_network_translation=enable_network_translation
+            )
         self._enable_network_translation = enable_network_translation
         self._init_lock = asyncio.Lock()
         self._initialized = False
@@ -249,6 +259,8 @@ class _ManagedRuntime(NewsApiService):
         async with self._init_lock:
             if self.redis_client is not None:
                 await self.redis_client.aclose()
+            if isinstance(self._processor, CloudLLMContentProcessor):
+                await self._processor.aclose()
             await self.repository.close()
             self._initialized = False
 

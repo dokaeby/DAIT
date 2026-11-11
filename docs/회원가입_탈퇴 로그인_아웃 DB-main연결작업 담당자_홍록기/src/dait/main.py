@@ -8,6 +8,7 @@ from dait.api.deps import get_throttles
 from dait.api.health import router as health_router
 from dait.api.interests import router as interests_router
 from dait.api.me import router as me_router
+from dait.api.two_factor import router as two_factor_router
 from dait.core.config import Settings, get_settings
 from dait.core.errors import register_error_handlers
 from dait.core.logging import configure_logging
@@ -49,4 +50,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(me_router)
     app.include_router(interests_router)
+    if config.two_factor_enabled:  # 꺼져 있으면 2차 인증 경로 자체가 없다.
+        app.include_router(two_factor_router)
     return app

@@ -435,6 +435,7 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
 | 10 | FR-HOME-01, FR-SEARCH-01, FR-SET-02 | 06_API_설계서 4.1(`GET /v1/news`), 메인 작업자 | 관심사는 필터 방식으로 적용한다(4절 m). 메인 작업자는 로그인 사용자의 관심 항목·키워드(회원 파트가 `interest_service.get_my_interests`로 제공)를 목록 검색 조건으로 넣을 수 있게 `q`를 여러 키워드로 확장하거나 관심 조건 파라미터를 추가할지 정해 주세요. 15개 항목은 한글 이름을 검색어로 쓰면 가장 단순하다. 관심사로 순위를 올리는 우선 표시는 2단계 제안이다. | 4절 m | 요청 전 |
 | 11 | (확인 필요) | 화면(가입·로그인) 담당자, 프런트 API 사용 규칙 | 오류 응답은 `{code, message, request_id, errors?}`입니다. (a) 화면은 `error`가 아니라 `message`를 읽어 보여 주세요. (b) 422는 `errors[].field` 입력칸 아래에 `errors[].message`를 보여 주세요(field: `email`, `password`, `password_confirm`, `terms_accepted`, 그 밖은 `body`). (c) 500은 `request_id`를 함께 보여 주세요. (d) 응답이 없으면 "서버에 연결하지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요."를 화면에서 보여 주세요. (e) 비밀번호는 어떤 오류에서도 콘솔·URL에 남기지 마세요. | 12절 가입·로그인 오류 문구 | 요청 전 |
 | 12 | (확인 필요) | 08_단위_test_cases UT-AUTH-005, 09 7.1절 "중복 이메일 일반화" | 가입 중복 이메일은 사용자 결정(2026-11-11)으로 409 "이미 가입된 이메일입니다."를 내므로 기대 문구를 "계정 존재 여부를 노출하지 않음"에서 "중복임을 알리되 행이 늘지 않음"으로 갱신해 주세요. 회원 파트는 원본 문서를 고치지 않았다. | decisions.md 2026-11-11 | 요청 전 |
+| 13 | (확인 필요) | 화면(로그인) 담당자, 프런트 API 사용 규칙 | `TWO_FACTOR_ENABLED=true`일 때만 해당. `POST /v1/auth/login`이 200으로 `{status:"TWO_FACTOR_REQUIRED", challenge_id, expires_in_seconds, resend_after_seconds}`를 주면 토큰이 없으니 코드 입력 화면으로 넘어가 주세요(꺼져 있으면 예전처럼 `{user, tokens, interests}`). (a) 코드 확인: `POST /v1/auth/2fa/verify` 본문 `{challenge_id, code}`(code는 6자리 숫자 문자열, 앞자리 0 유지) → 성공 시 로그인 응답과 같은 `{user, tokens, interests}`. 실패는 401 `INVALID_TWO_FACTOR` "인증 코드가 올바르지 않거나 만료되었습니다."(이유를 구분하지 않음). 코드는 5분 유효, 5번 틀리면 폐기되므로 그 뒤에는 다시 로그인해야 합니다. (b) 재발송: `POST /v1/auth/2fa/resend` 본문 `{challenge_id}`, 60초 간격(429 "시도가 너무 많습니다…"), 최대 5번. (c) `challenge_id`는 URL이 아닌 화면 상태에만 두고 콘솔에 남기지 마세요. | 12절 이메일 2차 인증 | 요청 전 |
 
 ### 10.2 문서 담당자에게 알릴 점
 
@@ -614,6 +615,11 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
 - 무엇을: 오류 응답에 선택 필드 `errors`(field, code, message)를 더하고 상태 코드별 한국어 문구를 정했다. 중복 이메일 409는 "이미 가입된 이메일입니다."로 바꿨다.
 - 왜: 가입이 실패해도 화면에 이유가 보이지 않았다.
 - 근거: 사용자 승인 2026-11-11, 정비 매뉴얼 REV E 1-1·1-2절, 409는 사용자 결정(decisions.md에 계정 열거 방지 예외로 기록).
+
+### 2026-11-11 — 이메일 2차 인증(로그인) 구현 (PR 2)
+- 무엇을: 비밀번호가 맞은 로그인에 6자리 코드를 메일로 보내 확인한 뒤 토큰을 주는 2차 인증을 만들었다. 기본은 꺼짐(`TWO_FACTOR_ENABLED=false`).
+- 왜: 로드맵 단계 2의 인증 확장. 합칠 때 충돌이 작도록 새 파일 위주로, 켜기 전까지 기존 흐름이 그대로이게 했다.
+- 근거: 사용자 승인(매뉴얼 34번, "로그인 2차 인증만"), AGENTS.md 5절 2FA 규칙, decisions.md 2026-11-11.
 
 ---
 
@@ -828,6 +834,52 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
   확인하지 못한 것: release 모드 서버, 화면의 실제 표시, 500 응답의 실서버 확인(500은 단위 시험으로만 확인).
 - 새 환경변수 / 마이그레이션 여부: 없음 / 없음
 - 문서 반영 요청: 10.1절 11번 추가(화면 담당)
+
+### 이메일 2차 인증 — 로그인 (2026-11-11)
+- 기능 ID / 합격 기준 ID: 이메일 2차 인증(기능 ID는 기획서 담당 확정 대기). 08·09에는 이 기능의 테스트 케이스가 없다.
+- 화면 설계서(PPT): API만 만들었고 화면은 이 폴더에 없다. 코드 입력 화면 요청은 10.1절 13번.
+- 만든 파일 (이 폴더 기준):
+  - `src/dait/schemas/two_factor.py` : 응답(`TwoFactorRequired`), 요청(`VerifyRequest` 코드는 정확히 숫자 6자리, `ResendRequest`), 저장 모델
+  - `src/dait/repositories/code_store.py` : `CodeStore` 인터페이스 + sqlite 구현(시도 증가·재발송·소비를 각각 한 번의 원자적 SQL로)
+  - `src/dait/core/mailer.py` : `Mailer` 인터페이스, `SmtpMailer`(STARTTLS, 10초 타임아웃, 줄바꿈 주소 거부), 시험용 `FakeMailer`
+  - `src/dait/services/two_factor_service.py` : 코드 생성(secrets)·HMAC 해시·검증·재발송 규칙
+  - `src/dait/api/two_factor.py` : `POST /v1/auth/2fa/verify`, `/v1/auth/2fa/resend`
+  - `migrations/versions/20261111_0003_two_factor_challenges.py` : `two_factor_challenges`(users 삭제 시 CASCADE). 0003만 되돌릴 수 있다.
+  - 수정한 기존 파일: `core/config.py`(설정 7개와 켰을 때 필수값 검증), `core/errors.py`(`InvalidTwoFactorError` 401), `main.py`(켜졌을 때만 라우터 등록), `.env.example`, `tests/conftest.py`(새 환경변수 격리), **`services/auth_service.py`와 `api/auth.py`**
+  - 테스트: `tests/unit/test_two_factor.py`, `test_two_factor_api.py`, `test_mailer_and_two_factor_config.py`(새 시험 42개)
+- 승인 범위 밖으로 손댄 곳 (알림): 승인된 "설정·라우터·.env.example만 수정" 외에 로그인 경로를 가로채야 해서 `auth_service.login`을 `verify_credentials`(비밀번호 확인)와 `issue_login_response`(토큰 발급) 둘로 나눴다(`login`은 둘을 이어 부르는 것으로 동작이 같고 기존 시험이 그대로 통과한다). `api/auth.py`의 `/login`은 스위치가 켜졌을 때만 새 경로로 간다. 이 두 곳을 승인 받지 않고 수정했으므로 리뷰에서 꼭 봐 주세요.
+- 구현 방식: 켜져 있으면 로그인에서 비밀번호(와 잠금 규칙)를 기존 코드로 확인한 뒤 토큰 대신 `challenge_id`(256비트 난수)를 주고 코드를 메일로 보낸다(응답 뒤 백그라운드). 확인에서는 시도를 비교 전에 먼저 세고(동시 추측도 5번 한도), 맞으면 `DELETE`가 한 번만 성공하는 것으로 재사용·동시 요청을 막은 뒤 기존 발급 경로로 토큰을 준다. 사용자가 다시 로그인하면 이전 챌린지는 대체된다.
+- 판단 근거: AGENTS.md 5절(2FA: secrets 6자리, 해시 저장, TTL 5분, 시도 제한, 재발송 쿨다운, 사용 후 삭제, compare_digest, 계정 열거 방지, 메일 헤더 인젝션 방지), 새 라이브러리 없음(표준 `smtplib`). 대안: 해시에 키를 섞지 않는 SHA-256(6자리라 역산 가능해 기각), Redis(아직 미도입이라 인터페이스만 두고 sqlite).
+- 기존 지시와 다른 점: 위 "승인 범위 밖" 두 파일. 그 밖에는 없다.
+- 합치기 영향: Alembic head가 `0003_two_factor`로 늘었다(팀 리비전과 순서 확인). 스위치가 꺼져 있으면 로그인 응답과 경로는 그대로다(기존 시험 전부 통과). 켜면 `/login` 응답 모양이 둘 중 하나가 되므로 화면 담당이 알아야 한다(10.1절 13번). 새 환경변수 7개.
+- 보안 점검: 악의적 입력 — 6자리 아닌 코드 422(입력 비반환), 없는 챌린지·틀린 코드·만료·시도 초과·재사용은 모두 같은 401, 5번 틀리면 정답도 거부, 동시 두 요청 중 하나만 통과, 쿨다운 중 재발송은 메일 0통, 받는 주소에 줄바꿈이 있으면 연결 없이 거부, 로그에 코드·이메일·앱 비밀번호·키·challenge_id 0건. 외부 실패 — SMTP 거부·접속 불가는 `MailSendError`로 바뀌고 로그인 응답은 정상이며 재발송 가능. 중복 실행 — 재발송 조건 검사와 갱신이 한 SQL.
+- 테스트 대상 UT ID / 테스트 결과: **08·09에는 2차 인증 항목이 없어 자체 판단으로 만든 테스트 케이스로 진행했다.** 그래서 "08·09 기준으로 테스트가 완료되었습니다" 문장은 쓰지 않는다. 08의 UT-AUTH-006~008(로그인, 실패 메시지 동일성, refresh)에 해당하는 기존 동작은 스위치가 꺼진 상태에서 기존 시험이 그대로 통과했다. 09 13절 방식으로 보호 장치 9개를 일부러 지워 보고(만료 검사, 시도 상한, 5번째 실패 폐기, 코드 비교, 재사용 방지, 쿨다운 두 곳, 유효시간 값, 줄바꿈 검사) 시험이 모두 실패로 잡는 것을 확인한 뒤 복구했다. 처음에는 3개를 놓쳐서 시험 3개를 보강했다.
+- 품질 게이트 결과 (실제 출력): `uv run ruff check .` → All checks passed! / `uv run ruff format --check .` → 60 files already formatted / `uv run pyright` → 0 errors, 0 warnings, 0 informations / `uv run pytest -q` → 221 passed (기준선 179 + 새 시험 42). pip-audit는 의존성이 바뀌지 않아 실행하지 않았다.
+- release 모드 영향: 영향 없음(모드 분기 없음). 실서버는 debug 모드로만 확인했고 release 모드 서버는 확인하지 못했다.
+- 실제 관찰 결과 (2026-11-11, 실제 uvicorn + 실제 구글 SMTP(STARTTLS 587, 앱 비밀번호) + 테스트 계정, `TWO_FACTOR_ENABLED=true`, `APP_ENV=debug`): 사용자가 `/docs` 화면에서 직접 실행했고 서버 로그로 교차 확인했다. 메일 주소·코드·비밀값은 기록하지 않는다.
+
+| 단계 | 요청 | 결과 |
+|---|---|---|
+| 1 | `POST /v1/auth/signup` | 201 (메일은 안 나감) |
+| 2 | `POST /v1/auth/login` | 200 `TWO_FACTOR_REQUIRED` + `challenge_id`, 토큰 없음. 감사 로그 `challenge_created` |
+| 3 | (실제 구글 SMTP) | "[DAIT] 로그인 인증 코드" 메일이 받은편지함에 도착. 발송 실패 경고 없음 |
+| 4 | `POST /v1/auth/2fa/verify` 메일의 코드 | 200 토큰 발급. 감사 로그 `two_factor success`, `login success` |
+| 5 | 같은 코드로 `/verify` 다시 | 401 `INVALID_TWO_FACTOR` (사용한 챌린지는 삭제돼 `unknown_challenge`) |
+| 6 | 새 로그인 뒤 틀린 코드로 `/verify` | 401, 감사 로그 `wrong_code` (시도 1회 소모) |
+
+  재발송 제한은 실제 메일이 나가지 않게 임시 서버(별도 포트, 임시 DB, 접속 불가 SMTP 주소)에서 따로 확인했다.
+
+| 단계 | 요청 | 결과 |
+|---|---|---|
+| 1 | 로그인 직후 `POST /v1/auth/2fa/resend` | 429 "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요." (`resend_blocked`) |
+| 2 | 없는 `challenge_id`로 `/resend` | 401 `INVALID_TWO_FACTOR` |
+| 3 | 62초 뒤 `/resend` | 200 `{"result":"sent","resend_after_seconds":60}` (`resent`) |
+| 4 | 곧바로 다시 `/resend` | 429 |
+| 참고 | 접속 불가 SMTP로 보낸 메일 | 발송 실패했지만 로그인·재발송 응답은 정상. 로그에는 `ConnectionRefusedError` 이름만 있고 주소·코드는 없음 |
+
+  확인하지 못한 것: release 모드 서버, 화면(프런트)의 실제 입력·표시, 만료(5분)·5회 시도 초과의 실서버 확인(이 둘은 시계를 직접 넘기는 단위 시험으로 확인), 구글 앱 비밀번호가 틀렸을 때의 실제 거부 응답.
+- 새 환경변수 / 마이그레이션 여부: `TWO_FACTOR_ENABLED`(기본 false), `OTP_HASH_SECRET`, `SMTP_HOST`, `SMTP_PORT`(기본 587), `SMTP_USERNAME`, `SMTP_APP_PASSWORD`, `SMTP_FROM`. 켰는데 필수값이 없으면 서버가 시작되지 않는다. 마이그레이션 `0003_two_factor`(upgrade·downgrade 시험 있음).
+- 문서 반영 요청: 10.1절 13번(화면). 키 교체 절차는 `docs/key_rotation.md`에 추가했다.
 
 ---
 

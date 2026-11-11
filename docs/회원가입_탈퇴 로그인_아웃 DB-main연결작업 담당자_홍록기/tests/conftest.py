@@ -24,6 +24,13 @@ def _isolated_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
         "CORS_ORIGINS",
         "ACCESS_TOKEN_MINUTES",
         "REFRESH_TOKEN_DAYS",
+        "TWO_FACTOR_ENABLED",
+        "OTP_HASH_SECRET",
+        "SMTP_HOST",
+        "SMTP_PORT",
+        "SMTP_USERNAME",
+        "SMTP_APP_PASSWORD",
+        "SMTP_FROM",
     )
     for name in names:
         monkeypatch.delenv(name, raising=False)
