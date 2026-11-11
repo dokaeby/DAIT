@@ -10,6 +10,20 @@ class DuplicateEmailError(Exception):
     """이미 같은 이메일의 사용자가 있을 때(유니크 제약 위반)."""
 
 
+class DuplicateNicknameError(Exception):
+    """중복 확인 이후 동시에 같은 닉네임으로 가입한 경우도 차단한다."""
+
+
+def nickname_exists(conn: DbConnection, nickname: str) -> bool:
+    """정규화된 닉네임을 대소문자 구분 없이 비교한다."""
+    return (
+        conn.execute(
+            "SELECT 1 FROM users WHERE nickname_key = ?", (nickname.casefold(),)
+        ).fetchone()
+        is not None
+    )
+
+
 def insert_user(conn: DbConnection, user: UserRecord) -> None:
     """사용자 한 명을 저장한다.
 
@@ -19,8 +33,8 @@ def insert_user(conn: DbConnection, user: UserRecord) -> None:
     """
     try:
         conn.execute(
-            "INSERT INTO users (id, email, password_hash, status, role, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, email, password_hash, status, role, created_at, "
+            "nickname, nickname_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 user.id,
                 user.email,
@@ -28,15 +42,19 @@ def insert_user(conn: DbConnection, user: UserRecord) -> None:
                 user.status.value,
                 user.role.value,
                 user.created_at.isoformat(),
+                user.nickname,
+                user.nickname.casefold() if user.nickname else None,
             ),
         )
     except DB_INTEGRITY_ERRORS as exc:
+        if "nickname_key" in str(exc):
+            raise DuplicateNicknameError from exc
         if "users.email" in str(exc):
             raise DuplicateEmailError from exc
         raise
 
 
-def _to_record(row: tuple[str, str, str, str, str, str]) -> UserRecord:
+def _to_record(row: tuple[str, str, str, str, str, str, str | None]) -> UserRecord:
     """DB 행을 사용자 레코드로 바꾼다.
 
     입력: row (users 테이블의 컬럼 순서대로 읽은 행)
@@ -50,6 +68,7 @@ def _to_record(row: tuple[str, str, str, str, str, str]) -> UserRecord:
         status=UserStatus(row[3]),
         role=UserRole(row[4]),
         created_at=datetime.fromisoformat(row[5]),
+        nickname=row[6],
     )
 
 
@@ -61,7 +80,8 @@ def find_by_email(conn: DbConnection, email: str) -> UserRecord | None:
     기능: 이메일은 저장할 때 소문자로 통일하므로 같은 형태로 비교한다.
     """
     row = conn.execute(
-        "SELECT id, email, password_hash, status, role, created_at FROM users WHERE email = ?",
+        "SELECT id, email, password_hash, status, role, created_at, nickname "
+        "FROM users WHERE email = ?",
         (email,),
     ).fetchone()
     return None if row is None else _to_record(row)
@@ -75,7 +95,8 @@ def find_by_id(conn: DbConnection, user_id: str) -> UserRecord | None:
     기능: 탈퇴한 사용자의 남은 access 토큰을 거부하는 데 쓴다.
     """
     row = conn.execute(
-        "SELECT id, email, password_hash, status, role, created_at FROM users WHERE id = ?",
+        "SELECT id, email, password_hash, status, role, created_at, nickname "
+        "FROM users WHERE id = ?",
         (user_id,),
     ).fetchone()
     return None if row is None else _to_record(row)

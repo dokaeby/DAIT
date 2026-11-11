@@ -7,6 +7,7 @@ from dait.core.config import Settings
 from dait.core.errors import (
     InvalidCredentialsError,
     InvalidTokenError,
+    NicknameTakenError,
     SignupFailedError,
     TooManyAttemptsError,
     WeakPasswordError,
@@ -31,9 +32,11 @@ from dait.repositories.token_repository import (
 )
 from dait.repositories.user_repository import (
     DuplicateEmailError,
+    DuplicateNicknameError,
     find_by_email,
     find_by_id,
     insert_user,
+    nickname_exists,
 )
 from dait.schemas.auth import (
     AuthResponse,
@@ -42,6 +45,7 @@ from dait.schemas.auth import (
     SignupRequest,
     TokenPair,
 )
+from dait.schemas.nickname import NicknameAvailability
 from dait.schemas.token import RefreshTokenRecord
 from dait.schemas.user import UserPublic, UserRecord, UserRole, UserStatus
 from dait.services.login_throttle import LoginThrottles
@@ -87,7 +91,9 @@ def _to_response(user: UserRecord, tokens: TokenPair) -> AuthResponse:
     출력: AuthResponse (비밀번호 해시가 빠진 공개 정보)
     기능: DB 모델과 응답 모델을 분리해 내부 값이 새지 않게 한다.
     """
-    public = UserPublic(id=user.id, email=user.email, status=user.status, role=user.role)
+    public = UserPublic(
+        id=user.id, email=user.email, status=user.status, role=user.role, nickname=user.nickname
+    )
     return AuthResponse(user=public, tokens=tokens)
 
 
@@ -113,6 +119,7 @@ def signup(
         status=UserStatus.ACTIVE,
         role=UserRole.USER,
         created_at=now,
+        nickname=request.nickname,
     )
     try:
         with transaction(
@@ -125,8 +132,17 @@ def signup(
     except DuplicateEmailError as exc:
         audit("signup", "duplicate", client_ip=client_ip)
         raise SignupFailedError from exc
+    except DuplicateNicknameError as exc:
+        raise NicknameTakenError from exc
     audit("signup", "success", user_id=user.id, client_ip=client_ip)
     return _to_response(user, tokens)
+
+
+def check_nickname(settings: Settings, nickname: str) -> NicknameAvailability:
+    """중복 확인은 안내이며 가입 시 DB 유니크 인덱스로 다시 보장한다."""
+    with transaction(settings.database_url) as conn:
+        exists = nickname_exists(conn, nickname)
+    return NicknameAvailability(nickname=nickname, available=not exists)
 
 
 def login(

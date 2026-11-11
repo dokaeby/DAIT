@@ -113,9 +113,11 @@ class TestNewsList:
         """제목 또는 저장된 요약에 검색어가 있는 기사만 반환된다."""
         seed_news(db_url)
         client = client_for(settings)
-        by_summary = client.request("GET", "/v1/news", params={"q": "핵심 요약"})
-        by_title = client.request("GET", "/v1/news", params={"q": "기사 1"})
-        none = client.request("GET", "/v1/news", params={"q": "없는검색어xyz"})
+        token = sign_up(client)
+        headers = bearer(token)
+        by_summary = client.request("GET", "/v1/news", params={"q": "핵심 요약"}, headers=headers)
+        by_title = client.request("GET", "/v1/news", params={"q": "기사 1"}, headers=headers)
+        none = client.request("GET", "/v1/news", params={"q": "없는검색어xyz"}, headers=headers)
         assert len(by_summary.json()["items"]) == 3
         assert len(by_title.json()["items"]) == 1
         assert none.json()["items"] == []
@@ -134,8 +136,102 @@ class TestNewsList:
             assert client.request("GET", "/v1/news", params={"category": code}).status_code == 200
         assert client.request("GET", "/v1/news", params={"category": "WEATHER"}).status_code == 422
 
+    def test_all_categories_guest_limit_and_member_filters(
+        self, settings: Settings, db_url: str
+    ) -> None:
+        """Guests see the global latest ten; members can filter and paginate all categories."""
+        seed_news(db_url)
+        with sqlite3.connect(_db_path(db_url)) as conn:
+            for index in range(15):
+                category = ("AI", "ECONOMY", "POLITICS")[index % 3]
+                news_id = f"mixed{index:02d}"
+                published = f"2026-02-{index + 1:02d}T00:00:00+00:00"
+                conn.execute(
+                    "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+                    "collected_at, category, original_language, created_at) "
+                    "VALUES (?, 'src1', ?, ?, ?, ?, ?, 'ko', ?)",
+                    (
+                        news_id,
+                        news_id,
+                        f"https://example.com/{news_id}",
+                        published,
+                        NOW,
+                        category,
+                        NOW,
+                    ),
+                )
+                conn.execute(
+                    "INSERT INTO content_results (news_id, summary_lines, status, updated_at) "
+                    "VALUES (?, ?, 'READY', ?)",
+                    (news_id, SUMMARY_JSON, NOW),
+                )
+            conn.execute("UPDATE news SET category = 'WEATHER' WHERE id = 'news00'")
+        client = client_for(settings)
+        guest = client.request(
+            "GET",
+            "/v1/news",
+            params={"category": "AI", "q": "no-match", "page_size": "50", "sort": "rank"},
+        )
+        assert guest.status_code == 200
+        body = guest.json()
+        assert [item["id"] for item in body["items"]] == [
+            f"mixed{index:02d}" for index in range(14, 4, -1)
+        ]
+        assert body["page"] == {"has_more": False, "next_cursor": None}
+        assert body["meta"]["total_visible"] == 10
+        headers = bearer(sign_up(client))
+        member = client.request("GET", "/v1/news", headers=headers, params={"sort": "latest"})
+        assert member.status_code == 200
+        assert member.json()["meta"]["total_visible"] == 17
+        cursor = member.json()["page"]["next_cursor"]
+        assert client.request("GET", "/v1/news", params={"cursor": cursor}).status_code == 422
+        second = client.request(
+            "GET", "/v1/news", headers=headers, params={"cursor": cursor, "sort": "latest"}
+        )
+        assert len(second.json()["items"]) == 7
+        filtered = client.request(
+            "GET", "/v1/news", headers=headers, params={"category": "ECONOMY"}
+        )
+        assert len(filtered.json()["items"]) == 5
+        assert all(item["category"] == "ECONOMY" for item in filtered.json()["items"])
+        for news_id in ("mixed01", "mixed02"):
+            detail = client.request("GET", f"/v1/news/{news_id}")
+            assert detail.status_code == 200
+            assert detail.json()["article"]["id"] == news_id
+        assert client.request("GET", "/v1/news/news00").status_code == 404
+
 
 class TestNewsDetail:
+    def test_counts_and_private_read_history(self, settings: Settings, db_url: str) -> None:
+        """Counts are fresh; read receipts are idempotent and owned by the token."""
+        seed_news(db_url)
+        client = client_for(settings)
+        assert client.request("GET", "/v1/news/activity").status_code == 401
+        headers = bearer(sign_up(client))
+        first = client.request("GET", "/v1/news/activity", headers=headers)
+        assert first.status_code == 200
+        assert first.json()["total"] == 3
+        assert first.json()["counts"]["AI"] == 3
+        assert first.json()["read_ids"] == []
+        for _ in range(2):
+            assert client.request("PUT", "/v1/news/news00/read", headers=headers).status_code == 204
+        marked = client.request(
+            "GET", "/v1/news/activity", headers=headers, params={"ids": "news00"}
+        )
+        assert marked.json()["read_ids"] == ["news00"]
+        other = client.request(
+            "POST", "/v1/auth/signup", json={**SIGNUP, "email": "other@example.com"}
+        )
+        other_headers = bearer(str(other.json()["tokens"]["access_token"]))
+        private = client.request(
+            "GET", "/v1/news/activity", headers=other_headers, params={"ids": "news00"}
+        )
+        assert private.json()["read_ids"] == []
+        assert client.request("PUT", "/v1/news/news99/read", headers=headers).status_code == 404
+        with sqlite3.connect(_db_path(db_url)) as conn:
+            conn.execute("UPDATE content_results SET status = 'FAILED' WHERE news_id = 'news02'")
+        assert client.request("GET", "/v1/news/activity", headers=headers).json()["total"] == 2
+
     """GET /v1/news/{id} 상세."""
 
     def test_detail_returns_full_contract(self, settings: Settings, db_url: str) -> None:

@@ -43,7 +43,6 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 MOCKUP_DIR = PROJECT_ROOT / "src" / "frontend" / "public"
 MOCKUP_INDEX = MOCKUP_DIR / "index.html"
-MOCKUP_DETAIL = MOCKUP_DIR / "detail.html"
 DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///./dait.db"
 _HANGUL_CHECK = re.compile(r"[가-힣]")
 _LEGACY_DUMMY_PATTERNS: tuple[str, ...] = (
@@ -315,10 +314,6 @@ def create_application(
     @application.get("/", include_in_schema=False)
     async def index_page() -> FileResponse:
         return FileResponse(path=str(MOCKUP_INDEX), media_type="text/html")
-
-    @application.get("/detail.html", include_in_schema=False)
-    async def detail_page() -> FileResponse:
-        return FileResponse(path=str(MOCKUP_DETAIL), media_type="text/html")
 
     @application.get("/healthz", response_model=HealthResponse, tags=["health"])
     async def healthz() -> HealthResponse:

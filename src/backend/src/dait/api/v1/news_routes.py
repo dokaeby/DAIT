@@ -5,19 +5,22 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
+from dait.api.deps import get_current_user, get_optional_user
 from dait.core.config import Settings, get_settings
 from dait.core.errors import ValidationFailedError
 from dait.schemas.news import (
     ACTIVE_CATEGORIES,
+    NewsActivity,
     NewsCategory,
     NewsDetailResponse,
     NewsListResponse,
     SortOrder,
     decode_cursor,
 )
-from dait.services import news_detail_service, news_feed_service
+from dait.schemas.user import UserRecord
+from dait.services import news_activity_service, news_detail_service, news_feed_service
 
 router = APIRouter(prefix="/v1/news", tags=["news"])
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -26,7 +29,8 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 @router.get("", response_model=NewsListResponse, summary="뉴스 목록·검색·정렬")
 def list_news(
     settings: SettingsDep,
-    category: Annotated[NewsCategory, Query()] = NewsCategory.AI,
+    user: Annotated[UserRecord | None, Depends(get_optional_user)],
+    category: Annotated[NewsCategory | None, Query()] = None,
     q: Annotated[str, Query(max_length=100)] = "",
     sort: Annotated[SortOrder, Query()] = "rank",
     page_size: Annotated[int, Query(ge=1, le=50)] = 10,
@@ -38,14 +42,54 @@ def list_news(
     출력: NewsListResponse (items, page, meta)
     기능: MVP는 단일 AI 카테고리만 허용한다. 목록은 저장 결과만 읽는다.
     """
-    if category not in ACTIVE_CATEGORIES:
+    if category is not None and category not in ACTIVE_CATEGORIES:
         raise ValidationFailedError
     if cursor is not None:
         try:
             decode_cursor(cursor)  # 형식 검증은 service에서도 하지만 여기서 먼저 422를 만든다.
         except ValueError as exc:
             raise ValidationFailedError from exc
+    if user is None:
+        if cursor is not None:
+            raise ValidationFailedError
+        response = news_feed_service.list_news(
+            settings, None, "", "latest", min(page_size, 10), None
+        )
+        return response.model_copy(
+            update={
+                "page": response.page.model_copy(update={"has_more": False, "next_cursor": None}),
+                "meta": response.meta.model_copy(update={"total_visible": len(response.items)}),
+            }
+        )
     return news_feed_service.list_news(settings, category, q, sort, page_size, cursor)
+
+
+@router.get("/activity", response_model=NewsActivity)
+def news_activity(
+    settings: SettingsDep,
+    user: Annotated[UserRecord, Depends(get_current_user)],
+    response: Response,
+    q: Annotated[str, Query(max_length=100)] = "",
+    ids: Annotated[list[str] | None, Query(max_length=50)] = None,
+) -> NewsActivity:
+    """Fresh filtered counts and private read state, never publicly cached."""
+    if ids and any(not identifier or len(identifier) > 64 for identifier in ids):
+        raise ValidationFailedError
+    response.headers["Cache-Control"] = "no-store"
+    return news_activity_service.activity(settings, user.id, q, ids or [])
+
+
+@router.put("/{news_id}/read", status_code=204)
+def mark_news_read(
+    news_id: str,
+    settings: SettingsDep,
+    user: Annotated[UserRecord, Depends(get_current_user)],
+) -> Response:
+    """Idempotent authenticated read receipt."""
+    if not news_id or len(news_id) > 64:
+        raise ValidationFailedError
+    news_activity_service.mark_read(settings, user.id, news_id)
+    return Response(status_code=204)
 
 
 @router.get("/{news_id}", response_model=NewsDetailResponse, summary="뉴스 상세")

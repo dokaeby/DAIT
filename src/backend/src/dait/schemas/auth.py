@@ -21,6 +21,7 @@ from dait.schemas.interest import (
     empty_interests,
     empty_items,
 )
+from dait.schemas.nickname import Nickname
 from dait.schemas.user import UserPublic
 
 _EMAIL_MAX_LENGTH = 254  # RFC 5321 기준 주소 최대 길이
@@ -36,12 +37,19 @@ class SignupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     email: EmailStr
+    nickname: Nickname | None = None
     # SecretStr: 실수로 로그·repr에 찍혀도 *** 로만 보이게 한다.
     password: SecretStr = Field(min_length=8, max_length=128, description=_LENGTH_HINT)
     password_confirm: SecretStr = Field(min_length=8, max_length=128)
     terms_accepted: bool
     # 선택 필드: 보내지 않으면 관심사 없이 가입한다(관심사 기능이 빠져도 가입 요청은 그대로 통한다).
     interests: list[InterestCode] = Field(default_factory=empty_interests, max_length=MAX_INTERESTS)
+
+    @field_validator("nickname", mode="before")
+    @classmethod
+    def _empty_nickname(cls, value: object) -> object:
+        """빈 선택 입력은 이메일 표시를 뜻한다."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("interests")
     @classmethod

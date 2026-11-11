@@ -16,12 +16,19 @@ from dait.schemas.auth import (
     SignupRequest,
     TokenPair,
 )
+from dait.schemas.nickname import Nickname, NicknameAvailability
 from dait.schemas.user import UserRecord
 from dait.services import auth_service, interest_service
 from dait.services.login_throttle import LoginThrottles
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+
+@router.get("/nickname-availability", response_model=NicknameAvailability)
+def nickname_availability(nickname: Nickname, settings: SettingsDep) -> NicknameAvailability:
+    """입력을 검증하고 표시용 닉네임 사용 가능 여부만 반환한다."""
+    return auth_service.check_nickname(settings, nickname)
 
 
 def _attach_interests(response: AuthResponse, settings: Settings) -> AuthResponse:

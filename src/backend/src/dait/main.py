@@ -1,11 +1,14 @@
 """FastAPI 앱을 조립한다. 라우터는 한 줄씩 등록하며 업무 로직은 두지 않는다."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from dait.api.deps import get_throttles
 from dait.api.v1 import (
@@ -20,6 +23,7 @@ from dait.core.config import Settings, get_settings
 from dait.core.errors import register_error_handlers
 from dait.core.logging import configure_logging
 from dait.core.middleware import RequestContextMiddleware
+from dait.services.legacy_news_service import import_saved_news
 from dait.services.login_throttle import create_throttles
 
 
@@ -34,7 +38,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings if settings is not None else get_settings()
     configure_logging(config)
     docs = config.docs_enabled
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        await run_in_threadpool(import_saved_news, config)
+        yield
+
     app = FastAPI(
+        lifespan=lifespan,
         title="DAIT 회원 API",
         docs_url="/docs" if docs else None,
         redoc_url="/redoc" if docs else None,
@@ -50,7 +61,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
         )
     # 마지막에 추가한 미들웨어가 가장 바깥이라, CORS 사전 요청 응답에도 보안 헤더가 붙는다.
-    app.add_middleware(RequestContextMiddleware, csp=config.content_security_policy)
+    app.add_middleware(
+        RequestContextMiddleware,
+        csp=config.content_security_policy,
+        html_csp=(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+        ),
+    )
     throttles = create_throttles()  # 앱마다 하나: 실패 기록은 프로세스 메모리에만 있다.
     app.dependency_overrides[get_throttles] = lambda: throttles
     app.include_router(health_routes.router)
@@ -65,7 +84,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         for route_path, filename in (
             ("/", "index.html"),
-            ("/detail.html", "detail.html"),
             ("/settings.html", "settings.html"),
             ("/app.js", "app.js"),
         ):

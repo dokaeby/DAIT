@@ -2,6 +2,7 @@
 
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,7 +37,10 @@ class Settings(BaseSettings):
     )
 
     app_env: AppEnv = AppEnv.RELEASE  # 기본값이 release여야 설정 누락 시에도 안전하다.
-    database_url: str = Field(default="sqlite:///./dait.db", min_length=10, max_length=500)
+    database_url: str = Field(
+        default="sqlite:///./dait_integrated.db", min_length=10, max_length=500
+    )
+    legacy_news_db: Path = Path("dait.db")
     redis_url: str | None = Field(default=None, max_length=500)  # 비어 있으면 메모리 fallback
     cors_origins: list[str] = Field(default_factory=list, max_length=20)
     # 빈 기본값은 min_length 검증(BaseSettings는 기본값도 검증)에 걸려, 키가 없으면 시작이 거부된다.

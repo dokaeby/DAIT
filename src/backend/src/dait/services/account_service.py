@@ -39,7 +39,9 @@ def session_status(user: UserRecord | None) -> SessionResponse:
     """
     if user is None:
         return SessionResponse(authenticated=False)
-    public = UserPublic(id=user.id, email=user.email, status=user.status, role=user.role)
+    public = UserPublic(
+        id=user.id, email=user.email, status=user.status, role=user.role, nickname=user.nickname
+    )
     return SessionResponse(authenticated=True, user=public)
 
 

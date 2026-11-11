@@ -4,18 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DAIT · 설정</title>
-    <link rel="stylesheet" href="/mockup/mockup.css" />
+    <link rel="stylesheet" href="/mockup/local-design.css"><link rel="stylesheet" href="/mockup/local-app.css"><link rel="stylesheet" href="/mockup/news-ui.css?v=sidebar-language-2"><link rel="stylesheet" href="/mockup/settings-ui.css">
   </head>
   <body>
-    <div class="app-shell">
+    <div class="app-shell settings-shell">
       <header class="app-header">
-        <a class="brand" href="/">DAIT 뉴스 큐레이션</a>
+        <a class="brand" href="/" aria-label="DAIT 메인"><span class="brand-mark">DAIT</span><span class="brand-divider"></span><span class="brand-copy">AI 뉴스 큐레이션 서비스</span></a>
         <div class="header-actions"><a class="settings-gear" href="/settings.html" aria-label="설정" title="설정">⚙</a><span id="auth-area"></span></div>
       </header>
       <main class="settings-page" id="settings-main">
-        <div class="auth-required" id="auth-required" hidden>
-          <p>설정은 로그인 후 이용할 수 있습니다.</p>
-          <p><a href="/">메인으로 돌아가기</a></p>
+        <div class="auth-required" id="auth-required" hidden role="status">
+          <span class="auth-required-icon" aria-hidden="true">🔒</span>
+          <h1>로그인이 필요합니다</h1>
+          <p>관심 카테고리와 설정은 로그인 후 이용할 수 있습니다.</p>
+          <a class="primary-button" href="/">메인으로 돌아가기</a>
         </div>
         <div id="settings-body" hidden>
           <div class="page-head">
@@ -23,6 +25,15 @@
             <p class="page-description">뉴스 노출과 알림, 예약 수집을 관리합니다.</p>
           </div>
 
+          <section class="settings-card interests-panel" id="interests">
+            <div class="panel-head"><h2 class="panel-title">관심 카테고리</h2><span id="interest-count" class="interest-count" role="status" aria-live="polite"></span></div>
+            <p class="card-note">계정별 관심사를 저장합니다. 맞춤 뉴스 목록 연결은 다음 단계에서 적용됩니다.</p>
+            <form id="interests-form">
+              <fieldset id="interest-fields" disabled><legend class="sr-only">관심 카테고리 선택</legend><div class="interest-tools"><button type="button" class="auth-link" id="interests-all">전체 선택</button><button type="button" class="auth-link" id="interests-clear">선택 해제</button></div><div id="interest-options"></div><button class="primary-button" type="submit">관심사 저장</button></fieldset>
+            </form>
+            <p id="interests-feedback" class="settings-feedback" role="status" aria-live="polite">관심사를 불러오고 있습니다…</p>
+            <button class="secondary-button" id="interests-retry" type="button" hidden>다시 불러오기</button>
+          </section>
           <section class="settings-card">
             <h2>노출·알림</h2>
             <p class="card-note">변경 사항은 저장 버튼을 눌러야 적용됩니다.</p>
@@ -42,12 +53,12 @@
                 </label>
               </div>
               <div class="toggle-row">
-                <div class="toggle-copy"><strong>인앱 알림</strong><span>처리 결과를 DAIT 안에서 확인합니다.</span></div>
-                <label class="switch-control"><input id="set-in-app" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
+                <div class="toggle-copy"><strong>인앱 알림</strong><span>인앱 알림 사용 여부를 저장합니다.</span></div>
+                <label class="switch-control"><input id="set-in-app" class="sr-only" type="checkbox" aria-label="인앱 알림"><span class="switch" aria-hidden="true"></span></label>
               </div>
               <div class="toggle-row">
-                <div class="toggle-copy"><strong>메일 알림</strong><span>이메일로 요약 결과를 받습니다.</span></div>
-                <label class="switch-control"><input id="set-email" type="checkbox"><span class="switch" aria-hidden="true"></span></label>
+                <div class="toggle-copy"><strong>메일 알림</strong><span>메일 알림 사용 여부를 저장합니다. 실제 발송은 후속 단계입니다.</span></div>
+                <label class="switch-control"><input id="set-email" class="sr-only" type="checkbox" aria-label="메일 알림"><span class="switch" aria-hidden="true"></span></label>
               </div>
               <div style="margin-top: 1rem; display: flex; gap: 0.6rem; align-items: center;">
                 <button class="primary-button" type="submit">설정 저장</button>
@@ -58,7 +69,7 @@
 
           <section class="settings-card">
             <h2>예약 수집</h2>
-            <p class="card-note">매일 지정한 시각(KST)에 맞춤 뉴스 알림을 예약합니다. 사용자당 최대 10개.</p>
+            <p class="card-note">예약 조건을 계정에 저장합니다. 실제 수집·알림 실행 연결은 후속 단계입니다. 최대 10개.</p>
             <form id="schedule-form" class="form-grid">
               <label class="form-field">
                 <span class="field-label">시각</span>
@@ -84,152 +95,6 @@
       </main>
     </div>
     <script src="/app.js"></script>
-    <script>
-      (async function () {
-        const user = await DAIT.currentUser();
-        const required = document.getElementById("auth-required");
-        const body = document.getElementById("settings-body");
-        if (!user) {
-          required.hidden = false;
-          return;
-        }
-        body.hidden = false;
-
-        const feedback = document.getElementById("settings-feedback");
-        const schedFeedback = document.getElementById("schedule-feedback");
-        const listEl = document.getElementById("schedule-list");
-        const schedForm = document.getElementById("schedule-form");
-        const schedSubmit = document.getElementById("sched-submit");
-        const schedCancel = document.getElementById("sched-cancel-edit");
-        let editingScheduleId = null;
-
-        function show(el, msg, ok) {
-          el.textContent = msg || "";
-          el.classList.toggle("is-error", !ok);
-        }
-
-        async function loadSettings() {
-          const res = await DAIT.api("/v1/me/settings");
-          if (!res.ok) { show(feedback, "설정을 불러오지 못했습니다.", false); return; }
-          const s = await res.json();
-          document.getElementById("set-default-count").value = String(s.default_count);
-          document.getElementById("set-keywords").value = (s.keywords || []).join(", ");
-          document.getElementById("set-in-app").checked = !!s.in_app_notice;
-          document.getElementById("set-email").checked = !!s.email_notice;
-        }
-
-        document.getElementById("settings-form").addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const keywords = document.getElementById("set-keywords").value
-            .split(",").map((k) => k.trim()).filter(Boolean);
-          const res = await DAIT.api("/v1/me/settings", {
-            method: "PATCH",
-            body: JSON.stringify({
-              default_count: Number(document.getElementById("set-default-count").value),
-              keywords,
-              in_app_notice: document.getElementById("set-in-app").checked,
-              email_notice: document.getElementById("set-email").checked,
-            }),
-          });
-          if (res.ok) { show(feedback, "저장했습니다.", true); await loadSettings(); }
-          else {
-            const b = await res.json().catch(() => ({}));
-            show(feedback, (b.message) || "저장에 실패했습니다.", false);
-          }
-        });
-
-        async function loadSchedules() {
-          const res = await DAIT.api("/v1/me/schedules");
-          if (!res.ok) { show(schedFeedback, "예약 목록을 불러오지 못했습니다.", false); return; }
-          const data = await res.json();
-          const items = data.items || [];
-          listEl.innerHTML = "";
-          if (!items.length) {
-            listEl.innerHTML = '<li class="schedule-item schedule-meta">등록된 예약이 없습니다.</li>';
-            return;
-          }
-          for (const s of items) {
-            const li = document.createElement("li");
-            li.className = "schedule-item";
-            const next = s.next_run_at ? new Date(s.next_run_at).toLocaleString("ko-KR") : "-";
-            li.innerHTML =
-              '<span class="schedule-meta"><strong>' + s.local_time + "</strong> " +
-              s.timezone + " · 다음 실행 " + next +
-              (s.criteria && s.criteria.keywords && s.criteria.keywords.length
-                ? " · 키워드 " + s.criteria.keywords.join(", ") : "") +
-              "</span>";
-            const del = document.createElement("button");
-            del.className = "danger-button";
-            del.type = "button";
-            del.textContent = "삭제";
-            del.addEventListener("click", async () => {
-              const r = await DAIT.api("/v1/me/schedules/" + encodeURIComponent(s.id), { method: "DELETE" });
-              if (r.ok) { show(schedFeedback, "삭제했습니다.", true); loadSchedules(); }
-              else show(schedFeedback, "삭제에 실패했습니다.", false);
-            });
-            const edit = document.createElement("button");
-            edit.className = "secondary-button";
-            edit.type = "button";
-            edit.textContent = "수정";
-            edit.addEventListener("click", () => {
-              editingScheduleId = s.id;
-              document.getElementById("sched-time").value = s.local_time || "";
-              document.getElementById("sched-tz").value = s.timezone || "Asia/Seoul";
-              document.getElementById("sched-keywords").value =
-                (s.criteria && s.criteria.keywords ? s.criteria.keywords : []).join(", ");
-              schedSubmit.textContent = "예약 수정";
-              schedCancel.hidden = false;
-              schedFeedback.textContent = "";
-              schedForm.scrollIntoView({ behavior: "smooth", block: "center" });
-            });
-            li.appendChild(edit);
-            li.appendChild(del);
-            listEl.appendChild(li);
-          }
-        }
-
-        function resetScheduleForm() {
-          editingScheduleId = null;
-          schedSubmit.textContent = "예약 추가";
-          schedCancel.hidden = true;
-          schedForm.reset();
-          document.getElementById("sched-tz").value = "Asia/Seoul";
-        }
-
-        schedCancel.addEventListener("click", resetScheduleForm);
-
-        schedForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const keywords = document.getElementById("sched-keywords").value
-            .split(",").map((k) => k.trim()).filter(Boolean);
-          const payload = {
-            local_time: document.getElementById("sched-time").value,
-            timezone: document.getElementById("sched-tz").value.trim() || "Asia/Seoul",
-            criteria: { categories: ["AI"], keywords, source_ids: [] },
-          };
-          const isEdit = editingScheduleId !== null;
-          const res = await DAIT.api(
-            isEdit ? "/v1/me/schedules/" + encodeURIComponent(editingScheduleId) : "/v1/me/schedules",
-            {
-              method: isEdit ? "PATCH" : "POST",
-              body: JSON.stringify(isEdit
-                ? { local_time: payload.local_time, timezone: payload.timezone, criteria: payload.criteria }
-                : { ...payload, enabled: true }),
-            },
-          );
-          if (res.ok) {
-            show(schedFeedback, isEdit ? "예약을 수정했습니다." : "예약을 추가했습니다.", true);
-            resetScheduleForm();
-            loadSchedules();
-          } else {
-            const b = await res.json().catch(() => ({}));
-            show(schedFeedback, (b.message) || (isEdit ? "예약 수정에 실패했습니다." : "예약 추가에 실패했습니다."), false);
-          }
-        });
-
-        await loadSettings();
-        await loadSchedules();
-      })();
-    </script>
+    <script src="/mockup/settings-ui.js"></script>
   </body>
 </html>

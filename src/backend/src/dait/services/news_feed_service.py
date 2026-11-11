@@ -73,7 +73,7 @@ def _to_item(row: news_repository.NewsListRow, rank: int) -> NewsListItem | None
 
 def list_news(
     settings: Settings,
-    category: NewsCategory,
+    category: NewsCategory | None,
     query: str,
     sort: SortOrder,
     page_size: int,
@@ -91,7 +91,7 @@ def list_news(
     """
     normalized = news_search_service.normalize_query(query)
     cache_key = cache_retry_service.list_cache_key(
-        category.value, normalized, sort, page_size, cursor
+        category.value if category is not None else "ALL", normalized, sort, page_size, cursor
     )
     cached = cache_retry_service.cache_get(settings, cache_key)
     if cached is not None:
@@ -110,7 +110,7 @@ def list_news(
 
 def _list_news_uncached(
     settings: Settings,
-    category: NewsCategory,
+    category: NewsCategory | None,
     normalized: str,
     sort: SortOrder,
     page_size: int,
@@ -127,9 +127,16 @@ def _list_news_uncached(
 
     with transaction(settings.database_url) as conn:
         rows = news_repository.list_public_news(
-            conn, category.value, normalized, sort, page_size + 1, offset
+            conn,
+            category.value if category is not None else None,
+            normalized,
+            sort,
+            page_size + 1,
+            offset,
         )
-        total = news_repository.count_public_news(conn, category.value, normalized)
+        total = news_repository.count_public_news(
+            conn, category.value if category is not None else None, normalized
+        )
         partial = news_repository.has_recent_job_failures(conn, since_iso)
 
     has_more = len(rows) > page_size

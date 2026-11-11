@@ -5,9 +5,11 @@ from datetime import datetime
 from typing import NamedTuple, cast
 
 from dait.repositories.db import DbConnection
-from dait.schemas.news import PUBLIC_STATUSES
+from dait.schemas.news import ACTIVE_CATEGORIES, PUBLIC_STATUSES
 
 _STATUS_VALUES = tuple(status.value for status in PUBLIC_STATUSES)
+_CATEGORY_VALUES = tuple(sorted(category.value for category in ACTIVE_CATEGORIES))
+_CATEGORY_CLAUSE = "n.category IN (" + ", ".join("?" for _ in _CATEGORY_VALUES) + ")"
 
 
 class NewsListRow(NamedTuple):
@@ -79,7 +81,7 @@ def _public_status_clause(alias: str = "c") -> str:
 
 def list_public_news(
     conn: DbConnection,
-    category: str,
+    category: str | None,
     query: str,
     sort: str,
     limit: int,
@@ -93,8 +95,11 @@ def list_public_news(
     기능: rank는 품질(READY 우선)→발행 시각→출처 우선순위→ID 순,
           latest는 발행 시각→ID 순. FAILED·PENDING은 제외한다.
     """
-    clauses = ["n.category = ?", _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
-    params: list[str | int] = [category]
+    clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
+    params: list[str | int] = list(_CATEGORY_VALUES)
+    if category is not None:
+        clauses.append("n.category = ?")
+        params.append(category)
     if query:
         pattern = f"%{_escape_like(query.lower())}%"
         like = "(lower(n.title) LIKE ? ESCAPE '\\' OR lower(c.summary_lines) LIKE ? ESCAPE '\\')"
@@ -134,15 +139,18 @@ def list_public_news(
     ]
 
 
-def count_public_news(conn: DbConnection, category: str, query: str) -> int:
+def count_public_news(conn: DbConnection, category: str | None, query: str) -> int:
     """현재 조건에서 화면에 표시 가능한 전체 건수를 센다.
 
     입력: conn (연결), category, query (정규화된 검색어)
     출력: int (total_visible)
     기능: 목록과 같은 필터를 쓰되 정렬·페이지는 적용하지 않는다.
     """
-    clauses = ["n.category = ?", _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
-    params: list[str | int] = [category]
+    clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
+    params: list[str | int] = list(_CATEGORY_VALUES)
+    if category is not None:
+        clauses.append("n.category = ?")
+        params.append(category)
     if query:
         pattern = f"%{_escape_like(query.lower())}%"
         like = "(lower(n.title) LIKE ? ESCAPE '\\' OR lower(c.summary_lines) LIKE ? ESCAPE '\\')"
@@ -188,9 +196,9 @@ def get_public_news(conn: DbConnection, news_id: str) -> NewsDetailRow | None:
         "FROM news n "
         "JOIN sources s ON s.id = n.source_id "
         "JOIN content_results c ON c.news_id = n.id "
-        f"WHERE n.id = ? AND {_public_status_clause()} AND n.category = 'AI' "
+        f"WHERE n.id = ? AND {_public_status_clause()} AND {_CATEGORY_CLAUSE} "
         "AND n.canonical_url LIKE 'https://%'",
-        (news_id,),
+        (news_id, *_CATEGORY_VALUES),
     ).fetchone()
     if row is None:
         return None
