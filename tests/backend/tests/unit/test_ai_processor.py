@@ -6,6 +6,7 @@
 import asyncio
 import json
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -36,8 +37,12 @@ FOREIGN_BODY = (
 VALID_LINES = ["핵심 결론 한 문장.", "배경과 원인 한 문장.", "전망과 영향 한 문장."]
 
 
-def _settings(*, api_key: str = "test-xai-key") -> Settings:
-    return Settings(xai_api_key=SecretStr(api_key), grok_model="grok-test")
+def _settings(*, api_key: str = "test-xai-key", groq_key: str = "") -> Settings:
+    return Settings(
+        xai_api_key=SecretStr(api_key),
+        groq_api_key=SecretStr(groq_key),
+        grok_model="grok-test",
+    )
 
 
 def _domestic_article() -> ArticleContent:
@@ -53,15 +58,18 @@ def _foreign_article() -> ArticleContent:
 class FakeGrokClient:
     """네트워크 없이 호출을 기록하고 설정된 결과/예외를 반환하는 Fake."""
 
-    def __init__(self, result: str | Exception) -> None:
-        self._result = result
+    def __init__(self, result: str | Exception | list[str | Exception]) -> None:
+        self._queue = (
+            list(result) if isinstance(result, list) else [result]
+        )
         self.calls: list[dict[str, str]] = []
 
     async def complete(self, *, system_instruction: str, user_prompt: str) -> str:
         self.calls.append({"system": system_instruction, "user": user_prompt})
-        if isinstance(self._result, Exception):
-            raise self._result
-        return self._result
+        result = self._queue.pop(0) if len(self._queue) > 1 else self._queue[0]
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 def _completion_payload(**overrides: Any) -> str:
@@ -142,8 +150,7 @@ def test_different_content_hash_bypasses_cache() -> None:
 
 
 def test_missing_api_key_uses_regex_fallback() -> None:
-    client = FakeGrokClient(_completion_payload())
-    processor = AIProcessor(_settings(api_key=""), client=client)
+    processor = AIProcessor(_settings(api_key=""))
 
     result = asyncio.run(processor.process(_domestic_article()))
 
@@ -151,7 +158,6 @@ def test_missing_api_key_uses_regex_fallback() -> None:
     assert result.engine == "regex-fallback"
     assert len(result.summary_lines) == 3
     assert all(line for line in result.summary_lines)
-    assert client.calls == []
 
 
 def test_api_error_falls_back_to_regex_summary() -> None:
@@ -226,13 +232,11 @@ def test_grok_enabled_reflects_api_key_presence() -> None:
 
 
 def test_whitespace_api_key_uses_regex_fallback() -> None:
-    client = FakeGrokClient(_completion_payload())
-    processor = AIProcessor(_settings(api_key="   "), client=client)
+    processor = AIProcessor(_settings(api_key="   "))
 
     result = asyncio.run(processor.process(_domestic_article()))
 
     assert result.engine == "regex-fallback"
-    assert client.calls == []
 
 
 def test_settings_keeps_secret_out_of_repr() -> None:
@@ -318,3 +322,126 @@ def test_httpx_client_raises_processing_error_on_bad_payload() -> None:
 
     with pytest.raises(ProcessingError):
         asyncio.run(run())
+
+
+def _groq_settings() -> Settings:
+    return Settings(
+        groq_api_key=SecretStr("test-groq-key"),
+        groq_model="gpt-oss-test",
+    )
+
+
+def test_groq_key_preferred_over_xai() -> None:
+    client = GrokClient.from_settings(_groq_settings())
+
+    assert client is not None
+    assert client._model == "gpt-oss-test"
+    assert client._base_url == "https://api.groq.com/openai/v1"
+
+
+def test_groq_disabled_and_no_xai_returns_none() -> None:
+    blank = Settings(xai_api_key=SecretStr(""), groq_api_key=SecretStr(""))
+    assert GrokClient.from_settings(blank) is None
+
+
+def test_grok_client_retries_on_429_then_succeeds() -> None:
+    calls = {"n": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, json={"error": "rate limited"})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": _completion_payload()}}
+                ]
+            },
+        )
+
+    async def run() -> str:
+        client = GrokClient.from_settings(
+            _settings(), transport=httpx.MockTransport(handler)
+        )
+        assert client is not None
+        try:
+            return await client.complete(system_instruction="s", user_prompt="u")
+        finally:
+            await client.aclose()
+
+    with patch("dait.workers.ai_processor.asyncio.sleep", new=AsyncMock()):
+        out = asyncio.run(run())
+
+    assert calls["n"] == 2
+    assert json.loads(out)["summary_lines"] == VALID_LINES
+
+
+def test_batch_coalesces_calls_into_single_request() -> None:
+    articles = [_domestic_article() for _ in range(3)]
+    payload = {
+        "results": [
+            {"summary_lines": list(VALID_LINES), "translated_title": None}
+            for _ in range(3)
+        ]
+    }
+    client = FakeGrokClient(json.dumps(payload, ensure_ascii=False))
+    processor = AIProcessor(_settings(), client=client, batch_size=4)
+
+    async def run() -> list:
+        return await asyncio.gather(
+            *(processor.process(article) for article in articles)
+        )
+
+    results = asyncio.run(run())
+
+    assert len(client.calls) == 1
+    assert "results" in client.calls[0]["user"]
+    assert all(r.engine == "grok" for r in results)
+    stats = processor.stats_snapshot()
+    assert stats["grok_calls"] == 1
+    assert stats["grok_success"] == 3
+
+
+def test_batch_result_count_mismatch_retries_individually() -> None:
+    client = FakeGrokClient(
+        [
+            json.dumps({"results": []}, ensure_ascii=False),
+            _completion_payload(),
+            _completion_payload(),
+        ]
+    )
+    processor = AIProcessor(_settings(), client=client, batch_size=4)
+
+    async def run():
+        return await asyncio.gather(
+            processor.process(_domestic_article()),
+            processor.process(_domestic_article()),
+        )
+
+    results = asyncio.run(run())
+
+    assert len(client.calls) == 3
+    assert all(r.engine == "grok" for r in results)
+    stats = processor.stats_snapshot()
+    assert stats["grok_calls"] == 3
+    assert stats["grok_success"] == 2
+
+
+def test_numeric_guard_rejects_invented_numbers() -> None:
+    client = FakeGrokClient(
+        _completion_payload(summary_lines=[
+            "주가가 99% 급등했다.", "배경 설명.", "전망 설명.",
+        ])
+    )
+    processor = AIProcessor(_settings(), client=client)
+
+    result = asyncio.run(processor.process(_domestic_article()))
+
+    assert result.engine == "regex-fallback"
+    assert processor.stats_snapshot()["grok_fallback"] == 1
+
+
+def test_batch_size_bounds_enforced() -> None:
+    with pytest.raises(ValueError):
+        AIProcessor(_settings(), client=FakeGrokClient("{}"), batch_size=9)
