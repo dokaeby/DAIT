@@ -433,6 +433,7 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
 | 8 | (확인 필요) | 화면 흐름, 프런트 API 사용 규칙 | 로그아웃(`POST /v1/auth/logout`)과 탈퇴(`DELETE /v1/me`)는 Bearer 토큰이 필요하고 성공 응답은 `{"result":"done"}`(200)이다. 탈퇴는 본문에 `{"password": ...}`를 보내야 하므로 DELETE 요청 본문이 전송되는지 확인해 주세요. 로그인 중 가입·로그인은 409 `ALREADY_LOGGED_IN`, 화면의 로그인 상태는 `GET /v1/me/session`(`authenticated`)으로 판단한다. | 4절 d, AGENTS.md 5-1 | 요청 전 |
 | 9 | FR-INTEREST-01(임시) | 화면 흐름, 프런트 API 사용 규칙 | 관심사 카탈로그(`GET /v1/interests/catalog`)는 로그인 없이 대주제 3개·소주제 15개를 `{group, group_name, interests:[{code,name,group}]}` 형태로 준다. 화면에는 `name`(한글)만 보이고 서버로 보낼 때만 `code`를 쓴다. 가입 요청의 `interests`는 선택(보내지 않으면 빈 목록)이고 내 관심사는 `GET/PUT /v1/me/interests`(PUT은 전체 교체, 빈 목록은 선택 해제)로 다룬다. 시연에서 관심 메뉴를 쓸지는 팀이 정한다(관심사를 안 써도 다른 기능은 그대로 동작). 화면 흐름은 대주제 3개를 한 단계씩 보여 주는 3회 선택이며(각 5개, 건너뛰기 가능), 단계 선택을 모았다가 마지막에 `PUT /v1/me/interests`로 한 번 보내거나 가입 요청의 `interests`에 담아 보낸다. 도중 이탈하면 앞 단계 선택은 저장되지 않는다. 건너뛰기만 한 사용자와 아직 묻지 않은 사용자를 서버가 구분하지 않으므로(둘 다 빈 목록), 같은 안내를 반복할지는 화면이 정한다. 로그인(`POST /v1/auth/login`)·가입 응답과 `GET /v1/me/session`(로그인 상태일 때)에는 DB에 저장된 관심사가 `interests: [{code,name,group}]`(카탈로그 순서, 없으면 빈 목록)로 함께 내려오므로 메인 화면은 이 값을 상태에 저장해 쓰면 된다. 관심사를 바꾸면(`PUT`) 화면 상태도 갱신해야 한다. | README 6절 | 요청 전 |
 | 10 | FR-HOME-01, FR-SEARCH-01, FR-SET-02 | 06_API_설계서 4.1(`GET /v1/news`), 메인 작업자 | 관심사는 필터 방식으로 적용한다(4절 m). 메인 작업자는 로그인 사용자의 관심 항목·키워드(회원 파트가 `interest_service.get_my_interests`로 제공)를 목록 검색 조건으로 넣을 수 있게 `q`를 여러 키워드로 확장하거나 관심 조건 파라미터를 추가할지 정해 주세요. 15개 항목은 한글 이름을 검색어로 쓰면 가장 단순하다. 관심사로 순위를 올리는 우선 표시는 2단계 제안이다. | 4절 m | 요청 전 |
+| 11 | (확인 필요) | 화면(가입·로그인) 담당자, 프런트 API 사용 규칙 | 오류 응답은 `{code, message, request_id, errors?}`입니다. (a) 화면은 `error`가 아니라 `message`를 읽어 보여 주세요. (b) 422는 `errors[].field` 입력칸 아래에 `errors[].message`를 보여 주세요(field: `email`, `password`, `password_confirm`, `terms_accepted`, 그 밖은 `body`). (c) 500은 `request_id`를 함께 보여 주세요. (d) 응답이 없으면 "서버에 연결하지 못했습니다. 네트워크를 확인하고 다시 시도해 주세요."를 화면에서 보여 주세요. (e) 비밀번호는 어떤 오류에서도 콘솔·URL에 남기지 마세요. | 12절 가입·로그인 오류 문구 | 요청 전 |
 
 ### 10.2 문서 담당자에게 알릴 점
 
@@ -608,6 +609,11 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
 - 왜: AGENTS.md 5-5의 1번(목적·보관 기간·삭제 절차 문서화)과 기획서 P0 "개인정보 보관 기간과 탈퇴 삭제 방식"이 요구한다. PR 본문 초안은 기준이 요구하지 않아 만들지 않았다.
 - 근거: 사용자 지시 2026-11-08 ("진행"). 법적 검토를 거친 문서가 아니며 운영 전 담당자 검토가 필요하다.
 
+### 2026-11-11 — 가입·로그인 오류 문구 통일 (PR 1)
+- 무엇을: 오류 응답에 선택 필드 `errors`(field, code, message)를 더하고 상태 코드별 한국어 문구를 정했다. 중복 이메일 409는 "이미 가입된 이메일입니다."로 바꿨다.
+- 왜: 가입이 실패해도 화면에 이유가 보이지 않았다.
+- 근거: 사용자 승인 2026-11-11, 정비 매뉴얼 REV E 1-1·1-2절, 409는 사용자 결정(decisions.md에 계정 열거 방지 예외로 기록).
+
 ---
 
 ## 12. 기능 구현 기록
@@ -780,6 +786,26 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
 - 실제 관찰 결과: 위 호출 결과. 확인하지 못한 것: 실서버에서 `GET /v1/me/interests`와 토큰 없는 GET의 상태 코드(내 호출 도우미가 GET에 본문을 실어 보내 결과가 비었음. 같은 동작은 단위 HTTP 테스트로 확인), 한글 이름의 콘솔 표시(PowerShell이 UTF-8을 잘못 해석해 깨져 보임, 서버 응답은 UTF-8 JSON이고 테스트로 확인).
 - 새 환경변수 / 마이그레이션 여부: 환경변수 없음. 마이그레이션 `0002_interests` 추가(upgrade·downgrade 테스트 있음).
 - 문서 반영 요청: 10.1절 9번 추가(프런트: 카탈로그 응답 형태와 가입 `interests` 사용).
+
+### 가입·로그인 오류 문구 (2026-11-11)
+- 기능 ID / 합격 기준 ID: 가입·로그인 기능의 오류 표시(기능 ID는 8절 13번 확인 후 보강)
+- 화면 설계서(PPT): 이 변경은 API 응답 문구만 바꾸고 화면은 고치지 않는다. 화면 담당 요청은 10.1절 11번.
+- 만든·고친 파일 (이 폴더 기준):
+  - `src/dait/core/errors.py` : `FieldError`·`ErrorResponse.errors`(선택, 최대 10개) 추가. 422 핸들러가 Pydantic 오류의 위치·종류·고정 메시지만으로 칸별 이유를 만들고 `input` 값은 버린다. 중복 가입·429·500 문구 변경, `WeakPasswordError`는 이유별 문구.
+  - `src/dait/core/password_policy.py` : `is_weak_password` → `weak_password_reason`(흔한 값 / 이메일 앞부분 포함 / 통과를 구분)
+  - `src/dait/services/auth_service.py` : 이유를 예외에 실어 올림. `src/dait/api/auth.py` : 설명 문구만 수정
+  - `tests/unit/test_auth_api.py`, `test_auth_service.py`, `test_password_policy_and_throttle.py` : 이유 코드·문구·입력값 비노출 테스트 추가, 바뀐 문구에 맞춰 기대값 수정
+  - `docs/decisions.md` : 계정 열거 방지 예외 기록
+- 구현 방식: 422 `errors`의 field·code·message는 README 10.1절 11번과 매뉴얼 1-2절 표를 따른다(TOO_SHORT, TOO_LONG, COMMON_PASSWORD, CONTAINS_EMAIL, MISMATCH, TERMS_REQUIRED, INVALID_FORMAT, 필수 누락 REQUIRED, 그 밖 INVALID). 최상위 `message`는 첫 번째 오류 문구다. 기존 `{code, message, request_id}`는 그대로라 지금 화면은 깨지지 않는다. 비밀번호 확인 불일치·약관은 모델 검증기의 고정 메시지로 구분한다.
+- 판단 근거: AGENTS.md 1절(검증은 모델 안에서, 입력값 비노출), 9절(계층 유지). 상태 코드와 로그인 실패 동작(401 일반 문구)은 바꾸지 않았다.
+- 기존 지시와 다른 점: 409 중복 이메일이 이메일 존재를 알려 준다(AGENTS.md 5절 계정 열거 방지 예외, 사용자 결정, decisions.md).
+- 합치기 영향: 오류 본문에 `errors`가 늘 수 있다(기존 필드는 그대로). 다른 파트가 `WeakPasswordError()`를 인자 없이 만들면 안 된다(이유 인자 필수). 500 문구가 "서버에 문제가 생겼습니다. 잠시 후 다시 시도해 주세요."로 바뀌었다.
+- 보안 점검: 악의적 입력 — 알 수 없는 필드 이름·틀린 값은 `errors`에 실리지 않고(테스트), 비밀번호 원문은 응답에 없다. 오류 목록은 10개로 제한. 외부 실패 — 해당 없음. 중복 실행 — 응답 문구만 바꿔 영향 없음.
+- 테스트 대상 UT ID / 테스트 결과: 08·09 기준 확인은 사용자가 나중에 재확인 후 알려 주기로 해서 **이번에는 기록하지 않는다(보류).** 아래는 기본 품질 검사 결과다.
+- 품질 게이트 결과 (실제 출력): `uv run ruff check .` → All checks passed! / `uv run ruff format --check .` → 51 files already formatted / `uv run pyright` → 0 errors, 0 warnings, 0 informations / `uv run pytest -q` → 179 passed (기준선 173 + 새 테스트 6). pip-audit·pre-commit·gitleaks는 의존성 변경이 없어 실행하지 않았다.
+- release 모드 영향: 영향 없음(모드 분기 없음). 서버를 실제로 띄워 보지는 않았고 단위 HTTP 테스트로 확인했다.
+- 새 환경변수 / 마이그레이션 여부: 없음 / 없음
+- 문서 반영 요청: 10.1절 11번 추가(화면 담당)
 
 ---
 

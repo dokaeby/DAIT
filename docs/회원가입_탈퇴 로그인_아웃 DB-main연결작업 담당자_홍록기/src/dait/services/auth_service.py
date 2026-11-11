@@ -13,7 +13,7 @@ from dait.core.errors import (
     WeakPasswordError,
 )
 from dait.core.logging import audit
-from dait.core.password_policy import is_weak_password
+from dait.core.password_policy import weak_password_reason
 from dait.core.security import (
     create_access_token,
     hash_password,
@@ -104,9 +104,10 @@ def signup(
     """
     email = str(request.email).lower()
     raw_password = request.password.get_secret_value()
-    if is_weak_password(raw_password, email):
+    weak_reason = weak_password_reason(raw_password, email)
+    if weak_reason is not None:
         audit("signup", "weak_password", client_ip=client_ip)
-        raise WeakPasswordError
+        raise WeakPasswordError(weak_reason)
     user = UserRecord(
         id=uuid.uuid4().hex,
         email=email,

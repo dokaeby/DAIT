@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from dait.core.password_policy import is_weak_password
+from dait.core.password_policy import weak_password_reason
 from dait.services.login_throttle import AttemptThrottle, create_throttles
 
 NOW = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
@@ -13,22 +13,22 @@ NOW = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
 @pytest.mark.parametrize("password", ["password123", "PASSWORD123", "12345678", "qwerty123"])
 def test_common_passwords_are_weak(password: str) -> None:
     """흔한 비밀번호는 대소문자와 관계없이 막는다."""
-    assert is_weak_password(password, "someone@example.com") is True
+    assert weak_password_reason(password, "someone@example.com") == "COMMON_PASSWORD"
 
 
 def test_password_containing_email_local_part_is_weak() -> None:
     """이메일 앞부분을 포함한 비밀번호는 막는다."""
-    assert is_weak_password("Xjohnsmith-2026!", "JohnSmith@example.com") is True
+    assert weak_password_reason("Xjohnsmith-2026!", "JohnSmith@example.com") == "CONTAINS_EMAIL"
 
 
 def test_short_local_part_is_not_compared() -> None:
     """앞부분이 3자 미만이면 우연히 겹치기 쉬워 비교하지 않는다."""
-    assert is_weak_password("Zab!Xk39-pqr", "ab@example.com") is False
+    assert weak_password_reason("Zab!Xk39-pqr", "ab@example.com") is None
 
 
 def test_strong_password_is_allowed() -> None:
     """흔하지 않고 이메일과 무관한 비밀번호는 통과한다."""
-    assert is_weak_password("Str0ng!Passw0rd-xyz", "usera@example.com") is False
+    assert weak_password_reason("Str0ng!Passw0rd-xyz", "usera@example.com") is None
 
 
 def test_not_locked_before_threshold() -> None:

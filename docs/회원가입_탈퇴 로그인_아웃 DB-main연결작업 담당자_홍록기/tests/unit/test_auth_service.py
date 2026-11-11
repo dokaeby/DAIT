@@ -93,7 +93,7 @@ def test_duplicate_email_is_rejected_without_new_rows(settings: Settings) -> Non
         auth_service.signup(
             settings, signup_request("USERA@example.com", "Other!Passw0rd-123"), None, NOW
         )
-    assert "이메일" not in caught.value.message
+    assert caught.value.message == "이미 가입된 이메일입니다."
     assert EMAIL not in str(caught.value)
     assert len(rows(settings, "SELECT id FROM users")) == 1
     assert len(rows(settings, "SELECT id FROM refresh_tokens")) == 1
@@ -101,10 +101,12 @@ def test_duplicate_email_is_rejected_without_new_rows(settings: Settings) -> Non
 
 def test_weak_password_is_rejected_without_user(settings: Settings) -> None:
     """흔한 비밀번호와 이메일 포함 비밀번호는 사용자를 만들지 않는다."""
-    with pytest.raises(WeakPasswordError):
+    with pytest.raises(WeakPasswordError) as common:
         auth_service.signup(settings, signup_request(password=COMMON), None, NOW)
-    with pytest.raises(WeakPasswordError):
+    with pytest.raises(WeakPasswordError) as has_email:
         auth_service.signup(settings, signup_request(password=HAS_EMAIL), None, NOW)
+    assert common.value.errors[0].code == "COMMON_PASSWORD"
+    assert has_email.value.errors[0].code == "CONTAINS_EMAIL"
     assert rows(settings, "SELECT id FROM users") == []
 
 
