@@ -107,7 +107,10 @@ def test_unhandled_error_is_generic_500(tmp_path: Path) -> None:
 
     response = make_client(tmp_path, routes={"/boom": boom}).request("GET", "/boom")
     assert response.status_code == 500
-    assert ErrorResponse.model_validate_json(response.text).code == "INTERNAL_ERROR"
+    body = ErrorResponse.model_validate_json(response.text)
+    assert body.code == "INTERNAL_ERROR"
+    assert body.message == "서버에 문제가 생겼습니다. 잠시 후 다시 시도해 주세요."
+    assert body.request_id == response.headers["X-Request-ID"]  # UT-STATE-005의 서버 쪽 근거
     assert "hunter2" not in response.text
     assert "Traceback" not in response.text
     assert "X-Request-ID" in response.headers

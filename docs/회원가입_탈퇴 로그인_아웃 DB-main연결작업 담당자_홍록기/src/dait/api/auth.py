@@ -49,8 +49,8 @@ def signup(
     입력: body (이메일, 비밀번호 8~128자, 비밀번호 확인, 약관 동의), request, settings,
           current (이미 로그인된 요청이면 사용자)
     출력: AuthResponse (201, 사용자 정보와 access·refresh 토큰)
-    기능: 로그인된 상태면 409 ALREADY_LOGGED_IN, 이미 쓰는 이메일은 409 SIGNUP_FAILED,
-          흔한 비밀번호는 422 WEAK_PASSWORD.
+    기능: 로그인된 상태면 409 ALREADY_LOGGED_IN, 이미 가입된 이메일은 409 SIGNUP_FAILED,
+          흔하거나 이메일을 포함한 비밀번호는 422 WEAK_PASSWORD.
     """
     if current is not None:
         raise AlreadyLoggedInError

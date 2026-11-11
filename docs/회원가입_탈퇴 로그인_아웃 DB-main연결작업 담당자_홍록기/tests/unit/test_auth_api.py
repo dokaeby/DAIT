@@ -1,5 +1,7 @@
 """POST /v1/auth/signup, /v1/auth/login HTTP 테스트."""
 
+import pytest
+
 from dait.core.config import Settings
 from dait.core.errors import ErrorResponse
 from dait.main import create_app
@@ -60,7 +62,9 @@ def test_duplicate_signup_is_409_generic(settings: Settings) -> None:
     response = client.request("POST", "/v1/auth/signup", json=SIGNUP)
     assert response.status_code == 409
     assert ErrorResponse.model_validate_json(response.text).code == "SIGNUP_FAILED"
-    assert "이메일" not in response.text
+    body = ErrorResponse.model_validate_json(response.text)
+    assert body.message == "이미 가입된 이메일입니다."
+    assert "usera@example.com" not in response.text.lower()
 
 
 def test_weak_password_signup_is_422(settings: Settings) -> None:
@@ -70,7 +74,78 @@ def test_weak_password_signup_is_422(settings: Settings) -> None:
         "POST", "/v1/auth/signup", json=SIGNUP | {"password": weak, "password_confirm": weak}
     )
     assert response.status_code == 422
-    assert ErrorResponse.model_validate_json(response.text).code == "WEAK_PASSWORD"
+    body = ErrorResponse.model_validate_json(response.text)
+    assert body.code == "WEAK_PASSWORD"
+    assert body.message == "너무 흔한 비밀번호입니다."
+    assert body.errors is not None
+    assert (body.errors[0].field, body.errors[0].code) == ("password", "COMMON_PASSWORD")
+
+
+def test_password_containing_email_is_422_with_reason(settings: Settings) -> None:
+    """이메일 앞부분을 쓴 비밀번호는 전용 문구와 CONTAINS_EMAIL을 받는다."""
+    weak = "Xusera-2026!ab"
+    response = client_for(settings).request(
+        "POST", "/v1/auth/signup", json=SIGNUP | {"password": weak, "password_confirm": weak}
+    )
+    body = ErrorResponse.model_validate_json(response.text)
+    assert response.status_code == 422
+    assert body.message == "비밀번호에 이메일 앞부분을 쓸 수 없습니다."
+    assert body.errors is not None
+    assert body.errors[0].code == "CONTAINS_EMAIL"
+    assert weak not in response.text
+
+
+def _first_error(settings: Settings, change: dict[str, object]) -> tuple[str, str, str, str]:
+    """가입 요청을 바꿔 보내고 첫 칸별 오류와 최상위 문구를 돌려준다."""
+    response = client_for(settings).request("POST", "/v1/auth/signup", json=SIGNUP | change)
+    body = ErrorResponse.model_validate_json(response.text)
+    assert response.status_code == 422
+    assert body.code == "VALIDATION_ERROR"
+    assert body.errors is not None
+    first = body.errors[0]
+    return first.field, first.code, first.message, body.message
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (
+            {"password": "Ab1!xyz", "password_confirm": "Ab1!xyz"},
+            ("password", "TOO_SHORT", "비밀번호는 8자 이상이어야 합니다."),
+        ),
+        (
+            {"password_confirm": "Other!Passw0rd-123"},
+            ("password_confirm", "MISMATCH", "비밀번호가 서로 다릅니다."),
+        ),
+        (
+            {"terms_accepted": False},
+            ("terms_accepted", "TERMS_REQUIRED", "이용약관에 동의해 주세요."),
+        ),
+        (
+            {"email": "not-an-email"},
+            ("email", "INVALID_FORMAT", "올바른 이메일 형식이 아닙니다."),
+        ),
+    ],
+)
+def test_signup_validation_reasons(
+    settings: Settings, change: dict[str, object], expected: tuple[str, str, str]
+) -> None:
+    """검증 실패는 칸·이유 코드·한국어 문구로 나오고 최상위 message는 첫 문구다."""
+    field, code, message, top = _first_error(settings, change)
+    assert (field, code, message) == expected
+    assert top == expected[2]
+
+
+def test_validation_error_never_echoes_input_value(settings: Settings) -> None:
+    """알 수 없는 필드 이름과 틀린 값은 errors에 그대로 실리지 않는다."""
+    response = client_for(settings).request(
+        "POST",
+        "/v1/auth/signup",
+        json=SIGNUP | {"evil<script>": "SECRET-VALUE", "email": "bad-SECRET"},
+    )
+    assert response.status_code == 422
+    assert "SECRET" not in response.text
+    assert "evil" not in response.text
 
 
 def test_login_success(settings: Settings) -> None:
