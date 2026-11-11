@@ -56,3 +56,20 @@ UI 테스트는 임시 폴더(`DAIT_PROJECT_ROOT`)에 고정 기사 4건과 빈 
 | UI-SET-009 | 새 페이지에서 저장값 복원 |
 | UI-STATE-004 | 저장 버튼 더블클릭 시 요청 1회 |
 | KAN-10 | 카테고리 순서·숨김의 메인 반영, 선호 검색어 칩 검색, 지금 받아보기→소식함·배지 |
+
+## v1.0.1 + macOS Safari 대응 (2026-11-11)
+
+- v1.0.1 화면(시 + 00/30분, 시간 추가, 최대 5개 칩 · 관심 카테고리 알약 · 닉네임)을 유지하고, 예약 시간을 브라우저 localStorage가 아닌 서버(`PUT /api/settings`의 `schedule.times`)에 저장합니다.
+  Safari는 7일간 방문하지 않은 사이트의 스크립트 저장소를 지우고, 개인정보 보호 창에서는 창을 닫으면 지우기 때문입니다.
+  예전 미리보기 값(`dait.schedule.preview.v1:*`)은 서버에 저장한 적이 없을 때 한 번 불러오고, 저장 후 브라우저에서 지웁니다.
+- 예약은 하루 여러 시각(최대 5개, 30분 단위) × 요일 조합으로 실행하며, 시각마다 1회만 소식을 만듭니다. 예전 `time` 한 개 형식도 읽습니다.
+- 한글 입력 Enter: Safari는 조합 종료 뒤 keyCode 229인 keydown을 보내 `isComposing`만으로 걸러지지 않습니다. 229·조합 상태를 함께 확인합니다.
+- 메인 선호 검색어 칩: v1.0.1 검색은 `appliedQuery`로 조회하므로 칩 클릭 시 함께 갱신합니다(이전에는 입력창만 바뀌고 검색이 되지 않았음).
+- 메인 칩 순서·숨김 대상은 선택한 관심 카테고리(없으면 기사 카테고리 전체)입니다.
+
+UI 자동화는 Chromium과 Safari 엔진(WebKit)에서 함께 실행합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m playwright install chromium webkit
+.\.venv\Scripts\python.exe -m pytest tests/ui --browser chromium --browser webkit -q
+```

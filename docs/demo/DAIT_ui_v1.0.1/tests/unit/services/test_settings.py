@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 
 import pytest
+from backend.main import app
+from backend.pipelines import collect_news
 from dait.repositories import settings_repository
 from dait.schemas import ScheduleSettings, UserSettings
 from dait.services import settings_service
@@ -11,8 +13,6 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from backend import news
-from backend.main import app
-from backend.pipelines import collect_news
 
 # 2026-11-09(월) 08:40 KST
 MONDAY_0840_KST = datetime(2026, 11, 8, 23, 40, tzinfo=UTC)
@@ -81,10 +81,10 @@ def test_long_keyword_is_rejected():
         UserSettings(keywords=("가" * 31,))
 
 
-@pytest.mark.parametrize("value", ["24:00", "8:30", "08:60", "아침"])
+@pytest.mark.parametrize("value", ["24:00", "8:30", "08:60", "08:15", "아침"])
 def test_invalid_schedule_time_is_rejected(value):
     with pytest.raises(ValidationError):
-        ScheduleSettings(time=value)
+        ScheduleSettings(times=(value,))
 
 
 def test_schedule_needs_a_source_and_known_fields():
@@ -114,7 +114,7 @@ def test_keyword_hits_ignore_case():
 
 
 def test_schedule_is_due_once_after_its_time():
-    settings = UserSettings(schedule=ScheduleSettings(time="08:30", days=(0,)))
+    settings = UserSettings(schedule=ScheduleSettings(times=("08:30",), days=(0,)))
     saved_at = int(datetime(2026, 11, 8, 12, 0, tzinfo=UTC).timestamp())
     planned = settings_service.due_at(settings, MONDAY_0840_KST)
     assert planned is not None and planned.strftime("%H:%M") == "08:30"
@@ -126,12 +126,12 @@ def test_schedule_is_due_once_after_its_time():
 
 def test_schedule_not_due_on_other_day_before_time_disabled_or_saved_later():
     saved_at = int(datetime(2026, 11, 8, 12, 0, tzinfo=UTC).timestamp())
-    base = ScheduleSettings(time="08:30", days=(0,))
+    base = ScheduleSettings(times=("08:30",), days=(0,))
     assert not settings_service.is_due(
         UserSettings(schedule=base.model_copy(update={"days": (1,)})), saved_at, 0, MONDAY_0840_KST
     )
     assert not settings_service.is_due(
-        UserSettings(schedule=base.model_copy(update={"time": "09:00"})),
+        UserSettings(schedule=base.model_copy(update={"times": ("09:00",)})),
         saved_at,
         0,
         MONDAY_0840_KST,
@@ -148,7 +148,7 @@ def test_schedule_not_due_on_other_day_before_time_disabled_or_saved_later():
 
 
 def test_next_run_skips_to_next_selected_day():
-    settings = UserSettings(schedule=ScheduleSettings(time="08:30", days=(2,)))
+    settings = UserSettings(schedule=ScheduleSettings(times=("08:30",), days=(2,)))
     assert (
         settings_service.format_run(settings_service.next_run(settings, MONDAY_0840_KST))
         == "11/11(수) 08:30 KST"
@@ -214,15 +214,18 @@ def test_settings_are_saved_and_restored(client, articles):
         category_order=("반도체", "인공지능"),
         hidden_categories=("보안",),
         display_count=5,
-        schedule=ScheduleSettings(time="09:00", days=(0, 2)),
+        schedule=ScheduleSettings(times=("09:00", "18:30"), days=(0, 2)),
     ).model_dump(mode="json")
     body["keywords"] = [" HBM ", "hbm", "클라우드"]
     response = client.put("/api/settings", json=body)
     assert response.status_code == 200
     saved = client.get("/api/settings").json()
     assert saved["settings"]["keywords"] == ["HBM", "클라우드"]
-    assert saved["settings"]["schedule"]["time"] == "09:00"
-    assert saved["available_categories"][:2] == ["반도체", "인공지능"]
+    assert saved["settings"]["schedule"]["times"] == ["09:00", "18:30"]
+    # 순서 목록은 메인 칩과 같이 선택한 관심 카테고리만 보여줍니다(user1: 인공지능).
+    assert saved["available_categories"] == ["인공지능"]
+    assert saved["settings"]["category_order"] == ["반도체", "인공지능"]
+    assert saved["saved"] is True
     page = client.get("/settings").text
     assert 'id="settings-data"' in page and '"09:00"' in page
 
@@ -270,7 +273,9 @@ def test_in_app_notification_off_hides_badge(client, articles):
 
 def test_scheduler_creates_one_digest_per_slot(runtime, articles):
     owner = "user1"
-    settings = UserSettings(keywords=("HBM",), schedule=ScheduleSettings(time="08:30", days=(0,)))
+    settings = UserSettings(
+        keywords=("HBM",), schedule=ScheduleSettings(times=("08:30",), days=(0,))
+    )
     settings_repository.save_settings(
         owner, settings, int(datetime(2026, 11, 8, 12, tzinfo=UTC).timestamp())
     )
@@ -287,3 +292,23 @@ def test_inbox_keeps_latest_thirty(runtime, articles):
     assert (
         len(settings_repository.list_digests("user1")) == settings_repository.MAX_DIGESTS_PER_USER
     )
+
+
+def test_schedule_times_are_sorted_unique_and_limited_to_five():
+    assert ScheduleSettings(times=("18:30", "08:00", "08:00")).times == ("08:00", "18:30")
+    with pytest.raises(ValidationError):
+        ScheduleSettings(times=("00:00", "01:00", "02:00", "03:00", "04:00", "05:00"))
+
+
+def test_legacy_single_time_is_read_as_times():
+    legacy = UserSettings.model_validate_json('{"schedule": {"time": "09:45", "days": [0]}}')
+    assert legacy.schedule.times == ("09:30",)
+
+
+def test_multiple_times_fire_latest_passed_slot_and_next_run():
+    # 08:40 KST 월요일: 08:30은 지났고 12:00은 남았습니다.
+    settings = UserSettings(schedule=ScheduleSettings(times=("08:30", "12:00", "07:00"), days=(0,)))
+    planned = settings_service.due_at(settings, MONDAY_0840_KST)
+    assert planned is not None and planned.strftime("%H:%M") == "08:30"
+    upcoming = settings_service.next_run(settings, MONDAY_0840_KST)
+    assert settings_service.format_run(upcoming) == "11/9(월) 12:00 KST"
