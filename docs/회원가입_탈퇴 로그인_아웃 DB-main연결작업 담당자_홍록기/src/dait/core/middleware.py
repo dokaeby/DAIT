@@ -9,7 +9,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from dait.core.errors import error_response
+from dait.core.errors import INTERNAL_ERROR_MESSAGE, error_response
 from dait.core.logging import request_id_var
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 response = await call_next(request)
             except Exception:  # 마지막 방어선: 어떤 예외도 내부 정보 없이 500으로만 나가게 한다.
                 logger.exception("처리되지 않은 오류")
-                response = error_response(500, "INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")
+                response = error_response(500, "INTERNAL_ERROR", INTERNAL_ERROR_MESSAGE)
 
         response.headers["X-Request-ID"] = request_id
         response.headers["Content-Security-Policy"] = self._csp

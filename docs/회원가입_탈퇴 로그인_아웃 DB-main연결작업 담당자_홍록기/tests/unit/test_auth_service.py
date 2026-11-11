@@ -87,7 +87,7 @@ def test_signup_email_is_stored_lowercase(settings: Settings) -> None:
 
 
 def test_duplicate_email_is_rejected_without_new_rows(settings: Settings) -> None:
-    """UT-AUTH-005: 중복 이메일은 일반 오류이고 이메일을 언급하지 않으며 행이 늘지 않는다."""
+    """UT-AUTH-005(의도적 변경 2026-11-11): 중복 가입을 문구로 알리고 행은 늘지 않는다."""
     auth_service.signup(settings, signup_request(), None, NOW)
     with pytest.raises(SignupFailedError) as caught:
         auth_service.signup(
