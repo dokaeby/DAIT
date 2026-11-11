@@ -855,7 +855,29 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
 - 보안 점검: 악의적 입력 — 6자리 아닌 코드 422(입력 비반환), 없는 챌린지·틀린 코드·만료·시도 초과·재사용은 모두 같은 401, 5번 틀리면 정답도 거부, 동시 두 요청 중 하나만 통과, 쿨다운 중 재발송은 메일 0통, 받는 주소에 줄바꿈이 있으면 연결 없이 거부, 로그에 코드·이메일·앱 비밀번호·키·challenge_id 0건. 외부 실패 — SMTP 거부·접속 불가는 `MailSendError`로 바뀌고 로그인 응답은 정상이며 재발송 가능. 중복 실행 — 재발송 조건 검사와 갱신이 한 SQL.
 - 테스트 대상 UT ID / 테스트 결과: **08·09에는 2차 인증 항목이 없어 자체 판단으로 만든 테스트 케이스로 진행했다.** 그래서 "08·09 기준으로 테스트가 완료되었습니다" 문장은 쓰지 않는다. 08의 UT-AUTH-006~008(로그인, 실패 메시지 동일성, refresh)에 해당하는 기존 동작은 스위치가 꺼진 상태에서 기존 시험이 그대로 통과했다. 09 13절 방식으로 보호 장치 9개를 일부러 지워 보고(만료 검사, 시도 상한, 5번째 실패 폐기, 코드 비교, 재사용 방지, 쿨다운 두 곳, 유효시간 값, 줄바꿈 검사) 시험이 모두 실패로 잡는 것을 확인한 뒤 복구했다. 처음에는 3개를 놓쳐서 시험 3개를 보강했다.
 - 품질 게이트 결과 (실제 출력): `uv run ruff check .` → All checks passed! / `uv run ruff format --check .` → 60 files already formatted / `uv run pyright` → 0 errors, 0 warnings, 0 informations / `uv run pytest -q` → 221 passed (기준선 179 + 새 시험 42). pip-audit는 의존성이 바뀌지 않아 실행하지 않았다.
-- release 모드 영향: 영향 없음(모드 분기 없음). 서버를 실제로 띄우거나 실제 구글 SMTP로 발송해 보지는 못했다(앱 비밀번호가 없다). 메일 발송은 가짜 SMTP로만 확인했다.
+- release 모드 영향: 영향 없음(모드 분기 없음). 실서버는 debug 모드로만 확인했고 release 모드 서버는 확인하지 못했다.
+- 실제 관찰 결과 (2026-11-11, 실제 uvicorn + 실제 구글 SMTP(STARTTLS 587, 앱 비밀번호) + 테스트 계정, `TWO_FACTOR_ENABLED=true`, `APP_ENV=debug`): 사용자가 `/docs` 화면에서 직접 실행했고 서버 로그로 교차 확인했다. 메일 주소·코드·비밀값은 기록하지 않는다.
+
+| 단계 | 요청 | 결과 |
+|---|---|---|
+| 1 | `POST /v1/auth/signup` | 201 (메일은 안 나감) |
+| 2 | `POST /v1/auth/login` | 200 `TWO_FACTOR_REQUIRED` + `challenge_id`, 토큰 없음. 감사 로그 `challenge_created` |
+| 3 | (실제 구글 SMTP) | "[DAIT] 로그인 인증 코드" 메일이 받은편지함에 도착. 발송 실패 경고 없음 |
+| 4 | `POST /v1/auth/2fa/verify` 메일의 코드 | 200 토큰 발급. 감사 로그 `two_factor success`, `login success` |
+| 5 | 같은 코드로 `/verify` 다시 | 401 `INVALID_TWO_FACTOR` (사용한 챌린지는 삭제돼 `unknown_challenge`) |
+| 6 | 새 로그인 뒤 틀린 코드로 `/verify` | 401, 감사 로그 `wrong_code` (시도 1회 소모) |
+
+  재발송 제한은 실제 메일이 나가지 않게 임시 서버(별도 포트, 임시 DB, 접속 불가 SMTP 주소)에서 따로 확인했다.
+
+| 단계 | 요청 | 결과 |
+|---|---|---|
+| 1 | 로그인 직후 `POST /v1/auth/2fa/resend` | 429 "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요." (`resend_blocked`) |
+| 2 | 없는 `challenge_id`로 `/resend` | 401 `INVALID_TWO_FACTOR` |
+| 3 | 62초 뒤 `/resend` | 200 `{"result":"sent","resend_after_seconds":60}` (`resent`) |
+| 4 | 곧바로 다시 `/resend` | 429 |
+| 참고 | 접속 불가 SMTP로 보낸 메일 | 발송 실패했지만 로그인·재발송 응답은 정상. 로그에는 `ConnectionRefusedError` 이름만 있고 주소·코드는 없음 |
+
+  확인하지 못한 것: release 모드 서버, 화면(프런트)의 실제 입력·표시, 만료(5분)·5회 시도 초과의 실서버 확인(이 둘은 시계를 직접 넘기는 단위 시험으로 확인), 구글 앱 비밀번호가 틀렸을 때의 실제 거부 응답.
 - 새 환경변수 / 마이그레이션 여부: `TWO_FACTOR_ENABLED`(기본 false), `OTP_HASH_SECRET`, `SMTP_HOST`, `SMTP_PORT`(기본 587), `SMTP_USERNAME`, `SMTP_APP_PASSWORD`, `SMTP_FROM`. 켰는데 필수값이 없으면 서버가 시작되지 않는다. 마이그레이션 `0003_two_factor`(upgrade·downgrade 시험 있음).
 - 문서 반영 요청: 10.1절 13번(화면). 키 교체 절차는 `docs/key_rotation.md`에 추가했다.
 
