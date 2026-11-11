@@ -1,5 +1,7 @@
 """가입 시 쓸 수 없는 비밀번호(흔한 비밀번호, 이메일 포함)를 판별한다."""
 
+from typing import Literal
+
 # 외부 유출 목록 조회는 네트워크 호출이 필요해 2단계로 미루고, 가장 흔한 값만 로컬에 둔다.
 # 길이 8자 미만은 스키마가 먼저 거르므로 8자 이상인 것만 적었다. 모두 소문자로 비교한다.
 _COMMON_PASSWORDS = frozenset(
@@ -83,16 +85,19 @@ _COMMON_PASSWORDS = frozenset(
 _MIN_LOCAL_PART = 3  # 이 길이보다 짧은 이메일 앞부분은 우연히 겹치기 쉬워 비교하지 않는다.
 
 
-def is_weak_password(password: str, email: str) -> bool:
-    """가입에 쓸 수 없는 비밀번호인지 판단한다.
+def weak_password_reason(
+    password: str, email: str
+) -> Literal["COMMON_PASSWORD", "CONTAINS_EMAIL"] | None:
+    """가입에 쓸 수 없는 비밀번호인지, 왜 안 되는지 판단한다.
 
     입력: password (평문 비밀번호), email (가입 이메일)
-    출력: bool (쓸 수 없으면 True)
-    기능: 흔한 비밀번호 목록에 있거나 이메일 앞부분(@ 앞)을 포함하면 True.
-          대소문자는 구분하지 않는다.
+    출력: 이유 코드(흔한 비밀번호 / 이메일 앞부분 포함), 쓸 수 있으면 None
+    기능: 화면이 이유별 문구를 보여 주려고 이유를 구분한다. 대소문자는 구분하지 않는다.
     """
     lowered = password.lower()
     if lowered in _COMMON_PASSWORDS:
-        return True
+        return "COMMON_PASSWORD"
     local_part = email.lower().split("@", maxsplit=1)[0]
-    return len(local_part) >= _MIN_LOCAL_PART and local_part in lowered
+    if len(local_part) >= _MIN_LOCAL_PART and local_part in lowered:
+        return "CONTAINS_EMAIL"
+    return None
