@@ -681,3 +681,4 @@ header {
 }
 .settings-gear:hover { background: var(--surface-hover); color: var(--accent); }
 dialog[open].settings-dialog { margin: auto; }
+.settings-gear[hidden] { display: none; }

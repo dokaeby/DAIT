@@ -91,9 +91,15 @@
 
   /** 헤더의 인증 영역을 렌더링한다. #auth-area 요소가 있을 때만 동작한다. */
   async function renderAuthArea() {
+    document
+      .querySelectorAll(".settings-gear")
+      .forEach((el) => (el.hidden = true));
     const host = document.getElementById("auth-area");
     if (!host) return;
     const user = await currentUser();
+    document
+      .querySelectorAll(".settings-gear")
+      .forEach((el) => (el.hidden = !user));
     if (user) {
       const name = escapeHtml(user.email);
       host.innerHTML =
