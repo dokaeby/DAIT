@@ -810,7 +810,22 @@ core/          → 설정, 보안 도구(해시·토큰), 로깅
   - 09 4.3의 `APP_ENV=test`는 쓰지 않고 `debug`로 실행했다(8절 14번).
 - 실제 출력: `uv run pytest <인증 관련 6개 파일> -q` → 83 passed, 0 failed, 0 skipped / `uv run pytest tests/unit -q` → 179 passed, 0 failed, 0 skipped. 이 시험 중 UT-STATE-005용 새 단언이 `middleware.py`의 500 문구가 옛 문구 그대로인 것을 잡아서 `INTERNAL_ERROR_MESSAGE`를 쓰도록 고치고 다시 통과시켰다.
 - 품질 게이트 결과 (실제 출력): `uv run ruff check .` → All checks passed! / `uv run ruff format --check .` → 51 files already formatted / `uv run pyright` → 0 errors, 0 warnings, 0 informations / `uv run pytest tests/unit -q` → 179 passed. pip-audit·pre-commit·gitleaks는 의존성 변경이 없어 실행하지 않았다. 09 13절 경계 검토(제약 제거 뒤 시험이 잡는지)는 이번에 하지 않았다.
-- release 모드 영향: 영향 없음(모드 분기 없음). 서버를 실제로 띄워 보지는 않았고 단위 HTTP 테스트로 확인했다.
+- release 모드 영향: 영향 없음(모드 분기 없음). 서버는 debug 모드로 띄워 확인했다(아래).
+- 실제 관찰 결과 (2026-11-11, 실제 uvicorn, 임시 sqlite DB와 임시 JWT 키, `APP_ENV=debug`, `.env`는 읽지 않음, 확인 뒤 서버 종료): `POST /v1/auth/signup` 응답 본문. 단위 시험(httpx 테스트 클라이언트)이 아니라 curl로 실제 HTTP 요청을 보냈다. 화면(프런트)은 이 폴더에 없어 API 응답까지만 확인했다. 서버 로그에 비밀번호 문자열은 없었다.
+
+| 요청 | 상태 | `message` | `errors` (field / code) |
+|---|---|---|---|
+| 흔한 비밀번호 | 422 | 너무 흔한 비밀번호입니다. | password / COMMON_PASSWORD |
+| 이메일 앞부분 포함 | 422 | 비밀번호에 이메일 앞부분을 쓸 수 없습니다. | password / CONTAINS_EMAIL |
+| 8자 미만 | 422 | 비밀번호는 8자 이상이어야 합니다. | password, password_confirm / TOO_SHORT |
+| 확인 불일치 | 422 | 비밀번호가 서로 다릅니다. | password_confirm / MISMATCH |
+| 약관 미동의 | 422 | 이용약관에 동의해 주세요. | terms_accepted / TERMS_REQUIRED |
+| 이메일 형식 오류 | 422 | 올바른 이메일 형식이 아닙니다. | email / INVALID_FORMAT |
+| 정상 가입 | 201 | (사용자·토큰 응답) | 없음 |
+| 같은 이메일 재가입 | 409 | 이미 가입된 이메일입니다. | 없음 |
+| 틀린 비밀번호 로그인 5회 뒤 6번째 | 429 | 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요. | 없음 |
+
+  확인하지 못한 것: release 모드 서버, 화면의 실제 표시, 500 응답의 실서버 확인(500은 단위 시험으로만 확인).
 - 새 환경변수 / 마이그레이션 여부: 없음 / 없음
 - 문서 반영 요청: 10.1절 11번 추가(화면 담당)
 
