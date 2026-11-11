@@ -3,11 +3,14 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 
 from dait.api.deps import client_ip, get_current_user, get_optional_user, get_throttles
+from dait.api.two_factor import get_code_store, get_mailer
 from dait.core.config import Settings, get_settings
 from dait.core.errors import AlreadyLoggedInError
+from dait.core.mailer import Mailer
+from dait.repositories.code_store import CodeStore
 from dait.schemas.auth import (
     AuthResponse,
     LoginRequest,
@@ -16,8 +19,9 @@ from dait.schemas.auth import (
     SignupRequest,
     TokenPair,
 )
+from dait.schemas.two_factor import TwoFactorRequired
 from dait.schemas.user import UserRecord
-from dait.services import auth_service, interest_service
+from dait.services import auth_service, interest_service, two_factor_service
 from dait.services.login_throttle import LoginThrottles
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -58,24 +62,35 @@ def signup(
     return _attach_interests(response, settings)
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse | TwoFactorRequired)
 def login(
     body: LoginRequest,
     request: Request,
     settings: SettingsDep,
     throttles: Annotated[LoginThrottles, Depends(get_throttles)],
     current: Annotated[UserRecord | None, Depends(get_optional_user)],
-) -> AuthResponse:
+    store: Annotated[CodeStore, Depends(get_code_store)],
+    mailer: Annotated[Mailer, Depends(get_mailer)],
+    background: BackgroundTasks,
+) -> AuthResponse | TwoFactorRequired:
     """이메일·비밀번호로 로그인하고 토큰을 받는다.
 
     입력: body (이메일, 비밀번호), request, settings, throttles, current (이미 로그인된 사용자)
-    출력: AuthResponse (200, 사용자 정보와 새 토큰)
+    출력: AuthResponse (200, 사용자 정보와 새 토큰) 또는 TwoFactorRequired (200, 코드 확인 필요)
     기능: 로그인된 상태면 409, 틀린 이메일·비밀번호는 같은 401, 실패가 쌓이면 429로 잠근다.
+          TWO_FACTOR_ENABLED가 꺼져 있으면(기본) 예전과 똑같이 토큰을 준다. 켜져 있으면
+          비밀번호가 맞을 때 토큰 대신 코드 확인 요구를 주고 메일은 응답 뒤에 보낸다.
     """
     if current is not None:
         raise AlreadyLoggedInError
-    response = auth_service.login(settings, body, throttles, client_ip(request), datetime.now(UTC))
-    return _attach_interests(response, settings)
+    now = datetime.now(UTC)
+    if not settings.two_factor_enabled:
+        response = auth_service.login(settings, body, throttles, client_ip(request), now)
+        return _attach_interests(response, settings)
+    user = auth_service.verify_credentials(settings, body, throttles, client_ip(request), now)
+    challenge, mail = two_factor_service.start_login(settings, store, user, client_ip(request), now)
+    background.add_task(two_factor_service.deliver, mailer, mail)
+    return challenge
 
 
 @router.post("/refresh", response_model=TokenPair)

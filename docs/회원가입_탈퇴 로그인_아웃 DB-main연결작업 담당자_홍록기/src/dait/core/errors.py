@@ -111,6 +111,14 @@ class TooManyAttemptsError(AppError):
     message = "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."
 
 
+class InvalidTwoFactorError(AppError):
+    """2차 인증 코드 확인 실패. 틀림·만료·없는 챌린지·시도 초과·이미 사용을 구분하지 않는다."""
+
+    status_code = 401
+    code = "INVALID_TWO_FACTOR"
+    message = "인증 코드가 올바르지 않거나 만료되었습니다."
+
+
 class AlreadyLoggedInError(AppError):
     """로그인된 상태에서 가입·로그인을 다시 요청했을 때."""
 

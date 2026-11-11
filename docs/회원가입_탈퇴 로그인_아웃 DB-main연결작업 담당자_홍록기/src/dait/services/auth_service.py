@@ -131,21 +131,21 @@ def signup(
     return _to_response(user, tokens)
 
 
-def login(
+def verify_credentials(
     settings: Settings,
     request: LoginRequest,
     throttles: LoginThrottles,
     client_ip: str | None,
     now: datetime,
-) -> AuthResponse:
-    """로그인을 처리하고 새 토큰을 발급한다.
+) -> UserRecord:
+    """이메일·비밀번호를 확인한다. 토큰은 발급하지 않는다.
 
     입력: settings (앱 설정), request (검증된 로그인 요청), throttles (잠금 장치),
           client_ip (IP 단위 잠금과 감사 로그용), now (UTC 시각)
-    출력: AuthResponse (사용자와 새 토큰)
+    출력: UserRecord (확인된 사용자)
     기능: 계정·IP가 잠겼으면 TooManyAttemptsError. 이메일이 없든 비밀번호가 틀리든
           같은 InvalidCredentialsError와 같은 비용의 검증을 거친다.
-          성공하면 계정 실패 기록을 지운다.
+          성공하면 계정 실패 기록을 지운다. 2차 인증이 이 단계 뒤에 끼어들 수 있게 나눴다.
     """
     email = str(request.email).lower()
     ip_key = client_ip or "unknown"
@@ -165,10 +165,40 @@ def login(
         )
         raise InvalidCredentialsError
     throttles.account.clear(email)
+    return user
+
+
+def issue_login_response(
+    settings: Settings, user: UserRecord, client_ip: str | None, now: datetime
+) -> AuthResponse:
+    """확인이 끝난 사용자에게 새 토큰을 발급한다.
+
+    입력: settings (앱 설정), user (확인된 사용자), client_ip (감사 로그용), now (UTC 시각)
+    출력: AuthResponse (사용자와 새 토큰)
+    기능: 비밀번호만 쓰는 로그인과 2차 인증 성공 뒤 로그인이 같은 발급 경로를 쓴다.
+    """
     with transaction(settings.database_url) as conn:
         tokens = _issue_tokens(conn, settings, user, now)
     audit("login", "success", user_id=user.id, client_ip=client_ip)
     return _to_response(user, tokens)
+
+
+def login(
+    settings: Settings,
+    request: LoginRequest,
+    throttles: LoginThrottles,
+    client_ip: str | None,
+    now: datetime,
+) -> AuthResponse:
+    """로그인을 처리하고 새 토큰을 발급한다.
+
+    입력: settings (앱 설정), request (검증된 로그인 요청), throttles (잠금 장치),
+          client_ip (IP 단위 잠금과 감사 로그용), now (UTC 시각)
+    출력: AuthResponse (사용자와 새 토큰)
+    기능: verify_credentials로 확인한 뒤 바로 토큰을 발급한다(2차 인증이 꺼져 있을 때의 경로).
+    """
+    user = verify_credentials(settings, request, throttles, client_ip, now)
+    return issue_login_response(settings, user, client_ip, now)
 
 
 def _revoke_family_for_reuse(

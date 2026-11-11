@@ -2,8 +2,17 @@
 
 from enum import StrEnum
 from functools import lru_cache
+from typing import Self
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import (
+    EmailStr,
+    Field,
+    SecretStr,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +34,22 @@ _DEBUG_CSP = (
 )
 
 
+def _is_email(value: str) -> bool:
+    """문자열이 이메일 형식인지 확인한다.
+
+    입력: value (검사할 문자열)
+    출력: bool (형식이 맞고 줄바꿈이 없으면 True)
+    기능: 보내는 주소가 헤더에 들어가므로 줄바꿈이 섞인 값은 형식 검사 전에 거른다.
+    """
+    if "\r" in value or "\n" in value:
+        return False
+    try:
+        TypeAdapter(EmailStr).validate_python(value)
+    except ValidationError:
+        return False
+    return True
+
+
 class Settings(BaseSettings):
     """환경변수에서 읽는 앱 설정. 잘못된 값이면 생성 시점에 예외가 나 서버가 시작되지 않는다."""
 
@@ -40,6 +65,42 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr = Field(default=SecretStr(""), min_length=32, max_length=256)
     access_token_minutes: int = Field(default=15, ge=1, le=1440)  # 짧을수록 탈취 피해가 적다.
     refresh_token_days: int = Field(default=14, ge=1, le=90)
+    # 이메일 2차 인증. 꺼져 있으면(기본) 로그인은 기존과 완전히 같고 아래 값은 쓰이지 않는다.
+    two_factor_enabled: bool = False
+    otp_hash_secret: SecretStr = Field(default=SecretStr(""), max_length=256)
+    smtp_host: str = Field(default="", max_length=255)
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = Field(default="", max_length=254)
+    smtp_app_password: SecretStr = Field(default=SecretStr(""), max_length=256)
+    smtp_from: str = Field(default="", max_length=254)
+
+    @model_validator(mode="after")
+    def _check_two_factor_settings(self) -> Self:
+        """2차 인증을 켰을 때 필요한 값이 모두 있는지 확인한다.
+
+        입력: 없음(이미 읽은 필드들)
+        출력: self
+        기능: 켰는데 해시 키(32자 이상)·SMTP 정보·보내는 주소가 빠졌거나 잘못이면 ValueError로
+              시작을 거부한다. 메시지에는 항목 이름만 담고 값은 담지 않는다.
+        """
+        if not self.two_factor_enabled:
+            return self
+        missing = [
+            name
+            for name, ok in (
+                ("OTP_HASH_SECRET(32자 이상)", len(self.otp_hash_secret.get_secret_value()) >= 32),
+                ("SMTP_HOST", bool(self.smtp_host)),
+                ("SMTP_USERNAME", bool(self.smtp_username)),
+                ("SMTP_APP_PASSWORD", bool(self.smtp_app_password.get_secret_value())),
+                ("SMTP_FROM(이메일 형식)", _is_email(self.smtp_from)),
+            )
+            if not ok
+        ]
+        if missing:
+            raise ValueError(
+                "TWO_FACTOR_ENABLED=true에 필요한 설정이 없습니다: " + ", ".join(missing)
+            )
+        return self
 
     @field_validator("database_url")
     @classmethod
