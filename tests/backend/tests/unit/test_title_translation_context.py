@@ -133,7 +133,8 @@ async def test_offline_or_failed_translation_does_not_append_english_hint(
 
     monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", unchanged)
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_title_context_to_korean", unchanged,
+        "src.backend.app.workers.ai_processor.translate_title_context_to_korean",
+        unchanged,
     )
     result = await TranslatingNewsCollector(FakeCollector(), enable_network=enabled).collect(source)
     assert result.articles[0].title == title
@@ -169,12 +170,12 @@ async def test_same_title_is_translated_using_different_body_context(
         return f"번역된 본문 ⟪713149⟫ {title} ⟪862953⟫"
 
     monkeypatch.setattr(
-
-        "src.backend.app.workers.ai_processor.translate_to_korean", contextual_translate,
-
+        "src.backend.app.workers.ai_processor.translate_to_korean",
+        contextual_translate,
     )
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_title_context_to_korean", contextual_translate
+        "src.backend.app.workers.ai_processor.translate_title_context_to_korean",
+        contextual_translate,
     )
     translated = await translate_title_to_korean("The race is on", body)
     assert translated == expected
@@ -204,7 +205,8 @@ async def test_invalid_markers_retry_title_only_without_body_leak(
 
     monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", fake)
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_title_context_to_korean", fake,
+        "src.backend.app.workers.ai_processor.translate_title_context_to_korean",
+        fake,
     )
     translated = await translate_title_to_korean("The race is on", "Election campaign context.")
     assert translated == "제목만 번역한 결과"
@@ -224,7 +226,8 @@ async def test_sent_context_is_cleaned_redacted_and_bounded(
 
     monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", fake)
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_title_context_to_korean", fake,
+        "src.backend.app.workers.ai_processor.translate_title_context_to_korean",
+        fake,
     )
     body = "<p>Contact private@example.com or https://private.example/token.</p> " + "news " * 500
     assert await translate_title_to_korean("A news title", body) == "번역된 제목"
@@ -244,7 +247,8 @@ async def test_injection_context_is_not_sent(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", fake)
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_title_context_to_korean", fake,
+        "src.backend.app.workers.ai_processor.translate_title_context_to_korean",
+        fake,
     )
     assert (
         await translate_title_to_korean(
@@ -264,7 +268,8 @@ async def test_flattened_whitespace_does_not_mix_context_into_title(
 
     monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", fake)
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_title_context_to_korean", fake,
+        "src.backend.app.workers.ai_processor.translate_title_context_to_korean",
+        fake,
     )
     assert await translate_title_to_korean("A title", "Article context.") == "제목만 번역"
 
@@ -281,7 +286,8 @@ async def test_long_title_skips_context_to_avoid_truncating_delimiters(
 
     monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", fake)
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_title_context_to_korean", fake,
+        "src.backend.app.workers.ai_processor.translate_title_context_to_korean",
+        fake,
     )
     title = "a" * 895
     assert await translate_title_to_korean(title, "Article context.") == title
@@ -311,9 +317,8 @@ async def test_gtx_fallback_preserves_all_segments_and_extracts_title(
         return httpx.Response(200, text=payload, request=request)
 
     monkeypatch.setattr(
-
-        "src.backend.app.workers.ai_processor._translate_sync_with_deep_translator", fail_deep,
-
+        "src.backend.app.workers.ai_processor._translate_sync_with_deep_translator",
+        fail_deep,
     )
     monkeypatch.setattr(httpx, "AsyncHTTPTransport", lambda: httpx.MockTransport(fake_request))
     translated = await translate_title_to_korean("A news title", "Election context.")

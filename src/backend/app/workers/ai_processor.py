@@ -222,7 +222,7 @@ class AIProcessor:
             if not isinstance(cached, SuccessContent) or cached.content_hash != content_hash:
                 return None
             _validate_preservation(cached, safe)
-        except ValidationError, ProcessingError:
+        except (ValidationError, ProcessingError):
             logger.warning("Invalid AI cache entry ignored")
             return None
         return cached

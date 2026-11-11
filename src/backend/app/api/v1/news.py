@@ -1,5 +1,7 @@
 """v1.0.1 news router, dependency injection, and sanitized request-scoped errors."""
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable
 from types import CoroutineType
@@ -68,7 +70,7 @@ class NewsApiRoute(APIRoute):
                 response = _failure("NEWS_NOT_FOUND", "뉴스를 찾을 수 없습니다.", request_id, 404)
             except InvalidNewsCursorError:
                 response = _failure("INVALID_CURSOR", "커서를 확인해 주세요.", request_id, 422)
-            except RequestValidationError, InvalidQueryError:
+            except (RequestValidationError, InvalidQueryError):
                 response = _failure("INVALID_REQUEST", "요청을 확인해 주세요.", request_id, 422)
             except Exception:  # noqa: BLE001 -- validation/adapter details may contain private data
                 logger.warning("News API request failed")

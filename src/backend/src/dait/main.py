@@ -1,9 +1,91 @@
-"""DAIT FastAPI 애플리케이션 조립 가이드.
+"""FastAPI 앱을 조립한다. 라우터는 한 줄씩 등록하며 업무 로직은 두지 않는다."""
 
-담당 기능: 전체 라우터, 생명주기, 공통 미들웨어를 조립한다.
-구현 로직: 설정 로드 → 로깅 초기화 → 의존성 연결 → `/v1` 라우터 등록
-→ 종료 자원 정리 순으로 구성한다.
-보안·검증: 운영 환경에서 API 문서를 비활성화하고 CORS·보안 헤더·요청 ID 정책을 중앙 적용한다.
-테스트: 시작/종료, 라우트 등록, release/debug 분리, 준비 상태 실패를 검증한다.
-실제 애플리케이션 코드는 상세설계 승인 후 구현한다.
-"""
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from dait.api.deps import get_throttles
+from dait.api.v1 import (
+    auth_routes,
+    health_routes,
+    interest_routes,
+    me_routes,
+    news_routes,
+    settings_routes,
+)
+from dait.core.config import Settings, get_settings
+from dait.core.errors import register_error_handlers
+from dait.core.logging import configure_logging
+from dait.core.middleware import RequestContextMiddleware
+from dait.services.login_throttle import create_throttles
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """설정에 맞는 FastAPI 앱을 만든다.
+
+    입력: settings (None이면 환경변수에서 읽은 설정, 테스트는 직접 넘김)
+    출력: FastAPI (미들웨어·오류 핸들러·라우터가 연결된 앱)
+    기능: release에서는 docs/redoc/openapi 경로를 만들지 않는다.
+          설정이 잘못되면 여기서 예외가 나 시작이 막힌다.
+    """
+    config = settings if settings is not None else get_settings()
+    configure_logging(config)
+    docs = config.docs_enabled
+    app = FastAPI(
+        title="DAIT 회원 API",
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
+    )
+    app.dependency_overrides[get_settings] = lambda: config  # 라우트가 같은 설정을 보게 한다.
+    register_error_handlers(app)
+    if config.cors_origins:  # 허용 출처가 없으면 CORS 자체를 켜지 않는다(와일드카드 금지).
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=config.cors_origins,
+            allow_methods=["GET", "POST", "PUT", "DELETE"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        )
+    # 마지막에 추가한 미들웨어가 가장 바깥이라, CORS 사전 요청 응답에도 보안 헤더가 붙는다.
+    app.add_middleware(RequestContextMiddleware, csp=config.content_security_policy)
+    throttles = create_throttles()  # 앱마다 하나: 실패 기록은 프로세스 메모리에만 있다.
+    app.dependency_overrides[get_throttles] = lambda: throttles
+    app.include_router(health_routes.router)
+    app.include_router(auth_routes.router)
+    app.include_router(me_routes.router)
+    app.include_router(interest_routes.router)
+    app.include_router(news_routes.router)
+    app.include_router(settings_routes.router)
+    frontend_dir = Path(__file__).resolve().parents[3] / "frontend" / "public"
+    if frontend_dir.is_dir():
+        app.mount("/mockup", StaticFiles(directory=str(frontend_dir)), name="mockup-static")
+
+        for route_path, filename in (
+            ("/", "index.html"),
+            ("/detail.html", "detail.html"),
+            ("/settings.html", "settings.html"),
+            ("/app.js", "app.js"),
+        ):
+
+            def _serve(f: Path = frontend_dir / filename) -> FileResponse:
+                return FileResponse(path=str(f), media_type=_media_type(f))
+
+            app.add_api_route(
+                route_path,
+                _serve,
+                include_in_schema=False,
+                methods=["GET"],
+            )
+    return app
+
+
+def _media_type(path: Path) -> str:
+    """정적 파일 경로의 Content-Type을 정한다."""
+    return {
+        ".html": "text/html",
+        ".js": "text/javascript",
+        ".css": "text/css",
+    }.get(path.suffix.lower(), "application/octet-stream")

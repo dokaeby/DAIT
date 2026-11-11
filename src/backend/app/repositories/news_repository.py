@@ -7,6 +7,8 @@ call. PostgreSQL uses row locks; SQLite serializes transactions with BEGIN
 IMMEDIATE. Lease times use the database clock (one-second precision margin).
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable

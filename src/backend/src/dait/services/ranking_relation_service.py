@@ -1,9 +1,33 @@
-"""FR-PIPE-03 랭킹·관련 뉴스 구현 가이드.
+"""FR-PIPE-03 관련 뉴스: 저장된 관계를 API 계약으로 변환한다.
 
-담당 기능: 검증된 기사 점수 계산과 관련 뉴스 연결을 조정한다.
-구현 로직: 후보 조회 → 최신성·출처·품질 신호 계산 → 결정적 정렬
-→ 유사도 기반 관련 기사 저장 순으로 처리한다.
-보안·검증: 점수 입력 범위, 동일 기사 제외, 결과 수 상한, 알고리즘 버전 기록을 적용한다.
-테스트: 동률, 오래된 기사, 동일 URL, 관련 후보 부족, 결정적 재실행을 검증한다.
-실제 가중치는 운영 지표 승인 후 구현한다.
+관계 생성(키워드·유사도 규칙)은 수집 파이프라인 단계에서 수행하고,
+여기서는 이미 저장된 `news_relations`만 읽는다.
 """
+
+from dait.repositories import news_repository
+from dait.repositories.db import DbConnection
+from dait.schemas.news import RelatedNewsItem
+
+MAX_RELATED = 5
+
+
+def list_related(conn: DbConnection, news_id: str) -> list[RelatedNewsItem]:
+    """기준 뉴스의 관련 뉴스를 점수 순으로 돌려준다.
+
+    입력: conn (연결), news_id (상세를 보는 뉴스 ID)
+    출력: RelatedNewsItem 목록 (최대 5건)
+    기능: 저장소가 자기 자신·비공개 기사를 이미 제외한다.
+          score는 0~1로 클램프해 계약 범위를 지킨다.
+    """
+    rows = news_repository.list_related_news(conn, news_id, MAX_RELATED)
+    return [
+        RelatedNewsItem(
+            id=row.id,
+            title=row.title,
+            source_name=row.source_name,
+            published_at=row.published_at,
+            reason=row.reason,
+            score=min(max(row.score, 0.0), 1.0),
+        )
+        for row in rows
+    ]

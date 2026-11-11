@@ -657,9 +657,8 @@ def test_translate_to_korean_logs_error_and_retries_on_translator_failure(
         return "구글 GTX 폴백으로 번역된 한국어 문장입니다."
 
     monkeypatch.setattr(
-
-        "src.backend.app.workers.ai_processor.GoogleTranslator.translate", failing_translate,
-
+        "src.backend.app.workers.ai_processor.GoogleTranslator.translate",
+        failing_translate,
     )
     monkeypatch.setattr("src.backend.app.workers.ai_processor._translate_with_google_gtx", fake_gtx)
 

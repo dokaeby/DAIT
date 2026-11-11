@@ -223,7 +223,7 @@ def _parse(
                 published_at=published,
                 raw_text=body or None,
             )
-        except ValueError, TypeError, OverflowError:
+        except (ValueError, TypeError, OverflowError):
             rejected += 1
             continue
         key = str(article.canonical_url)

@@ -30,9 +30,9 @@ from pydantic import (
 )
 from redis.asyncio import Redis
 from src.backend.app.core.taxonomy import (
+    OFFICIAL_SOURCE_NAMES,
     CategoryType,
     matches_subtopic_or_query,
-    OFFICIAL_SOURCE_NAMES,
 )
 from src.backend.app.core.title_translation import repair_contextual_title
 from src.backend.app.repositories.news_repository import (
@@ -505,7 +505,7 @@ class NewsService:
             cursor = _NewsCursor.model_validate_json(data)
             if not hmac.compare_digest(cursor.binding, binding):
                 raise InvalidNewsCursorError(INVALID_RESPONSE)
-        except ValueError, UnicodeError, binascii.Error:
+        except (ValueError, UnicodeError, binascii.Error):
             raise InvalidNewsCursorError(INVALID_RESPONSE) from None
         return cursor
 

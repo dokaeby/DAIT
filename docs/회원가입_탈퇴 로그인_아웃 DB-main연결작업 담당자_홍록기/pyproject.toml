@@ -1,0 +1,64 @@
+[project]
+name = "dait-member"
+version = "0.1.0"
+description = "DAIT 회원 파트 (가입·로그인·로그아웃·탈퇴·관심사) API"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.162.1",
+  "pydantic==2.14.3",
+  "pydantic-settings==2.16.2",
+  "uvicorn==0.54.0",
+  "alembic==1.20.1",
+  "argon2-cffi==25.1.0",
+  "pyjwt==2.15.1",
+  "email-validator==2.3.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest==9.2.0",
+  "httpx==0.28.1",
+  "ruff==0.17.4",
+  "pyright==1.1.414",
+  "pip-audit==2.10.1",
+]
+
+[tool.uv]
+package = false   # 배포 패키지가 아니라 앱이므로 빌드 도구(hatchling 등)를 추가하지 않는다.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+enableTypeIgnoreComments = false        # `# type: ignore` 무시 → pyright: ignore만 사용
+reportUnnecessaryTypeIgnoreComment = "error"
+# reportAny = "error"는 설치된 pyright 1.1.414가 지원하지 않아 제외한다(AGENTS.md 10절 허용). ANN401로 Any를 막는다.
+extraPaths = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF",
+  "S",        # 보안(bandit)
+  "DTZ",      # naive datetime 금지
+  "T20",      # print 금지
+  "BLE",      # 광범위 except 금지
+  "ASYNC",    # async 안의 블로킹 호출
+  "TRY", "LOG", "G",   # 예외·로깅 규칙
+  "PT",       # pytest 스타일
+  "ANN401",   # Any 금지
+  "PLE", "PLW",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]   # 테스트의 assert만 허용

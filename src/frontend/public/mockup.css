@@ -581,3 +581,104 @@ header {
 .empty-state p {
   font-size: 0.9rem;
 }
+
+/* ── 인증·설정 UI (app.js / settings.html) ───────────────── */
+.header-actions { display: flex; align-items: center; gap: 0.6rem; }
+.session-status { font-size: 0.85rem; color: var(--text-secondary); font-weight: 600; }
+.settings-link { font-size: 0.85rem; color: var(--accent); text-decoration: none; font-weight: 600; }
+.settings-link:hover { text-decoration: underline; }
+.secondary-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.45rem 0.9rem; border-radius: 0.5rem; font-size: 0.85rem; font-weight: 600;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-secondary);
+  cursor: pointer; text-decoration: none;
+}
+.secondary-button:hover { background: var(--surface-hover); }
+.primary-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.45rem 0.9rem; border-radius: 0.5rem; font-size: 0.85rem; font-weight: 600;
+  border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  cursor: pointer; text-decoration: none;
+}
+.primary-button:hover { background: var(--accent-hover); }
+.primary-button:disabled, .secondary-button:disabled { opacity: 0.55; cursor: default; }
+.auth-link { background: none; border: none; color: var(--accent); font-size: 0.85rem; cursor: pointer; padding: 0; }
+.auth-link:hover { text-decoration: underline; }
+.search-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.search-bar .search-input { flex: 1; }
+.settings-dialog {
+  border: 1px solid var(--border); border-radius: 0.9rem; padding: 0;
+  max-width: 26rem; width: calc(100% - 2rem);
+}
+.settings-dialog::backdrop { background: rgba(15, 23, 42, 0.45); }
+.login-card { padding: 1.5rem; }
+.login-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.login-top h2 { font-size: 1.15rem; margin: 0; }
+.card-close { background: none; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--text-muted); }
+.login-form { display: flex; flex-direction: column; gap: 0.7rem; }
+.login-form label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); }
+.login-form input[type="email"], .login-form input[type="password"],
+.field-control { width: 100%; padding: 0.5rem 0.7rem; border: 1px solid var(--border-strong); border-radius: 0.5rem; font-size: 0.9rem; box-sizing: border-box; }
+.login-form input:focus, .field-control:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.auth-check { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text-secondary); }
+.auth-navigation { font-size: 0.82rem; color: var(--text-muted); text-align: center; margin: 0; }
+.login-submit { margin-top: 0.4rem; }
+.settings-feedback { font-size: 0.85rem; color: var(--text-muted); min-height: 1.2em; margin: 0.5rem 0 0; }
+.settings-feedback.is-error { color: #dc2626; }
+
+/* 설정 페이지 */
+.settings-page { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+.page-head { margin-bottom: 1.5rem; }
+.page-title { font-size: 1.6rem; margin: 0 0 0.3rem; }
+.page-description { color: var(--text-muted); font-size: 0.9rem; margin: 0; }
+.settings-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 0.85rem;
+  padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+}
+.settings-card h2 { font-size: 1.05rem; margin: 0 0 0.4rem; }
+.settings-card .card-note { font-size: 0.82rem; color: var(--text-muted); margin: 0 0 1rem; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.9rem; margin-bottom: 1rem; }
+.form-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.field-label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); }
+.field-help { font-size: 0.78rem; color: var(--text-muted); }
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.7rem 0; border-top: 1px solid var(--border);
+}
+.toggle-copy strong { display: block; font-size: 0.9rem; }
+.toggle-copy span { font-size: 0.78rem; color: var(--text-muted); }
+.switch-control { position: relative; display: inline-block; width: 2.4rem; height: 1.35rem; flex: none; }
+.switch-control input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch-control .switch {
+  position: absolute; inset: 0; border-radius: 999px; background: var(--border-strong);
+  transition: background 0.15s; cursor: pointer;
+}
+.switch-control .switch::after {
+  content: ""; position: absolute; top: 0.2rem; left: 0.2rem; width: 0.95rem; height: 0.95rem;
+  border-radius: 50%; background: #fff; transition: transform 0.15s;
+}
+.switch-control input:checked + .switch { background: var(--accent); }
+.switch-control input:checked + .switch::after { transform: translateX(1.05rem); }
+.switch-control input:focus-visible + .switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+.schedule-list { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.schedule-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.8rem;
+  border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.6rem 0.8rem; font-size: 0.88rem;
+}
+.schedule-item .schedule-meta { color: var(--text-secondary); }
+.schedule-item .schedule-meta small { color: var(--text-muted); display: block; }
+.danger-button {
+  background: none; border: 1px solid #fecaca; color: #dc2626; border-radius: 0.5rem;
+  padding: 0.3rem 0.7rem; font-size: 0.78rem; cursor: pointer;
+}
+.danger-button:hover { background: #fef2f2; }
+.auth-required { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+.auth-required a { color: var(--accent); }
+.settings-gear {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; border-radius: 50%; font-size: 1.05rem;
+  color: var(--text-secondary); text-decoration: none;
+}
+.settings-gear:hover { background: var(--surface-hover); color: var(--accent); }
+dialog[open].settings-dialog { margin: auto; }
+.settings-gear[hidden] { display: none; }

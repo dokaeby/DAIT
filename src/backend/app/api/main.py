@@ -99,7 +99,7 @@ class AppSettings(ApiModel):
     max_items_per_feed: int = Field(default=4, ge=1, le=50)
 
     @classmethod
-    def from_env(cls) -> AppSettings:
+    def from_env(cls) -> "AppSettings":
         db_url = os.getenv("DAIT_DATABASE_URL", DEFAULT_DATABASE_URL)
         redis_host = os.getenv("DAIT_REDIS_HOST")
         redis_port_raw = os.getenv("DAIT_REDIS_PORT", "6379")
