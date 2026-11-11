@@ -13,7 +13,7 @@ from dait import news
 from dait.repositories import settings_repository
 from dait.repositories.user_repository import username_key
 from dait.schemas import Digest, DigestItem, InboxState, SettingsState, UserSettings
-from dait.services.preference_service import user_interests
+from dait.services.preference_service import category_options, user_interests
 
 logger = logging.getLogger(__name__)
 # Asia/Seoul은 서머타임이 없어 고정 오프셋으로 충분합니다. Windows에 tzdata가 없어도 동작합니다.
@@ -65,17 +65,21 @@ def keyword_hits(text: str, keywords: Sequence[str]) -> list[str]:
     return [word for word in keywords if word.casefold() in folded]
 
 
+def _at(day: datetime, clock: str) -> datetime:
+    hour, minute = (int(part) for part in clock.split(":"))
+    return day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
 def due_at(settings: UserSettings, now: datetime) -> datetime | None:
-    """오늘 예약 시각이 이미 지났으면 그 시각, 아니면 None."""
+    """오늘 지난 예약 시각 중 가장 최근 것. 오늘 지난 시각이 없으면 None."""
     schedule = settings.schedule
     if not schedule.enabled:
         return None
     local = now.astimezone(KST)
     if local.weekday() not in schedule.days:
         return None
-    hour, minute = (int(part) for part in schedule.time.split(":"))
-    planned = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    return planned if planned <= local else None
+    passed = [_at(local, clock) for clock in schedule.times if _at(local, clock) <= local]
+    return max(passed) if passed else None
 
 
 def is_due(settings: UserSettings, saved_at: int, last_run_at: int, now: datetime) -> bool:
@@ -89,15 +93,16 @@ def is_due(settings: UserSettings, saved_at: int, last_run_at: int, now: datetim
 
 def next_run(settings: UserSettings, now: datetime) -> datetime | None:
     schedule = settings.schedule
-    if not schedule.enabled or not schedule.days:
+    if not schedule.enabled or not schedule.days or not schedule.times:
         return None
     local = now.astimezone(KST)
-    hour, minute = (int(part) for part in schedule.time.split(":"))
     for offset in range(8):
         day = local + timedelta(days=offset)
-        planned = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if planned.weekday() in schedule.days and planned > local:
-            return planned
+        if day.weekday() not in schedule.days:
+            continue
+        upcoming = [_at(day, clock) for clock in schedule.times if _at(day, clock) > local]
+        if upcoming:
+            return min(upcoming)
     return None
 
 
@@ -166,19 +171,27 @@ def available_categories() -> list[str]:
     return list(news.available_categories())
 
 
+def orderable_categories(user: str) -> list[str]:
+    """메인 칩으로 보이는 카테고리: 선택한 관심사, 없으면 기사 카테고리 전체(news.page와 같은 규칙)."""
+    return list(user_interests(user)) or available_categories()
+
+
 def settings_state(user: str, now: datetime) -> SettingsState:
-    settings = load_settings(user)
+    stored = settings_repository.load_settings(username_key(user))
+    settings = stored[0] if stored else UserSettings()
     return SettingsState(
         settings=settings,
+        saved=stored is not None,
         available_categories=order_categories(
-            available_categories(), settings, include_hidden=True
+            orderable_categories(user), settings, include_hidden=True
         ),
         next_run=format_run(next_run(settings, now)),
     )
 
 
 def save_settings(user: str, settings: UserSettings, now: datetime) -> SettingsState:
-    available = set(available_categories())
+    # 관심사를 바꾸면 순서 목록에 예전 카테고리가 남을 수 있어, 화면에 나올 수 있는 이름 전체를 허용합니다.
+    available = set(available_categories()) | set(category_options())
     unknown = (set(settings.category_order) | set(settings.hidden_categories)) - available
     if unknown:
         raise ValueError("선택할 수 없는 카테고리가 있습니다. 화면을 새로고침해주세요.")

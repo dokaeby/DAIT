@@ -1,7 +1,7 @@
 """테스트 로그인과 기존 기능 연결에 사용하는 요청·응답 구조."""
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, field_validator, model_validator
 
 
 class LoginForm(BaseModel):
@@ -111,6 +111,7 @@ class SummaryJobRequest(BaseModel):
 
 # --- KAN-10: 설정·카테고리 표시 순서·선호 검색어·예약 알림 ---
 MAX_KEYWORDS = 3
+MAX_SCHEDULE_TIMES = 5
 KEYWORD_MAX_LENGTH = 30
 DigestSource = Literal["interests", "keywords"]
 
@@ -121,12 +122,32 @@ class ScheduleSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     enabled: bool = True
-    time: str = Field(default="08:30", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    # v1.0.1 화면 규칙: 하루 최대 5개, 30분 단위(시 + 00/30분)
+    times: tuple[Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):(00|30)$")], ...] = Field(
+        default=("08:30",), max_length=MAX_SCHEDULE_TIMES
+    )
     timezone: Literal["Asia/Seoul"] = "Asia/Seoul"
     # 파이썬 weekday 기준: 월=0 … 일=6
     days: tuple[Annotated[int, Field(ge=0, le=6)], ...] = (0, 1, 2, 3, 4, 5, 6)
     sources: tuple[DigestSource, ...] = Field(default=("interests", "keywords"), min_length=1)
     max_items: Literal[5, 10, 20] = 10
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_single_time(cls, data: object) -> object:
+        # 첫 KAN-10 버전은 time 한 개로 저장했습니다. 그 값도 그대로 읽어 times로 옮깁니다.
+        if isinstance(data, dict) and "time" in data and "times" not in data:
+            moved = {key: value for key, value in data.items() if key != "time"}  # pyright: ignore[reportUnknownVariableType]
+            raw = str(data["time"])  # pyright: ignore[reportUnknownArgumentType]
+            hour, _, minute = raw.partition(":")
+            moved["times"] = [f"{hour.zfill(2)}:{'30' if minute >= '30' else '00'}"]
+            return moved  # pyright: ignore[reportUnknownVariableType]
+        return data
+
+    @field_validator("times")
+    @classmethod
+    def sorted_times(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(sorted(set(value)))
 
     @field_validator("days")
     @classmethod
@@ -178,6 +199,7 @@ class UserSettings(BaseModel):
 
 class SettingsState(BaseModel):
     settings: UserSettings
+    saved: bool = False
     available_categories: list[str]
     next_run: str | None
 
