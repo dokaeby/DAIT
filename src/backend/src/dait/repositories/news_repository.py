@@ -1,10 +1,10 @@
 """news·sources·content_results·news_relations 조회. 공개 목록·상세·관련 뉴스를 담당한다."""
 
 import json
-import sqlite3
 from datetime import datetime
 from typing import NamedTuple, cast
 
+from dait.repositories.db import DbConnection
 from dait.schemas.news import PUBLIC_STATUSES
 
 _STATUS_VALUES = tuple(status.value for status in PUBLIC_STATUSES)
@@ -78,7 +78,7 @@ def _public_status_clause(alias: str = "c") -> str:
 
 
 def list_public_news(
-    conn: sqlite3.Connection,
+    conn: DbConnection,
     category: str,
     query: str,
     sort: str,
@@ -134,7 +134,7 @@ def list_public_news(
     ]
 
 
-def count_public_news(conn: sqlite3.Connection, category: str, query: str) -> int:
+def count_public_news(conn: DbConnection, category: str, query: str) -> int:
     """현재 조건에서 화면에 표시 가능한 전체 건수를 센다.
 
     입력: conn (연결), category, query (정규화된 검색어)
@@ -158,7 +158,7 @@ def count_public_news(conn: sqlite3.Connection, category: str, query: str) -> in
     return int(row[0]) if row else 0
 
 
-def has_recent_job_failures(conn: sqlite3.Connection, since_iso: str) -> bool:
+def has_recent_job_failures(conn: DbConnection, since_iso: str) -> bool:
     """최근 작업 실패가 있는지 확인한다(목록의 partial 표시용).
 
     입력: conn (연결), since_iso (기준 시각 ISO 문자열)
@@ -173,7 +173,7 @@ def has_recent_job_failures(conn: sqlite3.Connection, since_iso: str) -> bool:
     return row is not None
 
 
-def get_public_news(conn: sqlite3.Connection, news_id: str) -> NewsDetailRow | None:
+def get_public_news(conn: DbConnection, news_id: str) -> NewsDetailRow | None:
     """공개 가능한 뉴스 한 건의 상세 행을 조회한다.
 
     입력: conn (연결), news_id (불투명 뉴스 ID)
@@ -214,7 +214,7 @@ def get_public_news(conn: sqlite3.Connection, news_id: str) -> NewsDetailRow | N
     )
 
 
-def list_related_news(conn: sqlite3.Connection, news_id: str, limit: int) -> list[RelatedRow]:
+def list_related_news(conn: DbConnection, news_id: str, limit: int) -> list[RelatedRow]:
     """상세 화면의 관련 뉴스를 점수 순으로 조회한다.
 
     입력: conn (연결), news_id (기준 뉴스), limit (최대 건수)
@@ -244,7 +244,7 @@ def list_related_news(conn: sqlite3.Connection, news_id: str, limit: int) -> lis
     ]
 
 
-def find_id_by_canonical_url(conn: sqlite3.Connection, canonical_url: str) -> str | None:
+def find_id_by_canonical_url(conn: DbConnection, canonical_url: str) -> str | None:
     """canonical URL로 기존 기사를 찾는다(dedupe 1단계).
 
     입력: conn (연결), canonical_url (정규화된 URL)
@@ -255,7 +255,7 @@ def find_id_by_canonical_url(conn: sqlite3.Connection, canonical_url: str) -> st
     return str(row[0]) if row else None
 
 
-def find_id_by_content_hash(conn: sqlite3.Connection, content_hash: str) -> str | None:
+def find_id_by_content_hash(conn: DbConnection, content_hash: str) -> str | None:
     """내용 해시로 기존 기사를 찾는다(dedupe 2단계).
 
     입력: conn (연결), content_hash (본문 정규화 해시)
@@ -267,7 +267,7 @@ def find_id_by_content_hash(conn: sqlite3.Connection, content_hash: str) -> str 
 
 
 def insert_news(
-    conn: sqlite3.Connection,
+    conn: DbConnection,
     news_id: str,
     source_id: str,
     title: str,
@@ -303,7 +303,7 @@ def insert_news(
     )
 
 
-def insert_pending_content(conn: sqlite3.Connection, news_id: str, updated_at: datetime) -> None:
+def insert_pending_content(conn: DbConnection, news_id: str, updated_at: datetime) -> None:
     """수집 직후 content_results를 PENDING으로 만든다.
 
     입력: conn, news_id, updated_at
@@ -316,14 +316,14 @@ def insert_pending_content(conn: sqlite3.Connection, news_id: str, updated_at: d
     )
 
 
-def list_enabled_source_ids(conn: sqlite3.Connection) -> list[str]:
+def list_enabled_source_ids(conn: DbConnection) -> list[str]:
     """설정에서 선택할 수 있는 활성 승인 출처 ID를 읽는다.
 
     입력: conn (연결)
     출력: str 목록
     기능: 비활성·미승인 출처는 사용자 설정에 저장할 수 없다.
     """
-    rows = conn.execute("SELECT id FROM sources WHERE enabled = 1 ORDER BY priority, id").fetchall()
+    rows = conn.execute("SELECT id FROM sources WHERE enabled ORDER BY priority, id").fetchall()
     return [row[0] for row in rows]
 
 

@@ -4,15 +4,14 @@
 여기서는 이미 저장된 `news_relations`만 읽는다.
 """
 
-import sqlite3
-
 from dait.repositories import news_repository
+from dait.repositories.db import DbConnection
 from dait.schemas.news import RelatedNewsItem
 
 MAX_RELATED = 5
 
 
-def list_related(conn: sqlite3.Connection, news_id: str) -> list[RelatedNewsItem]:
+def list_related(conn: DbConnection, news_id: str) -> list[RelatedNewsItem]:
     """기준 뉴스의 관련 뉴스를 점수 순으로 돌려준다.
 
     입력: conn (연결), news_id (상세를 보는 뉴스 ID)

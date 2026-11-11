@@ -14,7 +14,9 @@ class AppEnv(StrEnum):
     RELEASE = "release"
 
 
-_DB_URL_MESSAGE = "DATABASE_URL은 sqlite:/// 로 시작해야 합니다."
+_DB_URL_MESSAGE = (
+    "DATABASE_URL은 sqlite:/// (로컬), postgresql:// 또는 postgres:// (서버) 형식이어야 합니다."
+)
 _CORS_MESSAGE = "CORS_ORIGINS에는 와일드카드 없이 http(s) 출처만 넣을 수 있습니다."
 _RELEASE_CSP = "default-src 'none'; frame-ancestors 'none'"
 # debug에서만 열리는 /docs(Swagger UI)가 CDN 스크립트를 쓰므로 그 범위만 허용한다.
@@ -45,13 +47,16 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _check_database_url(cls, value: str) -> str:
-        """DATABASE_URL이 sqlite:/// 형식인지 확인한다.
+        """DATABASE_URL이 지원하는 DB 형식인지 확인한다.
 
         입력: value (환경변수 DATABASE_URL 문자열)
         출력: 검증을 통과한 같은 문자열
-        기능: 이 모듈은 sqlite만 지원하므로 다른 형식이면 ValueError (PostgreSQL은 팀 통합 때 추가).
+        기능: sqlite(로컬 개발)와 postgresql/postgres(서버 운영)만 허용한다.
+              실제 백엔드 선택은 repositories.db.db_dialect가 스킴으로 판별한다.
         """
-        if not value.startswith("sqlite:///"):
+        if not value.startswith(
+            ("sqlite:///", "postgresql://", "postgres://", "postgresql+psycopg://")
+        ):
             raise ValueError(_DB_URL_MESSAGE)
         return value
 

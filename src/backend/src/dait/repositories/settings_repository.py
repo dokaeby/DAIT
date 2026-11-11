@@ -1,9 +1,10 @@
 """user_settings 테이블 접근. 사용자당 1행이며 항상 user_id로 범위를 제한한다."""
 
 import json
-import sqlite3
 from datetime import datetime
 from typing import NamedTuple, cast
+
+from dait.repositories.db import DbConnection
 
 
 class SettingsRow(NamedTuple):
@@ -48,7 +49,7 @@ def _to_row(
     )
 
 
-def get_row(conn: sqlite3.Connection, user_id: str) -> SettingsRow | None:
+def get_row(conn: DbConnection, user_id: str) -> SettingsRow | None:
     """사용자의 설정 행을 읽는다.
 
     입력: conn (연결), user_id (인증된 본인 id)
@@ -62,7 +63,7 @@ def get_row(conn: sqlite3.Connection, user_id: str) -> SettingsRow | None:
     return None if row is None else _to_row(row)
 
 
-def save_row(conn: sqlite3.Connection, row: SettingsRow) -> None:
+def save_row(conn: DbConnection, row: SettingsRow) -> None:
     """설정 행을 만들거나 통째로 갱신한다.
 
     입력: conn (트랜잭션 연결), row (저장할 전체 값)
@@ -88,8 +89,8 @@ def save_row(conn: sqlite3.Connection, row: SettingsRow) -> None:
             row.categories,
             row.keywords,
             row.source_ids,
-            int(row.in_app_notice),
-            int(row.email_notice),
+            row.in_app_notice,
+            row.email_notice,
             row.created_at.isoformat(),
             row.updated_at.isoformat(),
         ),

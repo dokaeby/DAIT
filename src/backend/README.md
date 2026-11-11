@@ -11,7 +11,7 @@ FastAPI 기반 `/v1` JSON API. 두 개의 패키지가 공존한다.
 |---|---|
 | `src/dait/api/` | HTTP 경계: `deps.py`(인증 의존성), `v1/` 라우터 |
 | `src/dait/services/` | 유스케이스: 인증·계정·관심사·뉴스·설정·예약·수집 안전장치 |
-| `src/dait/repositories/` | sqlite 접근과 트랜잭션 경계 (`db.py` + 테이블별 모듈) |
+| `src/dait/repositories/` | DB 접근과 트랜잭션 경계. `db.py`가 `DATABASE_URL` 스킴으로 `db_sqlite.py`(로컬)/`db_postgres.py`(서버, psycopg3)를 선택하고 테이블별 모듈은 공통 SQL만 사용 |
 | `src/dait/schemas/` | Pydantic v2 요청·응답·내부 모델 (`extra="forbid"`) |
 | `src/dait/core/` | 설정(BaseSettings), 보안(해시·JWT), SSRF 방어, 로깅·마스킹, 오류·미들웨어 |
 | `src/dait/workers/`, `src/dait/collectors/` | 수집·AI 처리 비동기 실행 (가이드 스텁) |

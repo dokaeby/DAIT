@@ -1,6 +1,5 @@
 """가입·로그인·토큰 갱신·로그아웃 규칙을 처리한다. HTTP 형식은 api, SQL은 repositories가 맡는다."""
 
-import sqlite3
 import uuid
 from datetime import datetime, timedelta
 
@@ -21,7 +20,7 @@ from dait.core.security import (
     new_refresh_token,
     verify_password,
 )
-from dait.repositories.db import transaction
+from dait.repositories.db import DbConnection, transaction
 from dait.repositories.interest_repository import replace_codes
 from dait.repositories.token_repository import (
     find_by_hash,
@@ -49,7 +48,7 @@ from dait.services.login_throttle import LoginThrottles
 
 
 def _issue_tokens(
-    conn: sqlite3.Connection,
+    conn: DbConnection,
     settings: Settings,
     user: UserRecord,
     now: datetime,
@@ -171,7 +170,7 @@ def login(
 
 
 def _revoke_family_for_reuse(
-    conn: sqlite3.Connection, user_id: str, family_id: str, now: datetime
+    conn: DbConnection, user_id: str, family_id: str, now: datetime
 ) -> tuple[str, str, None]:
     """폐기된 토큰이 다시 쓰였을 때 그 계열 전체를 폐기한다.
 
@@ -184,7 +183,7 @@ def _revoke_family_for_reuse(
 
 
 def _rotate(
-    conn: sqlite3.Connection, settings: Settings, token_hash: str, now: datetime
+    conn: DbConnection, settings: Settings, token_hash: str, now: datetime
 ) -> tuple[str, str | None, TokenPair | None]:
     """refresh 토큰 하나를 검사하고 정상이면 새 토큰으로 회전한다.
 

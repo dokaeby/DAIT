@@ -27,11 +27,26 @@ def test_docs_enabled_only_in_debug(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Settings().docs_enabled is False
 
 
-def test_non_sqlite_database_url_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    """sqlite가 아닌 DATABASE_URL은 거부한다."""
-    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pw@host/db")
+def test_unknown_database_url_scheme_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """지원하지 않는 DB 스킴의 DATABASE_URL은 거부한다."""
+    monkeypatch.setenv("DATABASE_URL", "mysql://user:pw@host/db")
     with pytest.raises(ValidationError):
         Settings()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "sqlite:///./dait.db",
+        "postgresql://user:pw@host:5432/db",
+        "postgres://user:pw@host/db",
+        "postgresql+psycopg://user:pw@host/db",
+    ],
+)
+def test_supported_database_urls_pass(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    """sqlite(로컬)와 postgresql/postgres(서버) URL은 허용한다."""
+    monkeypatch.setenv("DATABASE_URL", url)
+    assert Settings().database_url == url
 
 
 @pytest.mark.parametrize("origins", ['["*"]', '["ftp://a.com"]', '["a.com"]'])

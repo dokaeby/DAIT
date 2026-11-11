@@ -1,8 +1,9 @@
 """schedules 테이블 접근. 예약은 항상 user_id와 함께 조회해 소유권을 지킨다."""
 
-import sqlite3
 from datetime import datetime
 from typing import NamedTuple
+
+from dait.repositories.db import DbConnection
 
 
 class ScheduleRow(NamedTuple):
@@ -46,7 +47,7 @@ def _to_row(
     )
 
 
-def list_by_user(conn: sqlite3.Connection, user_id: str) -> list[ScheduleRow]:
+def list_by_user(conn: DbConnection, user_id: str) -> list[ScheduleRow]:
     """사용자의 예약 목록을 읽는다.
 
     입력: conn (연결), user_id (본인 id)
@@ -60,9 +61,7 @@ def list_by_user(conn: sqlite3.Connection, user_id: str) -> list[ScheduleRow]:
     return [_to_row(row) for row in rows]
 
 
-def get_by_id_and_user(
-    conn: sqlite3.Connection, user_id: str, schedule_id: str
-) -> ScheduleRow | None:
+def get_by_id_and_user(conn: DbConnection, user_id: str, schedule_id: str) -> ScheduleRow | None:
     """본인의 예약 한 건을 읽는다.
 
     입력: conn (연결), user_id (본인 id), schedule_id (경로의 예약 ID)
@@ -76,7 +75,7 @@ def get_by_id_and_user(
     return None if row is None else _to_row(row)
 
 
-def insert_schedule(conn: sqlite3.Connection, row: ScheduleRow) -> None:
+def insert_schedule(conn: DbConnection, row: ScheduleRow) -> None:
     """예약 한 건을 저장한다.
 
     입력: conn (트랜잭션 연결), row (저장할 값)
@@ -92,7 +91,7 @@ def insert_schedule(conn: sqlite3.Connection, row: ScheduleRow) -> None:
             row.user_id,
             row.local_time,
             row.timezone,
-            int(row.enabled),
+            row.enabled,
             row.criteria_json,
             row.next_run_at.isoformat() if row.next_run_at else None,
             row.created_at.isoformat(),
@@ -101,7 +100,7 @@ def insert_schedule(conn: sqlite3.Connection, row: ScheduleRow) -> None:
     )
 
 
-def update_schedule(conn: sqlite3.Connection, row: ScheduleRow) -> bool:
+def update_schedule(conn: DbConnection, row: ScheduleRow) -> bool:
     """본인의 예약을 새 값으로 갱신한다.
 
     입력: conn (트랜잭션 연결), row (갱신할 전체 값)
@@ -115,7 +114,7 @@ def update_schedule(conn: sqlite3.Connection, row: ScheduleRow) -> bool:
         (
             row.local_time,
             row.timezone,
-            int(row.enabled),
+            row.enabled,
             row.criteria_json,
             row.next_run_at.isoformat() if row.next_run_at else None,
             row.updated_at.isoformat(),
@@ -126,7 +125,7 @@ def update_schedule(conn: sqlite3.Connection, row: ScheduleRow) -> bool:
     return cursor.rowcount == 1
 
 
-def delete_schedule(conn: sqlite3.Connection, user_id: str, schedule_id: str) -> bool:
+def delete_schedule(conn: DbConnection, user_id: str, schedule_id: str) -> bool:
     """본인의 예약을 삭제한다.
 
     입력: conn (트랜잭션 연결), user_id (본인 id), schedule_id (예약 ID)

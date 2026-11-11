@@ -1,13 +1,12 @@
 """FR-SET-02/03 사용자 설정 조회·저장. 저장·정규화 결과를 그대로 응답한다."""
 
-import sqlite3
 from datetime import UTC, datetime
 
 from dait.core.config import Settings
 from dait.core.errors import ValidationFailedError
 from dait.repositories import news_repository, settings_repository
 from dait.repositories.audit_repository import insert_audit
-from dait.repositories.db import transaction
+from dait.repositories.db import DbConnection, transaction
 from dait.schemas.news import ACTIVE_CATEGORIES, NewsCategory
 from dait.schemas.settings import (
     SettingsResponse,
@@ -56,7 +55,7 @@ def _to_response(row: settings_repository.SettingsRow) -> SettingsResponse:
 
 
 def _ensure_row(
-    conn: sqlite3.Connection, user: UserRecord, now: datetime
+    conn: DbConnection, user: UserRecord, now: datetime
 ) -> settings_repository.SettingsRow:
     """설정 행을 읽고 없으면 기본값으로 만든다.
 
@@ -94,7 +93,7 @@ def get_settings(settings: Settings, user: UserRecord) -> SettingsResponse:
     return _to_response(row)
 
 
-def _validate_source_ids(conn: sqlite3.Connection, source_ids: list[str]) -> list[str]:
+def _validate_source_ids(conn: DbConnection, source_ids: list[str]) -> list[str]:
     """출처 ID가 활성 승인 출처인지 확인한다.
 
     입력: conn (연결), source_ids (사용자가 고른 ID 목록)

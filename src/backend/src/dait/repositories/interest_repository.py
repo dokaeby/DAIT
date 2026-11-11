@@ -1,9 +1,9 @@
 """user_interests 테이블 접근. 코드 값 검증은 호출하는 쪽의 Pydantic 모델이 끝낸 상태다."""
 
-import sqlite3
+from dait.repositories.db import DbConnection
 
 
-def list_codes(conn: sqlite3.Connection, user_id: str) -> list[str]:
+def list_codes(conn: DbConnection, user_id: str) -> list[str]:
     """한 사용자의 관심사 코드를 읽는다.
 
     입력: conn (열려 있는 연결), user_id (토큰에서 얻은 본인 id)
@@ -16,7 +16,7 @@ def list_codes(conn: sqlite3.Connection, user_id: str) -> list[str]:
     return [row[0] for row in rows]
 
 
-def replace_codes(conn: sqlite3.Connection, user_id: str, codes: list[str]) -> None:
+def replace_codes(conn: DbConnection, user_id: str, codes: list[str]) -> None:
     """한 사용자의 관심사를 주어진 목록으로 통째로 바꾼다.
 
     입력: conn (열려 있는 트랜잭션 연결), user_id (본인 id),

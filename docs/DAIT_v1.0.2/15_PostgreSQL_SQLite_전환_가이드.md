@@ -14,6 +14,7 @@
 | 1.0.0 | seonghoon.yang | 2026-11-03 | 최초 작성 |
 | 1.0.1 | seonghoon.yang | 2026-11-06 | 화면설계서 v1.0.1 반영 및 문서 세트 정합성 보강 |
 | 1.0.2 | seonghoon.yang | 2026-11-10 | PostgreSQL/SQLite 전환 가이드 신규 작성 |
+| 1.0.2 | seonghoon.yang | 2026-11-10 | 9절을 이중 백엔드 구현 현황으로 갱신 |
 
 ## 1. 전환 원칙
 
@@ -178,12 +179,18 @@ def json_type():
 - [ ] `DATABASE_URL` 변경만으로 SQLite/PostgreSQL을 전환할 수 있는가
 - [ ] 마이그레이션이 양쪽 dialect에서 `upgrade`/`downgrade` 모두 성공하는가
 
-## 9. 참고: 현재 코드의 SQLite 의존 지점
+## 9. 참고: DB 이중 백엔드 구현 현황
 
-| 파일 | SQLite 의존 내용 | 전환 방향 |
+`DATABASE_URL` 스킴으로 시작 시 백엔드가 자동 선택된다(`repositories/db.py` 디스패처).
+
+| 계층 | 파일 | 역할 |
 |---|---|---|
-| `repositories/*.py` raw SQL | `?` 플레이스홀더, `INSERT OR IGNORE` | `?`→방언 변환, `ON CONFLICT`로 통일 |
-| `sqlite` 연결 문자열 | `sqlite+aiosqlite:///...` | `postgresql+psycopg://...` (또는 asyncpg) |
-| `INSERT OR IGNORE` | SQLite 전용 | `ON CONFLICT DO NOTHING` |
-| `datetime('now')` | SQLite 함수 | `now()` 또는 애플리케이션 시각 |
-| 단일 파일 DB | 로컬 파일 | Supabase connection pooler URL |
+| 디스패처 | `repositories/db.py` | `db_dialect()` 스킴 판별, `connect`/`transaction`/`ping` 위임, `DB_ERRORS`/`DB_INTEGRITY_ERRORS` 공통 예외 계약 |
+| SQLite 백엔드 | `repositories/db_sqlite.py` | 로컬 개발용. `PRAGMA foreign_keys`, `sqlite3` 동기 연결 |
+| PostgreSQL 백엔드 | `repositories/db_postgres.py` | 서버 운영용. psycopg3, `?`→`%s` 변환(`translate_sql`), datetime→ISO 정규화, `lock_timeout` |
+
+- 저장소·서비스 SQL은 두 백엔드 공통으로 유지한다. `?` 플레이스홀더는 postgres 백엔드가 `%s`로 변환한다.
+- bool 파라미터는 `bool` 그대로 바인딩하고, `WHERE enabled = 1` 같은 방언 종속 조건은 `WHERE enabled`로 통일했다.
+- `ON CONFLICT ... DO UPDATE/DO NOTHING`은 양쪽 DB가 네이티브 지원해 그대로 사용한다.
+- Alembic `env.py`는 `postgresql://`→`postgresql+psycopg://` 변환과 `render_as_batch` sqlite 조건 분기를 처리한다.
+- 남은 차이(LIKE 대소문자, `FOR UPDATE SKIP LOCKED`)는 필요 시 `db_dialect()` 분기로 처리한다(5.5절).

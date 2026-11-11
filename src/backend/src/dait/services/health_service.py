@@ -1,10 +1,9 @@
 """서비스 준비 상태를 판단한다. HTTP 응답 형식은 api 계층이 맡는다."""
 
 import logging
-import sqlite3
 
 from dait.core.errors import NotReadyError
-from dait.repositories.db import ping
+from dait.repositories.db import DB_ERRORS, ping
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +17,6 @@ def ensure_database_ready(database_url: str) -> None:
     """
     try:
         ping(database_url)
-    except sqlite3.Error as exc:
+    except DB_ERRORS as exc:
         logger.warning("DB 준비 확인 실패: %s", type(exc).__name__)
         raise NotReadyError from exc

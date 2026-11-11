@@ -232,7 +232,9 @@ def test_primary_key_blocks_duplicate_rows(settings: Settings) -> None:
     assert headers
     conn = connect(settings.database_url)
     try:
-        user_id = conn.execute("SELECT id FROM users").fetchone()[0]
+        row = conn.execute("SELECT id FROM users").fetchone()
+        assert row is not None
+        user_id = str(row[0])
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO user_interests (user_id, interest_code) VALUES (?, 'ai.models')",

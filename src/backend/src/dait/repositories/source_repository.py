@@ -1,8 +1,9 @@
 """sources 테이블 접근. 수집 대상은 enabled=1인 승인 출처뿐이다."""
 
-import sqlite3
 from datetime import datetime
 from typing import NamedTuple
+
+from dait.repositories.db import DbConnection
 
 
 class SourceRow(NamedTuple):
@@ -16,7 +17,7 @@ class SourceRow(NamedTuple):
     enabled: bool
 
 
-def list_enabled(conn: sqlite3.Connection) -> list[SourceRow]:
+def list_enabled(conn: DbConnection) -> list[SourceRow]:
     """활성화된 출처를 우선순위 순으로 읽는다.
 
     입력: conn (연결)
@@ -25,7 +26,7 @@ def list_enabled(conn: sqlite3.Connection) -> list[SourceRow]:
     """
     rows = conn.execute(
         "SELECT id, name, kind, base_url, priority, enabled FROM sources "
-        "WHERE enabled = 1 ORDER BY priority, id"
+        "WHERE enabled ORDER BY priority, id"
     ).fetchall()
     return [
         SourceRow(
@@ -40,7 +41,7 @@ def list_enabled(conn: sqlite3.Connection) -> list[SourceRow]:
     ]
 
 
-def get_by_id(conn: sqlite3.Connection, source_id: str) -> SourceRow | None:
+def get_by_id(conn: DbConnection, source_id: str) -> SourceRow | None:
     """출처 한 건을 읽는다(수동 수집 지정용).
 
     입력: conn (연결), source_id (sources.id)
@@ -63,7 +64,7 @@ def get_by_id(conn: sqlite3.Connection, source_id: str) -> SourceRow | None:
     )
 
 
-def touch_robots_checked(conn: sqlite3.Connection, source_id: str, now: datetime) -> None:
+def touch_robots_checked(conn: DbConnection, source_id: str, now: datetime) -> None:
     """robots 확인 시각을 갱신한다.
 
     입력: conn (연결), source_id, now (UTC 시각)

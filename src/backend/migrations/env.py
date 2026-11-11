@@ -29,13 +29,34 @@ def run_migrations_offline() -> None:
     기능: render_as_batch로 SQLite의 ALTER 제한을 우회하는 형태로 SQL을 만든다.
     """
     context.configure(
-        url=_database_url(),
+        url=_sqlalchemy_url(),
         target_metadata=TARGET_METADATA,
         literal_binds=True,
-        render_as_batch=True,
+        render_as_batch=_is_sqlite(),
     )
     with context.begin_transaction():
         context.run_migrations()
+
+
+def _sqlalchemy_url() -> str:
+    """SQLAlchemy용 접속 주소를 만든다.
+
+    입력: 없음(Settings의 DATABASE_URL)
+    출력: str (create_engine이 받는 주소)
+    기능: 앱은 psycopg3를 쓰지만 SQLAlchemy 기본 드라이버는 psycopg2라
+          postgresql://를 postgresql+psycopg://로 바꿔 준다.
+    """
+    url = _database_url()
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgres://")
+    return url
+
+
+def _is_sqlite() -> bool:
+    """현재 DATABASE_URL이 sqlite인지 판별한다(render_as_batch 판단용)."""
+    return _database_url().startswith("sqlite:///")
 
 
 def run_migrations_online() -> None:
@@ -44,11 +65,14 @@ def run_migrations_online() -> None:
     입력: 없음(Settings의 DATABASE_URL)
     출력: 없음(DB 스키마가 바뀜)
     기능: 한 번의 실행을 한 트랜잭션으로 묶고 끝나면 연결을 닫는다.
+          render_as_batch는 SQLite의 ALTER 제한 우회용이라 PostgreSQL에서는 끈다.
     """
-    engine = create_engine(_database_url())
+    engine = create_engine(_sqlalchemy_url())
     with engine.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=TARGET_METADATA, render_as_batch=True
+            connection=connection,
+            target_metadata=TARGET_METADATA,
+            render_as_batch=_is_sqlite(),
         )
         with context.begin_transaction():
             context.run_migrations()

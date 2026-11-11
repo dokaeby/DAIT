@@ -5,7 +5,6 @@
 """
 
 import hashlib
-import sqlite3
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
@@ -25,7 +24,7 @@ from dait.core.url_safety import (
     validate_public_https_url,
 )
 from dait.repositories import job_repository, news_repository, source_repository
-from dait.repositories.db import transaction
+from dait.repositories.db import DB_ERRORS, DB_INTEGRITY_ERRORS, transaction
 from dait.schemas.pipeline import (
     CollectionSummary,
     FeedEntry,
@@ -129,7 +128,7 @@ def _run_source(
         counts = _collect_one(settings, source, now, fetcher, resolver)
     except (UnsafeUrlError, FetchFailedError) as exc:
         return _record_failure(settings, source.id, job.id, now, exc)
-    except (OSError, ValueError, RuntimeError, sqlite3.Error):
+    except (OSError, ValueError, RuntimeError, *DB_ERRORS):
         return _record_failure(settings, source.id, job.id, now, None)
 
     fetched, inserted, duplicates, rejected = counts
@@ -227,7 +226,7 @@ def _collect_one(
                 )
                 news_repository.insert_pending_content(conn, news_id, now)
                 inserted += 1
-            except sqlite3.IntegrityError:
+            except DB_INTEGRITY_ERRORS:
                 duplicates += 1  # canonical_url unique 경합도 중복으로 센다.
             except (UnsafeUrlError, ValueError):
                 rejected += 1

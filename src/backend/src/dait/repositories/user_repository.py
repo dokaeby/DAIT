@@ -1,8 +1,8 @@
 """users 테이블 접근. SQL은 파라미터 바인딩(?)만 쓰고 문자열을 이어 붙이지 않는다."""
 
-import sqlite3
 from datetime import datetime
 
+from dait.repositories.db import DB_INTEGRITY_ERRORS, DbConnection
 from dait.schemas.user import UserRecord, UserRole, UserStatus
 
 
@@ -10,7 +10,7 @@ class DuplicateEmailError(Exception):
     """이미 같은 이메일의 사용자가 있을 때(유니크 제약 위반)."""
 
 
-def insert_user(conn: sqlite3.Connection, user: UserRecord) -> None:
+def insert_user(conn: DbConnection, user: UserRecord) -> None:
     """사용자 한 명을 저장한다.
 
     입력: conn (열려 있는 트랜잭션 연결), user (저장할 사용자 레코드)
@@ -30,7 +30,7 @@ def insert_user(conn: sqlite3.Connection, user: UserRecord) -> None:
                 user.created_at.isoformat(),
             ),
         )
-    except sqlite3.IntegrityError as exc:
+    except DB_INTEGRITY_ERRORS as exc:
         if "users.email" in str(exc):
             raise DuplicateEmailError from exc
         raise
@@ -53,7 +53,7 @@ def _to_record(row: tuple[str, str, str, str, str, str]) -> UserRecord:
     )
 
 
-def find_by_email(conn: sqlite3.Connection, email: str) -> UserRecord | None:
+def find_by_email(conn: DbConnection, email: str) -> UserRecord | None:
     """이메일로 사용자를 찾는다.
 
     입력: conn (열려 있는 연결), email (소문자로 맞춘 이메일)
@@ -67,7 +67,7 @@ def find_by_email(conn: sqlite3.Connection, email: str) -> UserRecord | None:
     return None if row is None else _to_record(row)
 
 
-def find_by_id(conn: sqlite3.Connection, user_id: str) -> UserRecord | None:
+def find_by_id(conn: DbConnection, user_id: str) -> UserRecord | None:
     """id로 사용자를 찾는다.
 
     입력: conn (열려 있는 연결), user_id (토큰에서 꺼낸 사용자 id)
@@ -81,7 +81,7 @@ def find_by_id(conn: sqlite3.Connection, user_id: str) -> UserRecord | None:
     return None if row is None else _to_record(row)
 
 
-def delete_user(conn: sqlite3.Connection, user_id: str) -> bool:
+def delete_user(conn: DbConnection, user_id: str) -> bool:
     """사용자를 실제로 삭제한다.
 
     입력: conn (열려 있는 트랜잭션 연결), user_id (삭제할 사용자 id)

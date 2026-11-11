@@ -80,3 +80,24 @@ def test_ping_fails_on_unopenable_path(tmp_path: Path) -> None:
     """열 수 없는 경로는 ping에서 sqlite 오류가 난다."""
     with pytest.raises(sqlite3.Error):
         ping(f"sqlite:///{tmp_path / 'no_dir' / 'x.db'}")
+
+
+def test_db_dialect_selects_backend() -> None:
+    """URL 스킴으로 sqlite/postgres 백엔드를 고른다."""
+    from dait.repositories.db import db_dialect
+
+    assert db_dialect("sqlite:///./dait.db") == "sqlite"
+    assert db_dialect("postgresql://u:p@h/db") == "postgres"
+    assert db_dialect("postgres://u:p@h/db") == "postgres"
+    assert db_dialect("postgresql+psycopg://u:p@h/db") == "postgres"
+
+
+def test_postgres_placeholder_translation() -> None:
+    """postgres 백엔드는 ?를 %s로, 리터럴 %를 %%로 바꾸고 문자열 안은 보존한다."""
+    from dait.repositories.db_postgres import translate_sql
+
+    assert translate_sql("SELECT * FROM t WHERE a = ? AND b = '%'") == (
+        "SELECT * FROM t WHERE a = %s AND b = '%%'"
+    )
+    assert translate_sql("SELECT '?' AS q, a = ?") == "SELECT '?' AS q, a = %s"
+    assert translate_sql("SELECT 'it''s ?' , x = ?") == "SELECT 'it''s ?' , x = %s"

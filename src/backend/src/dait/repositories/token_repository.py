@@ -1,12 +1,12 @@
 """refresh_tokens 테이블 접근. 토큰 원문은 받지도 저장하지도 않는다."""
 
-import sqlite3
 from datetime import datetime
 
+from dait.repositories.db import DbConnection
 from dait.schemas.token import RefreshTokenRecord, StoredRefreshToken
 
 
-def insert_refresh_token(conn: sqlite3.Connection, record: RefreshTokenRecord) -> None:
+def insert_refresh_token(conn: DbConnection, record: RefreshTokenRecord) -> None:
     """refresh 토큰 해시 한 건을 저장한다.
 
     입력: conn (열려 있는 트랜잭션 연결), record (해시와 만료 시각을 담은 레코드)
@@ -27,7 +27,7 @@ def insert_refresh_token(conn: sqlite3.Connection, record: RefreshTokenRecord) -
     )
 
 
-def find_by_hash(conn: sqlite3.Connection, token_hash: str) -> StoredRefreshToken | None:
+def find_by_hash(conn: DbConnection, token_hash: str) -> StoredRefreshToken | None:
     """토큰 해시로 저장된 refresh 토큰을 찾는다.
 
     입력: conn (열려 있는 연결), token_hash (요청으로 받은 토큰의 SHA-256)
@@ -50,7 +50,7 @@ def find_by_hash(conn: sqlite3.Connection, token_hash: str) -> StoredRefreshToke
     )
 
 
-def revoke_if_active(conn: sqlite3.Connection, token_id: str, now: datetime) -> bool:
+def revoke_if_active(conn: DbConnection, token_id: str, now: datetime) -> bool:
     """아직 폐기되지 않은 토큰 하나를 폐기한다.
 
     입력: conn (열려 있는 트랜잭션 연결), token_id (토큰 행 id), now (UTC 시각)
@@ -64,7 +64,7 @@ def revoke_if_active(conn: sqlite3.Connection, token_id: str, now: datetime) -> 
     return cursor.rowcount == 1
 
 
-def revoke_family(conn: sqlite3.Connection, family_id: str, now: datetime) -> int:
+def revoke_family(conn: DbConnection, family_id: str, now: datetime) -> int:
     """같은 로그인 계열(family)의 살아 있는 토큰을 모두 폐기한다.
 
     입력: conn (열려 있는 트랜잭션 연결), family_id (계열 id), now (UTC 시각)
@@ -78,7 +78,7 @@ def revoke_family(conn: sqlite3.Connection, family_id: str, now: datetime) -> in
     return cursor.rowcount
 
 
-def revoke_all_for_user(conn: sqlite3.Connection, user_id: str, now: datetime) -> int:
+def revoke_all_for_user(conn: DbConnection, user_id: str, now: datetime) -> int:
     """한 사용자의 살아 있는 refresh 토큰을 모두 폐기한다.
 
     입력: conn (열려 있는 트랜잭션 연결), user_id (사용자 id), now (UTC 시각)

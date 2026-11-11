@@ -1,7 +1,6 @@
 """FR-SET-01 예약 수집: 생성·변경·삭제와 다음 실행 시각 계산을 조정한다."""
 
 import json
-import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -10,7 +9,7 @@ from dait.core.config import Settings
 from dait.core.errors import ScheduleNotFoundError, ValidationFailedError
 from dait.repositories import news_repository, schedule_repository
 from dait.repositories.audit_repository import insert_audit
-from dait.repositories.db import transaction
+from dait.repositories.db import DbConnection, transaction
 from dait.schemas.settings import (
     ScheduleCreateRequest,
     ScheduleCriteria,
@@ -55,7 +54,7 @@ def _validate_timezone(name: str) -> None:
         raise ValidationFailedError from exc
 
 
-def _validate_criteria_sources(conn: sqlite3.Connection, criteria: ScheduleCriteria) -> None:
+def _validate_criteria_sources(conn: DbConnection, criteria: ScheduleCriteria) -> None:
     """예약 조건의 출처 ID가 활성 승인 출처인지 확인한다.
 
     입력: conn (연결), criteria (검증할 조건)

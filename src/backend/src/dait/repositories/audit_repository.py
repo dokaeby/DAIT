@@ -1,12 +1,13 @@
 """audit_logs 테이블 접근. 비밀번호·토큰·검색어 원문은 기록하지 않는다."""
 
-import sqlite3
 import uuid
 from datetime import datetime
 
+from dait.repositories.db import DbConnection
+
 
 def insert_audit(
-    conn: sqlite3.Connection,
+    conn: DbConnection,
     actor_user_id: str | None,
     event: str,
     target_type: str,

@@ -1,9 +1,10 @@
 """jobs·job_attempts 테이블 접근. dedupe_key unique와 단계별 시도 기록을 담당한다."""
 
-import sqlite3
 import uuid
 from datetime import datetime
 from typing import NamedTuple
+
+from dait.repositories.db import DbConnection
 
 
 class JobRow(NamedTuple):
@@ -40,7 +41,7 @@ def _to_row(row: tuple[str | None, ...]) -> JobRow:
     )
 
 
-def get_by_dedupe_key(conn: sqlite3.Connection, dedupe_key: str) -> JobRow | None:
+def get_by_dedupe_key(conn: DbConnection, dedupe_key: str) -> JobRow | None:
     """dedupe_key로 기존 작업을 찾는다.
 
     입력: conn (연결), dedupe_key (예: collect:src1:20261110)
@@ -55,7 +56,7 @@ def get_by_dedupe_key(conn: sqlite3.Connection, dedupe_key: str) -> JobRow | Non
 
 
 def create_job(
-    conn: sqlite3.Connection,
+    conn: DbConnection,
     schedule_id: str | None,
     kind: str,
     dedupe_key: str,
@@ -92,7 +93,7 @@ def create_job(
 
 
 def update_status(
-    conn: sqlite3.Connection,
+    conn: DbConnection,
     job_id: str,
     status: str,
     started_at: datetime | None,
@@ -116,7 +117,7 @@ def update_status(
     )
 
 
-def count_attempts(conn: sqlite3.Connection, job_id: str, step: str) -> int:
+def count_attempts(conn: DbConnection, job_id: str, step: str) -> int:
     """특정 단계의 누적 시도 횟수를 센다.
 
     입력: conn, job_id, step (예: COLLECT)
@@ -131,7 +132,7 @@ def count_attempts(conn: sqlite3.Connection, job_id: str, step: str) -> int:
 
 
 def record_attempt(
-    conn: sqlite3.Connection,
+    conn: DbConnection,
     job_id: str,
     step: str,
     attempt_no: int,
