@@ -75,6 +75,20 @@
         cursor: pointer;
       }
       .origin-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+      .sort-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+      .sort-btn {
+        border: 1px solid var(--border); background: #fff; color: var(--text-primary);
+        padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer;
+      }
+      .sort-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+      .page-title { font-size: 20px; font-weight: 800; color: var(--text-primary); margin: 0; }
+      .header-nav { margin-left: auto; display: flex; align-items: center; }
+      .card-title-link { color: inherit; text-decoration: none; }
+      .card-title-link:hover .card-title-main { color: var(--primary); }
+      .btn-detail { background: #f1f5f9; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-primary); text-decoration: none; }
+      .btn-detail:hover { background: #e2e8f0; }
+      .btn-more { background: var(--primary); color: #fff; border: none; padding: 10px 28px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+      .btn-more:hover { background: #1d4ed8; }
       .news-card {
         background: var(--bg-surface);
         border: 1px solid var(--border);
@@ -119,7 +133,10 @@
     <div class="app-shell">
       <header class="app-header">
         <a class="brand" href="/">DAIT 뉴스 큐레이션</a>
-        <div class="header-actions"><a class="settings-gear" href="/settings.html" aria-label="설정" title="설정">⚙</a><span id="auth-area"></span></div>
+        <h1 class="page-title">오늘의 뉴스</h1>
+        <nav class="header-nav" aria-label="주요 메뉴">
+          <div class="header-actions"><a class="settings-gear" href="/settings.html" aria-label="설정" title="설정">⚙</a><span id="auth-area"></span></div>
+        </nav>
       </header>
       <div class="app-body">
         <aside class="sidebar">
@@ -166,10 +183,15 @@
             <button class="origin-btn" data-origin="DOMESTIC">국내 뉴스 (14곳)</button>
             <button class="origin-btn" data-origin="GLOBAL">해외 뉴스 (3곳)</button>
           </div>
+          <div class="sort-tabs" role="group" aria-label="정렬">
+            <button class="sort-btn active" data-sort="rank" type="button">랭킹순</button>
+            <button class="sort-btn" data-sort="latest" type="button">최신순</button>
+          </div>
 
           <div id="news-container">
             <div style="text-align: center; padding: 40px; color: #94a3b8;">뉴스를 불러오는 중입니다...</div>
           </div>
+          <div id="more-container" style="text-align:center; padding: 16px 0;"></div>
         </main>
       </div>
     </div>
@@ -179,6 +201,9 @@
       let currentKeyword = "";
       let currentQuery = "";
       let currentOrigin = "ALL";
+      let currentSort = "rank";
+      let nextCursor = null;
+      let hasMore = false;
       let articles = [];
       const globalSources = ["TechCrunch", "MIT Technology Review", "MIT Tech Review", "The Verge"];
 
@@ -239,26 +264,57 @@
         });
       });
 
-      async function fetchNews() {
+      // 정렬 전환 핸들러
+      document.querySelectorAll(".sort-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentSort = btn.dataset.sort;
+          fetchNews();
+        });
+      });
+
+      async function fetchNews(append = false) {
         const container = document.getElementById("news-container");
-        container.innerHTML = `<div style="text-align:center; padding: 40px; color: #94a3b8;">최신 기사를 분석 중입니다...</div>`;
+        const moreBox = document.getElementById("more-container");
+        if (!append) {
+          container.innerHTML = `<div style="text-align:center; padding: 40px; color: #94a3b8;">최신 기사를 분석 중입니다...</div>`;
+          moreBox.innerHTML = "";
+          articles = [];
+          nextCursor = null;
+          hasMore = false;
+        } else {
+          moreBox.innerHTML = `<button class="btn-more" type="button" disabled>불러오는 중...</button>`;
+        }
 
         const params = new URLSearchParams({
           category: currentCategory,
-          sort: "rank",
+          sort: currentSort,
           page_size: "30"
         });
         if (currentQuery) params.set("q", currentQuery);
+        if (append && nextCursor) params.set("cursor", nextCursor);
 
         try {
           const res = await fetch(`/v1/news?${params.toString()}`);
           if (!res.ok) throw new Error("API 요청 실패");
           const data = await res.json();
-          articles = data.items || [];
+          const items = data.items || [];
+          articles = append ? articles.concat(items) : items;
+          nextCursor = data.page && data.page.next_cursor ? data.page.next_cursor : null;
+          hasMore = !!(data.page && data.page.has_more);
           render();
+          renderMore();
         } catch (err) {
-          container.innerHTML = `<div style="text-align:center; padding: 40px; color: #ef4444;">오류 발생: ${err.message}</div>`;
+          if (!append) container.innerHTML = `<div style="text-align:center; padding: 40px; color: #ef4444;">오류 발생: ${err.message}</div>`;
+          else moreBox.innerHTML = `<button class="btn-more" type="button" onclick="fetchNews(true)">다시 시도</button>`;
         }
+      }
+
+      function renderMore() {
+        const moreBox = document.getElementById("more-container");
+        if (!hasMore || !nextCursor) { moreBox.innerHTML = ""; return; }
+        moreBox.innerHTML = `<button class="btn-more" type="button" onclick="fetchNews(true)">더 보기</button>`;
       }
 
       function render() {
@@ -309,7 +365,9 @@
 
               <!-- 1. 기사 제목 (원문 메인 볼드 + 줄바꿈된 작은 일반 번역문) -->
               <div class="card-title-container">
-                <div class="card-title-main">${mainTitle}</div>
+                <a class="card-title-link" href="/detail.html?id=${encodeURIComponent(item.id)}">
+                  <div class="card-title-main">${mainTitle}</div>
+                </a>
                 ${subTitle ? `<div class="card-title-sub">${subTitle}</div>` : ''}
               </div>
 
@@ -326,9 +384,12 @@
                 <button class="btn-toggle" type="button" onclick="toggleSummary('${item.id}', this)">
                   ${btnText}
                 </button>
-                <a class="btn-original" href="${item.original_url}" target="_blank" rel="noopener noreferrer">
-                  원문 보기 →
-                </a>
+                <span>
+                  <a class="btn-detail" href="/detail.html?id=${encodeURIComponent(item.id)}">상세 보기</a>
+                  <a class="btn-original" href="${item.original_url}" target="_blank" rel="noopener noreferrer" style="margin-left:6px;">
+                    원문 보기 →
+                  </a>
+                </span>
               </div>
             </article>
           `;
