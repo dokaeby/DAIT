@@ -14,6 +14,7 @@ from dait.api.v1 import (
     interest_routes,
     me_routes,
     news_routes,
+    scheduler_routes,
     settings_routes,
 )
 from dait.core.config import Settings, get_settings
@@ -59,6 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(interest_routes.router)
     app.include_router(news_routes.router)
     app.include_router(settings_routes.router)
+    app.include_router(scheduler_routes.router)
     frontend_dir = Path(__file__).resolve().parents[3] / "frontend" / "public"
     if frontend_dir.is_dir():
         app.mount("/mockup", StaticFiles(directory=str(frontend_dir)), name="mockup-static")
