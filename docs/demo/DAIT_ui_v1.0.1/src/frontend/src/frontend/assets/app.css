@@ -46,3 +46,13 @@ dialog{max-width:calc(100% - 32px);max-height:90vh;border:1px solid var(--line);
 #nickname-form button { align-self: start; }
 
 #interests #nickname-form { padding-bottom: 20px; margin: 0 0 22px; border-bottom: 1px solid var(--line); }
+/* KAN-10: 설정·선호 검색어·예약 소식함 (macOS Safari 포함) */
+.keyword-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 4px}.keyword-label{font-size:12px;font-weight:700;color:var(--blue-strong)}.keyword-chip{cursor:pointer;font:inherit;-webkit-appearance:none;appearance:none}.keyword-edit{font-size:12px;color:var(--ink-muted);margin-left:4px}
+.inbox-badge{margin-left:auto;padding:1px 7px;border-radius:999px;background:var(--blue);color:#fff;font-size:11px;font-weight:700}
+.choice-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 0;border-top:1px solid var(--line)}.choice-row .field-label{min-width:72px}.choice-row .chip{cursor:pointer;font:inherit;-webkit-appearance:none;appearance:none}.chip[aria-pressed="true"]{border-color:var(--blue);background:#eaf2ff;color:var(--blue-strong);font-weight:700}
+.inline-actions{justify-content:flex-start;align-items:center;margin-top:8px}
+.kan10-block{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.keyword-add{display:flex;gap:8px}.keyword-add .field-control{flex:1;min-width:0}.field-error{font-size:12px;color:#c0362c;min-height:16px}.tag-remove{margin-left:6px;border:0;background:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;-webkit-appearance:none;appearance:none}
+.category-order{list-style:none;margin:6px 0 0;padding:0;border:1px solid var(--line);border-radius:12px}.category-row{display:flex;align-items:center;gap:6px;padding:4px 8px 4px 14px;border-top:1px solid var(--line)}.category-row:first-child{border-top:0}.category-name{flex:1;min-width:0;font-size:14px;font-weight:600}.hidden-category .category-name{color:var(--ink-muted);font-weight:500}.icon-button{width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);cursor:pointer;-webkit-appearance:none;appearance:none}.icon-button:disabled{opacity:.35;cursor:default}
+.digest{margin-bottom:22px}.digest .result-meta{display:flex;align-items:center;gap:10px;margin-bottom:10px}.digest-card{grid-template-columns:38px minmax(0,1fr) 120px}.digest-reason{margin:8px 0 0;font-size:13px;color:var(--blue-strong)}.digest-empty{padding:16px;border:1px dashed var(--line);border-radius:12px}
+@media(max-width:820px){.digest-card{grid-template-columns:32px minmax(0,1fr)}.digest-card .card-actions{grid-column:1/-1}.keyword-chip{min-height:44px}}
