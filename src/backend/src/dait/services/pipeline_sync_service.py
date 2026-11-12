@@ -103,7 +103,10 @@ def sync_pipeline_news(conn: DbConnection) -> int:
 
     inserted = 0
     for row in rows:
-        source_name, title, canonical_url, published_at, raw_category = row[:5]
+        source_name, raw_title, canonical_url, published_at, raw_category = row[:5]
+        # pipeline은 외국어 기사 제목을 "원문 ||| 한국어번역"으로 저장한다.
+        # 공개 제목은 원문 부분만 사용하고 번역은 translated_text가 담당한다.
+        title = raw_title.split(" ||| ", 1)[0].strip() if raw_title else raw_title
         source_id = source_id_by_name.get(source_name)
         category = _category_for(raw_category)
         if source_id is None or category is None:

@@ -12,7 +12,7 @@ import html
 import logging
 import re
 import unicodedata
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Protocol
 
@@ -635,9 +635,16 @@ async def translate_title_to_korean(
 class TranslatingNewsCollector:
     """Wraps a NewsCollector and appends Korean translated titles below foreign article titles."""
 
-    def __init__(self, inner: _SourceCollector, *, enable_network: bool = True) -> None:
+    def __init__(
+        self,
+        inner: _SourceCollector,
+        *,
+        enable_network: bool = True,
+        title_translator: Callable[[str, str | None], Awaitable[str | None]] | None = None,
+    ) -> None:
         self._inner = inner
         self._enable_network = enable_network
+        self._title_translator = title_translator
 
     async def collect(self, source: CollectorSource) -> CollectionResult:
         collected = await self._inner.collect(source)
@@ -655,11 +662,21 @@ class TranslatingNewsCollector:
                 )
                 if title_ko and title_ko != orig_title:
                     combined_title = f"{orig_title} ||| {title_ko}"
-                elif self._enable_network:
-                    # 번역 실패 기사를 그대로 저장하면 영구 미번역 상태가 된다.
-                    # 저장하지 않으면 다음 수집 주기에 재시도된다.
-                    logger.warning("Skipping article: title translation unavailable")
-                    continue
+                else:
+                    # Google Translate rate-limit 대비 LLM 제목 번역 백업 경로.
+                    llm_ko = None
+                    if self._title_translator is not None:
+                        try:
+                            llm_ko = await self._title_translator(orig_title, item.raw_text)
+                        except Exception:  # noqa: BLE001 -- 백업 실패는 수집을 막지 않는다
+                            llm_ko = None
+                    if llm_ko and llm_ko != orig_title and _contains_hangul(llm_ko):
+                        combined_title = f"{orig_title} ||| {llm_ko}"
+                    elif self._enable_network:
+                        # 번역 실패 기사를 그대로 저장하면 영구 미번역 상태가 된다.
+                        # 저장하지 않으면 다음 수집 주기에 재시도된다.
+                        logger.warning("Skipping article: title translation unavailable")
+                        continue
             translated_articles.append(
                 CollectedArticle(
                     source_name=item.source_name,

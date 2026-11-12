@@ -361,6 +361,39 @@ class GrokClient:
         return content
 
 
+_TITLE_TRANSLATE_SYSTEM = (
+    "You translate English news headlines into natural, concise Korean. Return JSON only."
+)
+
+
+async def llm_translate_title(
+    client: LLMClient, title: str, context: str | None = None
+) -> str | None:
+    """LLM으로 뉴스 제목을 한국어로 번역한다. 실패 시 None을 반환한다.
+
+    Google Translate가 rate-limit될 때 외국어 기사가 수집 단계에서
+    버려지지 않도록 하는 백업 경로다.
+    """
+    user_prompt = (
+        "Translate the news headline into natural Korean. "
+        'Return JSON: {"title_ko": "..."}.\n'
+        f"Headline: {title[:300]}"
+    )
+    if context:
+        user_prompt += f"\nContext: {context[:300]}"
+    try:
+        raw = await client.complete(
+            system_instruction=_TITLE_TRANSLATE_SYSTEM, user_prompt=user_prompt
+        )
+        data = json.loads(raw)
+        ko = data.get("title_ko")
+        if isinstance(ko, str) and ko.strip() and _HANGUL.search(ko):
+            return " ".join(ko.split()).strip()[:200]
+    except Exception:  # noqa: BLE001 -- 번역 실패는 수집을 막지 않고 None으로 수렴
+        logger.warning("LLM title translation failed")
+    return None
+
+
 # 문장 분할: 구두점+공백, 줄바꿈, 또는 한글 뒤 마침표(공백 없음 — "받았다.6개" 형태)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?。\uff01\uff1f])\s+|\n+|(?<=[가-힣])\.(?=\S)")
 _WHITESPACE = re.compile(r"\s+")
@@ -971,9 +1004,7 @@ class CloudSummaryProcessor:
                     translated_title=(
                         guarded.translated_title if item.article.is_foreign else None
                     ),
-                    translated_body=(
-                        guarded.translated_body if item.article.is_foreign else None
-                    ),
+                    translated_body=(guarded.translated_body if item.article.is_foreign else None),
                     engine="grok",
                     content_hash=item.digest,
                     model_id=item.model_id,
@@ -1118,11 +1149,7 @@ class CloudLLMContentProcessor:
                 ko_line = await translate_to_korean(line)
                 translated_lines.append(ensure_terminal_punctuation(ko_line))
             lines = tuple(translated_lines)
-        translated_text = (
-            result.translated_body
-            or result.translated_title
-            or " ".join(lines)
-        )
+        translated_text = result.translated_body or result.translated_title or " ".join(lines)
         try:
             return SuccessContent(
                 category=inferred_category,
