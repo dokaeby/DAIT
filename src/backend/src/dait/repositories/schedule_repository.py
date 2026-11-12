@@ -1,6 +1,7 @@
 """schedules 테이블 접근. 예약은 항상 user_id와 함께 조회해 소유권을 지킨다."""
 
-from datetime import datetime
+import json
+from datetime import date, datetime
 from typing import NamedTuple
 
 from dait.repositories.db import DbConnection
@@ -18,15 +19,56 @@ class ScheduleRow(NamedTuple):
     next_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # 반복 방식: DAILY(매일) · WEEKLY(요일 선택, weekdays 월=0…일=6) · ONCE(run_date 하루)
+    repeat: str = "DAILY"
+    weekdays: tuple[int, ...] = ()
+    run_date: date | None = None
 
 
 _COLUMNS = (
-    "id, user_id, local_time, timezone, enabled, criteria_json, next_run_at, created_at, updated_at"
+    "id, user_id, local_time, timezone, enabled, criteria_json, next_run_at, created_at, "
+    "updated_at, repeat, weekdays, run_date"
 )
+COLUMNS = _COLUMNS  # 다른 저장소(예약 실행)가 같은 컬럼 순서로 읽을 때 쓴다.
+
+
+def _weekdays_json(values: tuple[int, ...]) -> str:
+    """요일 목록을 저장용 JSON으로 바꾼다."""
+    return json.dumps(sorted(set(values)))
+
+
+def _opt(value: object) -> str | None:
+    """비어 있을 수 있는 DB 값을 문자열 또는 None으로 맞춘다."""
+    return None if value is None else str(value)
+
+
+def row_from_db(row: tuple[object, ...]) -> ScheduleRow:
+    """다른 저장소에서 SELECT {COLUMNS} 결과를 ScheduleRow로 바꿀 때 쓰는 공개 함수.
+
+    입력: row (COLUMNS 순서의 DB 행, 드라이버마다 값 타입이 다를 수 있음)
+    출력: ScheduleRow
+    기능: 값을 문자열·정수로 맞춘 뒤 _to_row와 같은 규칙으로 변환한다.
+    """
+    return _to_row(
+        (
+            str(row[0]),
+            str(row[1]),
+            str(row[2]),
+            str(row[3]),
+            int(bool(row[4])),
+            str(row[5]),
+            _opt(row[6]),
+            str(row[7]),
+            str(row[8]),
+            str(row[9] or "DAILY"),
+            str(row[10] or "[]"),
+            _opt(row[11]),
+        )
+    )
 
 
 def _to_row(
-    row: tuple[str, str, str, str, int, str, str | None, str, str],
+    row: tuple[str, str, str, str, int, str, str | None, str, str, str, str, str | None],
 ) -> ScheduleRow:
     """DB 행을 ScheduleRow로 바꾼다.
 
@@ -41,9 +83,12 @@ def _to_row(
         timezone=row[3],
         enabled=bool(row[4]),
         criteria_json=row[5],
-        next_run_at=datetime.fromisoformat(row[6]) if row[6] else None,
-        created_at=datetime.fromisoformat(row[7]),
-        updated_at=datetime.fromisoformat(row[8]),
+        next_run_at=datetime.fromisoformat(str(row[6])) if row[6] else None,
+        created_at=datetime.fromisoformat(str(row[7])),
+        updated_at=datetime.fromisoformat(str(row[8])),
+        repeat=str(row[9] or "DAILY"),
+        weekdays=tuple(int(d) for d in json.loads(str(row[10] or "[]"))),
+        run_date=date.fromisoformat(str(row[11])) if row[11] else None,
     )
 
 
@@ -84,8 +129,8 @@ def insert_schedule(conn: DbConnection, row: ScheduleRow) -> None:
     """
     conn.execute(
         "INSERT INTO schedules (id, user_id, local_time, timezone, enabled, "
-        "criteria_json, next_run_at, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "criteria_json, next_run_at, created_at, updated_at, repeat, weekdays, run_date) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             row.id,
             row.user_id,
@@ -96,6 +141,9 @@ def insert_schedule(conn: DbConnection, row: ScheduleRow) -> None:
             row.next_run_at.isoformat() if row.next_run_at else None,
             row.created_at.isoformat(),
             row.updated_at.isoformat(),
+            row.repeat,
+            _weekdays_json(row.weekdays),
+            row.run_date.isoformat() if row.run_date else None,
         ),
     )
 
@@ -109,8 +157,8 @@ def update_schedule(conn: DbConnection, row: ScheduleRow) -> bool:
     """
     cursor = conn.execute(
         "UPDATE schedules SET local_time = ?, timezone = ?, enabled = ?, "
-        "criteria_json = ?, next_run_at = ?, updated_at = ? "
-        "WHERE id = ? AND user_id = ?",
+        "criteria_json = ?, next_run_at = ?, updated_at = ?, repeat = ?, weekdays = ?, "
+        "run_date = ? WHERE id = ? AND user_id = ?",
         (
             row.local_time,
             row.timezone,
@@ -118,6 +166,9 @@ def update_schedule(conn: DbConnection, row: ScheduleRow) -> bool:
             row.criteria_json,
             row.next_run_at.isoformat() if row.next_run_at else None,
             row.updated_at.isoformat(),
+            row.repeat,
+            _weekdays_json(row.weekdays),
+            row.run_date.isoformat() if row.run_date else None,
             row.id,
             row.user_id,
         ),

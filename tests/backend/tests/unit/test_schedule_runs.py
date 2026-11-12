@@ -346,3 +346,80 @@ def test_message_fits_kakao_text_limit() -> None:
     text, link = schedule_run_service.build_message([item] * 5, None)
     assert len(text) <= 200
     assert link == "https://example.com/a"
+
+
+# ---- 반복 방식: 매일 · 요일 선택 · 한 번만 ----
+
+
+def test_weekly_next_occurrence_skips_other_days() -> None:
+    from dait.services.schedule_service import compute_next_occurrence
+
+    monday_0900_kst = datetime(2026, 11, 9, 0, 0, tzinfo=UTC)  # 2026-11-09(월) 09:00 KST
+    nxt = compute_next_occurrence("08:30", "Asia/Seoul", monday_0900_kst, "WEEKLY", (2, 4))
+    assert nxt == datetime(2026, 11, 10, 23, 30, tzinfo=UTC)  # 수요일 08:30 KST
+    assert compute_next_occurrence("08:30", "Asia/Seoul", monday_0900_kst, "WEEKLY", ()) is None
+
+
+def test_once_schedule_runs_once_then_turns_off(tick_settings: Settings, db_url: str) -> None:
+    _seed_news(db_url)
+    client = _client(tick_settings, FakeSender())
+    auth = _signup(client)
+    run_day = (datetime.now(UTC) + timedelta(days=3)).date().isoformat()
+    body: dict[str, object] = {
+        "local_time": "08:30",
+        "timezone": "Asia/Seoul",
+        "repeat": "ONCE",
+        "run_date": run_day,
+        "criteria": {"keywords": ["HBM"], "categories": ["AI"]},
+    }
+    created = client.request("POST", "/v1/me/schedules", json=body, headers=auth)
+    assert created.status_code == 201, created.text
+    assert created.json()["repeat"] == "ONCE"
+    due = datetime.fromisoformat(created.json()["next_run_at"])
+    assert _tick(client, due).jobs_created == 1
+    assert _tick(client, due + timedelta(days=7)).jobs_created == 0  # 다시 실행되지 않음
+    item = client.request("GET", "/v1/me/schedules", headers=auth).json()["items"][0]
+    assert item["enabled"] is False
+    assert item["next_run_at"] is None
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"repeat": "WEEKLY", "weekdays": []},
+        {"repeat": "ONCE"},
+        {"repeat": "ONCE", "run_date": "2020-01-01"},
+        {"repeat": "WEEKLY", "weekdays": [7]},
+        {"repeat": "HOURLY"},
+    ],
+)
+def test_invalid_repeat_is_rejected(tick_settings: Settings, extra: dict[str, object]) -> None:
+    client = _client(tick_settings)
+    auth = _signup(client)
+    body: dict[str, object] = {
+        "local_time": "08:30",
+        "timezone": "Asia/Seoul",
+        "criteria": {"keywords": ["HBM"], "categories": ["AI"]},
+        **extra,
+    }
+    response = client.request("POST", "/v1/me/schedules", json=body, headers=auth)
+    assert response.status_code == 422
+    assert client.request("GET", "/v1/me/schedules", headers=auth).json()["items"] == []
+
+
+def test_update_repeat_and_time_is_returned(tick_settings: Settings) -> None:
+    client = _client(tick_settings)
+    auth = _signup(client)
+    _schedule(client, auth, ["HBM"])
+    schedule_id = client.request("GET", "/v1/me/schedules", headers=auth).json()["items"][0]["id"]
+    patch: dict[str, object] = {"local_time": "18:00", "repeat": "WEEKLY", "weekdays": [4, 0, 4]}
+    response = client.request("PATCH", f"/v1/me/schedules/{schedule_id}", json=patch, headers=auth)
+    assert response.status_code == 200, response.text
+    item = client.request("GET", "/v1/me/schedules", headers=auth).json()["items"][0]
+    assert item["local_time"] == "18:00"
+    assert item["repeat"] == "WEEKLY"
+    assert item["weekdays"] == [0, 4]
+    bad = client.request(
+        "PATCH", f"/v1/me/schedules/{schedule_id}", json={"weekdays": []}, headers=auth
+    )
+    assert bad.status_code == 422

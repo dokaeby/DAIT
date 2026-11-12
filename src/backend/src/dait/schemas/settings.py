@@ -1,7 +1,7 @@
 """설정·예약 API 계약 모델 (06_API_설계서 6절, FR-SET-01~03)."""
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -20,6 +20,20 @@ _EMPTY_UPDATE = "empty update"
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
 Keyword = Annotated[str, Field(min_length=1, max_length=MAX_KEYWORD_LENGTH)]
+# 반복 방식: 매일 · 요일 선택(weekdays 월=0…일=6) · 한 번만(run_date)
+ScheduleRepeat = Literal["DAILY", "WEEKLY", "ONCE"]
+Weekday = Annotated[int, Field(ge=0, le=6)]
+_BAD_REPEAT = "WEEKLY needs weekdays, ONCE needs run_date"
+
+
+def check_repeat(repeat: str, weekdays: list[int], run_date: date | None) -> None:
+    """반복 방식에 필요한 값이 있는지 확인한다(요일 선택은 요일 1개 이상, 한 번만은 날짜)."""
+    if repeat == "WEEKLY" and not weekdays:
+        raise ValueError(_BAD_REPEAT)
+    if repeat == "ONCE" and run_date is None:
+        raise ValueError(_BAD_REPEAT)
+
+
 SourceId = Annotated[str, Field(min_length=1, max_length=64)]
 
 
@@ -134,6 +148,9 @@ class ScheduleResponse(BaseModel):
     next_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    repeat: ScheduleRepeat = "DAILY"
+    weekdays: list[Weekday] = Field(default_factory=list[int], max_length=7)
+    run_date: date | None = None
 
 
 class ScheduleListResponse(BaseModel):
@@ -153,6 +170,9 @@ class ScheduleCreateRequest(BaseModel):
     timezone: str = Field(min_length=1, max_length=64)
     enabled: bool = True
     criteria: ScheduleCriteria
+    repeat: ScheduleRepeat = "DAILY"
+    weekdays: list[Weekday] = Field(default_factory=list[int], max_length=7)
+    run_date: date | None = None
 
     @field_validator("local_time")
     @classmethod
@@ -161,6 +181,12 @@ class ScheduleCreateRequest(BaseModel):
         if not _TIME_PATTERN.fullmatch(value):
             raise ValueError(_BAD_TIME)
         return value
+
+    @model_validator(mode="after")
+    def _check_repeat(self) -> "ScheduleCreateRequest":
+        """반복 방식에 맞는 요일·날짜가 있는지 확인한다."""
+        check_repeat(self.repeat, self.weekdays, self.run_date)
+        return self
 
 
 class ScheduleUpdateRequest(BaseModel):
@@ -172,6 +198,9 @@ class ScheduleUpdateRequest(BaseModel):
     timezone: str | None = Field(default=None, min_length=1, max_length=64)
     enabled: bool | None = None
     criteria: ScheduleCriteria | None = None
+    repeat: ScheduleRepeat | None = None
+    weekdays: list[Weekday] | None = Field(default=None, max_length=7)
+    run_date: date | None = None
 
     @field_validator("local_time")
     @classmethod
@@ -190,6 +219,9 @@ class ScheduleUpdateRequest(BaseModel):
             and self.timezone is None
             and self.enabled is None
             and self.criteria is None
+            and self.repeat is None
+            and self.weekdays is None
+            and self.run_date is None
         ):
             raise ValueError(_EMPTY_UPDATE)
         return self

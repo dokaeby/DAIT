@@ -31,7 +31,7 @@ from dait.schemas.schedule_run import (
 from dait.schemas.settings import ScheduleCriteria
 from dait.schemas.user import UserRecord
 from dait.services.news_search_service import normalize_query
-from dait.services.schedule_service import compute_next_run
+from dait.services.schedule_service import compute_next_occurrence
 
 logger = logging.getLogger(__name__)
 
@@ -187,20 +187,35 @@ def plan_due_runs(settings: Settings, now: datetime) -> TickResponse:
     )
 
 
+def _next_after(schedule: schedule_run_repository.ScheduleRow, moment: datetime) -> datetime | None:
+    """예약의 반복 방식대로 moment 다음 회차 시각(없으면 None)."""
+    return compute_next_occurrence(
+        schedule.local_time,
+        schedule.timezone,
+        moment,
+        schedule.repeat,
+        schedule.weekdays,
+        schedule.run_date,
+    )
+
+
 def _plan_one(
     settings: Settings, schedule: schedule_run_repository.ScheduleRow, now: datetime
 ) -> int:
-    """예약 하나의 놓친 회차들을 만들고 next_run_at을 미래로 옮긴다. 만든 회차 수를 돌려준다."""
+    """예약 하나의 놓친 회차들을 만들고 next_run_at을 미래로 옮긴다. 만든 회차 수를 돌려준다.
+
+    기능: 한 번만(ONCE) 예약은 실행 회차를 만든 뒤 다음 회차가 없어 자동으로 꺼진다.
+    """
     if schedule.next_run_at is None:
         return 0
     expected = _utc(schedule.next_run_at)
-    occurrence = expected
+    occurrence: datetime | None = expected
     occurrences: list[datetime] = []
-    while occurrence <= now and len(occurrences) < MAX_CATCHUP_PER_SCHEDULE:
+    while occurrence is not None and occurrence <= now:
         occurrences.append(occurrence)
-        occurrence = compute_next_run(schedule.local_time, schedule.timezone, occurrence)
-    while occurrence <= now:  # 상한을 넘은 오래된 회차는 건너뛰고 다음 미래 시각으로 맞춘다.
-        occurrence = compute_next_run(schedule.local_time, schedule.timezone, occurrence)
+        if len(occurrences) > MAX_CATCHUP_PER_SCHEDULE:
+            occurrences.pop(0)  # 너무 오래 꺼져 있었다면 가장 최근 회차들만 남긴다.
+        occurrence = _next_after(schedule, occurrence)
     made = 0
     with transaction(settings.database_url) as conn:
         if not schedule_run_repository.advance_schedule(

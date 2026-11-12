@@ -6,6 +6,7 @@
 from datetime import datetime
 from typing import NamedTuple
 
+from dait.repositories import schedule_repository
 from dait.repositories.db import DbConnection
 from dait.repositories.schedule_repository import ScheduleRow
 
@@ -47,9 +48,6 @@ _RUN_COLUMNS = (
     "id, schedule_id, user_id, scheduled_for, criteria_json, search_status, search_attempts, "
     "search_error, result_count, started_at, finished_at, notify_status, notify_attempts, "
     "notify_error, notify_next_at, notified_at, seen_at"
-)
-_SCHEDULE_COLUMNS = (
-    "id, user_id, local_time, timezone, enabled, criteria_json, next_run_at, created_at, updated_at"
 )
 
 
@@ -104,46 +102,38 @@ def list_due_schedules(conn: DbConnection, now: datetime, limit: int) -> list[Sc
     기능: 비활성 예약과 아직 시간이 안 된 예약은 SQL 조건에서 바로 빠진다.
     """
     rows = conn.execute(
-        f"SELECT {_SCHEDULE_COLUMNS} FROM schedules "  # noqa: S608 - 상수 컬럼 목록
+        f"SELECT {schedule_repository.COLUMNS} FROM schedules "  # noqa: S608 - 상수 컬럼 목록
         "WHERE enabled AND next_run_at IS NOT NULL AND next_run_at <= ? "
         "ORDER BY next_run_at, id LIMIT ?",
         (now.isoformat(), limit),
     ).fetchall()
-    result: list[ScheduleRow] = []
-    for row in rows:
-        next_run = _dt(row[6])
-        created = _dt(row[7])
-        updated = _dt(row[8])
-        if created is None or updated is None:
-            continue
-        result.append(
-            ScheduleRow(
-                id=str(row[0]),
-                user_id=str(row[1]),
-                local_time=str(row[2]),
-                timezone=str(row[3]),
-                enabled=bool(row[4]),
-                criteria_json=str(row[5]),
-                next_run_at=next_run,
-                created_at=created,
-                updated_at=updated,
-            )
-        )
-    return result
+    return [schedule_repository.row_from_db(tuple(row)) for row in rows]
 
 
 def advance_schedule(
-    conn: DbConnection, schedule_id: str, expected: datetime, next_run_at: datetime, now: datetime
+    conn: DbConnection,
+    schedule_id: str,
+    expected: datetime,
+    next_run_at: datetime | None,
+    now: datetime,
 ) -> bool:
     """예약의 다음 실행 시각을 옮긴다. 다른 서버가 먼저 옮겼다면 바꾸지 않는다.
 
-    입력: conn, schedule_id, expected (읽을 때의 next_run_at), next_run_at (새 값), now
+    입력: conn, schedule_id, expected (읽을 때의 next_run_at), next_run_at (새 값, 없으면 None), now
     출력: bool (이번 호출이 옮겼으면 True)
     기능: WHERE next_run_at = expected 조건으로, 동시에 들어온 tick 중 하나만 성공한다.
+          다음 회차가 없으면(한 번만 예약 실행 완료) 예약을 끈다.
     """
     cursor = conn.execute(
-        "UPDATE schedules SET next_run_at = ?, updated_at = ? WHERE id = ? AND next_run_at = ?",
-        (next_run_at.isoformat(), now.isoformat(), schedule_id, expected.isoformat()),
+        "UPDATE schedules SET next_run_at = ?, enabled = ?, updated_at = ? "
+        "WHERE id = ? AND next_run_at = ?",
+        (
+            next_run_at.isoformat() if next_run_at else None,
+            next_run_at is not None,
+            now.isoformat(),
+            schedule_id,
+            expected.isoformat(),
+        ),
     )
     return cursor.rowcount == 1
 

@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dait.core.config import Settings
@@ -14,8 +14,10 @@ from dait.schemas.settings import (
     ScheduleCreateRequest,
     ScheduleCriteria,
     ScheduleListResponse,
+    ScheduleRepeat,
     ScheduleResponse,
     ScheduleUpdateRequest,
+    check_repeat,
     normalize_keywords,
 )
 from dait.schemas.user import UserRecord
@@ -39,6 +41,40 @@ def compute_next_run(local_time: str, timezone_name: str, now: datetime) -> date
     if candidate <= local_now:
         candidate += timedelta(days=1)
     return candidate.astimezone(UTC)
+
+
+def compute_next_occurrence(
+    local_time: str,
+    timezone_name: str,
+    now: datetime,
+    repeat: str = "DAILY",
+    weekdays: tuple[int, ...] = (),
+    run_date: date | None = None,
+) -> datetime | None:
+    """반복 방식에 맞는 now 이후 다음 실행 시각(UTC). 더 실행할 회차가 없으면 None.
+
+    입력: local_time ("HH:mm"), timezone_name, now (UTC), repeat (DAILY·WEEKLY·ONCE),
+          weekdays (WEEKLY의 요일, 월=0…일=6), run_date (ONCE의 날짜)
+    출력: datetime(UTC) 또는 None
+    기능: DAILY는 매일, WEEKLY는 고른 요일만, ONCE는 그 날짜 그 시각 한 번만(지났으면 None).
+    """
+    tz = ZoneInfo(timezone_name)
+    hour, minute = (int(part) for part in local_time.split(":"))
+    local_now = now.astimezone(tz)
+    if repeat == "ONCE":
+        if run_date is None:
+            return None
+        once = datetime(run_date.year, run_date.month, run_date.day, hour, minute, tzinfo=tz)
+        return once.astimezone(UTC) if once > local_now else None
+    allowed = set(weekdays) if repeat == "WEEKLY" else set(range(7))
+    if not allowed:
+        return None
+    for offset in range(8):
+        day = local_now + timedelta(days=offset)
+        candidate = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate > local_now and candidate.weekday() in allowed:
+            return candidate.astimezone(UTC)
+    return None
 
 
 def _validate_timezone(name: str) -> None:
@@ -108,6 +144,15 @@ def _parse_criteria(raw: str) -> ScheduleCriteria:
     return ScheduleCriteria.model_validate(json.loads(raw))
 
 
+def _repeat(value: str) -> ScheduleRepeat:
+    """DB의 반복 방식 문자열을 응답 타입으로 맞춘다(알 수 없는 값은 매일)."""
+    if value == "WEEKLY":
+        return "WEEKLY"
+    if value == "ONCE":
+        return "ONCE"
+    return "DAILY"
+
+
 def _to_response(row: schedule_repository.ScheduleRow) -> ScheduleResponse:
     """저장 행을 API 응답으로 변환한다."""
     return ScheduleResponse(
@@ -119,16 +164,25 @@ def _to_response(row: schedule_repository.ScheduleRow) -> ScheduleResponse:
         next_run_at=row.next_run_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        repeat=_repeat(row.repeat),
+        weekdays=list(row.weekdays),
+        run_date=row.run_date,
     )
 
 
 def _next_run_or_none(
-    enabled: bool, local_time: str, timezone_name: str, now: datetime
+    enabled: bool,
+    local_time: str,
+    timezone_name: str,
+    now: datetime,
+    repeat: str = "DAILY",
+    weekdays: tuple[int, ...] = (),
+    run_date: date | None = None,
 ) -> datetime | None:
     """활성 예약의 다음 실행 시각을 계산한다(비활성이면 None)."""
     if not enabled:
         return None
-    return compute_next_run(local_time, timezone_name, now)
+    return compute_next_occurrence(local_time, timezone_name, now, repeat, weekdays, run_date)
 
 
 def list_schedules(settings: Settings, user: UserRecord) -> ScheduleListResponse:
@@ -165,7 +219,19 @@ def create_schedule(
         existing = schedule_repository.list_by_user(conn, user.id)
         if len(existing) >= MAX_SCHEDULES:
             raise ValidationFailedError
-        next_run = _next_run_or_none(request.enabled, request.local_time, request.timezone, now)
+        weekdays = tuple(sorted(set(request.weekdays))) if request.repeat == "WEEKLY" else ()
+        run_date = request.run_date if request.repeat == "ONCE" else None
+        next_run = _next_run_or_none(
+            request.enabled,
+            request.local_time,
+            request.timezone,
+            now,
+            request.repeat,
+            weekdays,
+            run_date,
+        )
+        if request.repeat == "ONCE" and request.enabled and next_run is None:
+            raise ValidationFailedError  # 이미 지난 날짜·시각의 한 번만 예약
         row = schedule_repository.ScheduleRow(
             id=uuid.uuid4().hex,
             user_id=user.id,
@@ -176,6 +242,9 @@ def create_schedule(
             next_run_at=next_run,
             created_at=now,
             updated_at=now,
+            repeat=request.repeat,
+            weekdays=weekdays,
+            run_date=run_date,
         )
         schedule_repository.insert_schedule(conn, row)
         insert_audit(conn, user.id, "SCHEDULE_CREATED", "SCHEDULE", row.id, request_id, now)
@@ -213,16 +282,32 @@ def update_schedule(
         local_time = request.local_time if request.local_time is not None else row.local_time
         timezone_name = request.timezone if request.timezone is not None else row.timezone
         enabled = request.enabled if request.enabled is not None else row.enabled
+        repeat = request.repeat if request.repeat is not None else row.repeat
+        weekdays_list = (
+            list(request.weekdays) if request.weekdays is not None else list(row.weekdays)
+        )
+        run_date = request.run_date if request.run_date is not None else row.run_date
+        try:
+            check_repeat(repeat, weekdays_list, run_date)
+        except ValueError as exc:
+            raise ValidationFailedError from exc
+        weekdays = tuple(sorted(set(weekdays_list))) if repeat == "WEEKLY" else ()
+        run_date = run_date if repeat == "ONCE" else None
         schedule_changed = (
             request.local_time is not None
             or request.timezone is not None
             or request.enabled is not None
+            or request.repeat is not None
+            or request.weekdays is not None
+            or request.run_date is not None
         )
         next_run = (
-            _next_run_or_none(enabled, local_time, timezone_name, now)
+            _next_run_or_none(enabled, local_time, timezone_name, now, repeat, weekdays, run_date)
             if schedule_changed
             else row.next_run_at
         )
+        if repeat == "ONCE" and enabled and schedule_changed and next_run is None:
+            raise ValidationFailedError  # 이미 지난 날짜·시각으로 바꾸려는 경우
         new_row = schedule_repository.ScheduleRow(
             id=row.id,
             user_id=user.id,
@@ -233,6 +318,9 @@ def update_schedule(
             next_run_at=next_run,
             created_at=row.created_at,
             updated_at=now,
+            repeat=repeat,
+            weekdays=weekdays,
+            run_date=run_date,
         )
         schedule_repository.update_schedule(conn, new_row)
         insert_audit(conn, user.id, "SCHEDULE_UPDATED", "SCHEDULE", row.id, request_id, now)

@@ -701,3 +701,33 @@ dialog[open].settings-dialog { margin: auto; }
 /* app.js가 이메일·로그아웃(또는 회원가입·로그인)을 #auth-area 하나에 넣기 때문에,
    바깥 .header-actions의 gap만으로는 두 요소 사이가 붙어 보였습니다. 안쪽에도 같은 간격을 줍니다. */
 #auth-area { display: inline-flex; align-items: center; gap: 0.6rem; }
+
+/* ── 예약 검색 (settings.html·index.html, schedule-ui.js) ───────────── */
+.run-badge { display: inline-flex; align-items: center; padding: 0.15rem 0.55rem; border-radius: 9999px; background: var(--accent); color: #fff; font-size: 0.78rem; font-weight: 700; text-decoration: none; }
+.run-badge[hidden] { display: none; }
+.run-banner { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin: 0 0 1rem; padding: 0.7rem 1rem; border: 1px solid var(--accent-border, #bfdbfe); border-radius: 0.6rem; background: var(--accent-soft, #eff6ff); color: var(--accent); font-weight: 600; font-size: 0.9rem; }
+.run-banner[hidden] { display: none; }
+.kw-chips, .choice-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.3rem 0; }
+.kw-chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.2rem 0.4rem 0.2rem 0.65rem; border-radius: 9999px; background: var(--accent-soft, #eff6ff); color: var(--accent); font-size: 0.82rem; font-weight: 600; }
+.kw-remove { border: 0; background: none; color: inherit; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 0.15rem; -webkit-appearance: none; appearance: none; }
+.kw-add { display: flex; gap: 0.5rem; }
+.kw-add .field-control { flex: 1; min-width: 0; }
+.choice-chip { padding: 0.35rem 0.8rem; border: 1px solid var(--border-strong); border-radius: 9999px; background: var(--surface); color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.choice-chip.on, .choice-chip[aria-checked="true"], .choice-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft, #eff6ff); color: var(--accent); }
+.schedule-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.4rem; }
+.sub-title { font-size: 0.92rem; margin: 1.4rem 0 0; }
+.schedule-item { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; }
+.schedule-item.is-off .schedule-meta strong { color: var(--text-muted); }
+.schedule-tools { display: flex; align-items: center; gap: 0.4rem; flex: none; }
+.run-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.run-item { border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.7rem 0.9rem; font-size: 0.85rem; }
+.run-head { display: flex; align-items: center; gap: 0.5rem; }
+.run-new { padding: 0.05rem 0.5rem; border-radius: 9999px; background: var(--accent-soft, #eff6ff); color: var(--accent); font-size: 0.75rem; font-weight: 700; }
+.run-status { margin: 0.3rem 0 0; color: var(--text-secondary); }
+.run-status.is-error { color: #dc2626; }
+.run-articles { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+.run-articles a { color: var(--text); }
+.run-source { color: var(--text-muted); font-size: 0.78rem; }
+@media (max-width: 640px) { .schedule-item { flex-direction: column; align-items: flex-start; } }
+/* 버튼·필드의 display 지정이 hidden 속성을 덮어써 숨김이 풀리던 문제를 막는다(예약 카드 범위만). */
+#schedule-card [hidden], #kakao-card [hidden], #schedule-results [hidden] { display: none !important; }
