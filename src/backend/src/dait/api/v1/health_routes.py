@@ -6,7 +6,7 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from dait.core.config import Settings, get_settings
 from dait.schemas.health import HealthResponse, KeepAliveResponse
@@ -42,7 +42,7 @@ def readyz(settings: Annotated[Settings, Depends(get_settings)]) -> HealthRespon
 
 
 @router.get("/v1/internal/keepalive", response_model=KeepAliveResponse, include_in_schema=False)
-def keepalive() -> KeepAliveResponse:
+def keepalive(response: Response) -> KeepAliveResponse:
     """외부 cron의 keep-alive ping 전용. DB·Redis를 거치지 않고 즉시 200을 반환한다.
 
     입력: 없음 (인증 불필요 — 공개 정보만 반환)
@@ -50,5 +50,7 @@ def keepalive() -> KeepAliveResponse:
     기능: Render Free 스핀다운(15분 무요청)을 막기 위해 cron-job.org 등이
           10분 간격으로 호출한다. 어떤 의존성 장애가 있어도 서버를 깨우는
           역할은 유지해야 하므로 readiness 검사를 하지 않는다.
+          매 호출이 새로운 서버 시각을 반환하도록 캐시를 금지한다.
     """
+    response.headers["Cache-Control"] = "no-store"
     return KeepAliveResponse(time=datetime.now(UTC).isoformat())
