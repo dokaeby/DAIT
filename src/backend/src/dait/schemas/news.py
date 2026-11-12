@@ -57,6 +57,8 @@ class NewsListItem(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str = Field(min_length=1, max_length=64)
+    original_language: str = "und"
+    author_name: str | None = None
     rank: int = Field(ge=1)
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
     source_name: str = Field(min_length=1, max_length=200)

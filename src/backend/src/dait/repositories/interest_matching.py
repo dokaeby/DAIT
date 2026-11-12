@@ -1,5 +1,7 @@
 """Shared, explicit keyword rules for the fifteen supported news topics."""
 
+from dait.repositories.news_language import NEWS_LANGUAGE_SQL
+
 KEYWORDS = {
     "ai.models": ("언어모델", "언어 모델", "llm", "gpt", "모델 학습", "인공지능 연구"),
     "ai.agents": ("에이전트", "ai agent", "인공지능 비서", "자율 에이전트"),
@@ -17,6 +19,97 @@ KEYWORDS = {
     "society.climate": ("환경", "기후", "탄소", "온난화", "재생에너지"),
     "society.culture": ("문화", "콘텐츠", "영화", "음악", "공연", "게임"),
 }
+KEYWORDS["ai.models"] += (
+    "language model",
+    "llm",
+    "model training",
+)
+KEYWORDS["en.ai.models"] = KEYWORDS["ai.models"]
+KEYWORDS["ai.agents"] += (
+    "ai agent",
+    "ai assistant",
+)
+KEYWORDS["en.ai.agents"] = KEYWORDS["ai.agents"]
+KEYWORDS["ai.devtools"] += (
+    "developer",
+    "coding",
+    "copilot",
+)
+KEYWORDS["en.ai.devtools"] = KEYWORDS["ai.devtools"]
+KEYWORDS["ai.opensource"] += (
+    "open source",
+    "open-source",
+    "local model",
+)
+KEYWORDS["en.ai.opensource"] = KEYWORDS["ai.opensource"]
+KEYWORDS["ai.infra"] += (
+    "gpu",
+    "data center",
+    "semiconductor",
+)
+KEYWORDS["en.ai.infra"] = KEYWORDS["ai.infra"]
+KEYWORDS["economy.industry"] += (
+    "industry",
+    "manufacturing",
+    "supply chain",
+)
+KEYWORDS["en.economy.industry"] = KEYWORDS["economy.industry"]
+KEYWORDS["economy.business"] += (
+    "corporate",
+    "company",
+    "revenue",
+    "earnings",
+)
+KEYWORDS["en.economy.business"] = KEYWORDS["economy.business"]
+KEYWORDS["economy.startups"] += (
+    "startup",
+    "venture",
+    "funding",
+)
+KEYWORDS["en.economy.startups"] = KEYWORDS["economy.startups"]
+KEYWORDS["economy.markets"] += (
+    "finance",
+    "stock",
+    "interest rate",
+)
+KEYWORDS["en.economy.markets"] = KEYWORDS["economy.markets"]
+KEYWORDS["economy.jobs"] += (
+    "employment",
+    "hiring",
+    "jobs",
+)
+KEYWORDS["en.economy.jobs"] = KEYWORDS["economy.jobs"]
+KEYWORDS["society.policy"] += (
+    "policy",
+    "government",
+    "regulation",
+)
+KEYWORDS["en.society.policy"] = KEYWORDS["society.policy"]
+KEYWORDS["society.education"] += (
+    "education",
+    "school",
+    "university",
+)
+KEYWORDS["en.society.education"] = KEYWORDS["society.education"]
+KEYWORDS["society.health"] += (
+    "health",
+    "medicine",
+    "hospital",
+)
+KEYWORDS["en.society.health"] = KEYWORDS["society.health"]
+KEYWORDS["society.climate"] += (
+    "climate",
+    "environment",
+    "carbon",
+)
+KEYWORDS["en.society.climate"] = KEYWORDS["society.climate"]
+KEYWORDS["society.culture"] += (
+    "culture",
+    "film",
+    "music",
+    "gaming",
+)
+KEYWORDS["en.society.culture"] = KEYWORDS["society.culture"]
 GROUPS = {"ai": "AI", "economy": "ECONOMY", "society": "POLITICS"}
 
 
@@ -29,9 +122,16 @@ def interest_clause(codes: tuple[str, ...]) -> tuple[str, list[str]]:
         if not words:
             continue
         matches = []
-        params.append(GROUPS[code.split(".")[0]])
+        base_code = code.removeprefix("en.")
+        params.append(GROUPS[base_code.split(".")[0]])
         for word in words:
             matches.append("(lower(n.title) LIKE ? OR lower(c.summary_lines) LIKE ?)")
             params.extend([f"%{word.lower()}%"] * 2)
-        clauses.append("(n.category = ? AND (" + " OR ".join(matches) + "))")
+        clauses.append(
+            "(n.category = ? AND "
+            + (f"({NEWS_LANGUAGE_SQL}) = 'en' AND " if code.startswith("en.") else "")
+            + "("
+            + " OR ".join(matches)
+            + "))"
+        )
     return "(" + " OR ".join(clauses) + ")" if clauses else "1=0", params
