@@ -22,7 +22,7 @@ from pydantic import TypeAdapter, ValidationError
 from redis.asyncio import Redis
 from src.backend.app.collectors.content_extractor import (
     extract_clean_body_with_trafilatura,
-    fetch_public_article_html,
+    fetch_article_html_and_body,
 )
 from src.backend.app.core.taxonomy import GLOBAL_SOURCE_NAMES, match_category
 from src.backend.app.core.title_translation import contextualize_title
@@ -714,12 +714,7 @@ class GoogleTranslateContentProcessor:
         )
         cleaned_body = _clean_rss_body(trafilatura_local or raw_input)
         if self._enable_network_translation and len(_extract_sentences(cleaned_body)) < 3:
-            remote_html = await fetch_public_article_html(article.canonical_url)
-            remote_body = (
-                await asyncio.to_thread(extract_clean_body_with_trafilatura, remote_html)
-                if remote_html
-                else ""
-            )
+            remote_html, remote_body = await fetch_article_html_and_body(article.canonical_url)
             enriched_body = (
                 _clean_rss_body(remote_body)
                 if remote_body

@@ -79,7 +79,64 @@ def extract_clean_body_with_trafilatura(html_content: str) -> str:
     return " ".join(paragraphs).strip()
 
 
-async def fetch_public_article_html(
+async def _fetch_public_html(
+    url: HttpUrl,
+    *,
+    resolver: Resolver,
+    transport: httpx.AsyncBaseTransport | None,
+    timeout_seconds: float,
+    max_bytes: int,
+    max_redirects: int,
+) -> str:
+    """Fetch article HTML via pinned public IPs, validating every redirect hop (SSRF defense)."""
+    current_url = url
+    for _ in range(max_redirects + 1):
+        host = _validate_public_url(current_url)
+        port = current_url.port or (443 if current_url.scheme == "https" else 80)
+        addresses = await resolver(host, port)
+        if not addresses or not all(is_public_ip(addr) for addr in addresses):
+            return ""
+
+        target = httpx.URL(str(current_url)).copy_with(host=addresses[0])
+        active_transport = transport or httpx.AsyncHTTPTransport(
+            limits=httpx.Limits(max_keepalive_connections=0)
+        )
+        async with active_transport:
+            request = httpx.Request(
+                "GET",
+                target,
+                headers=[
+                    ("Host", host),
+                    ("User-Agent", USER_AGENT),
+                    ("Accept", "text/html,application/xhtml+xml"),
+                ],
+            )
+            request.extensions["sni_hostname"] = host
+            request.extensions["timeout"] = httpx.Timeout(timeout_seconds).as_dict()
+            response = await active_transport.handle_async_request(request)
+            try:
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("location", "").strip()
+                    if not location:
+                        return ""
+                    current_url = HttpUrl(urljoin(str(current_url), location))
+                    continue
+                if response.status_code != 200:
+                    return ""
+                raw_bytes = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(raw_bytes) + len(chunk) > max_bytes:
+                        break
+                    raw_bytes.extend(chunk)
+                html_text = bytes(raw_bytes).decode("utf-8", errors="ignore")
+            finally:
+                await response.aclose()
+
+        return html_text
+    return ""
+
+
+async def fetch_article_html_and_body(
     url: HttpUrl,
     *,
     resolver: Resolver = resolve_public_host,
@@ -87,61 +144,28 @@ async def fetch_public_article_html(
     timeout_seconds: float = 6.0,
     max_bytes: int = 2_000_000,
     max_redirects: int = 3,
-) -> str:
-    """Fetch article HTML via pinned public IPs, validating every redirect hop (SSRF defense).
+) -> tuple[str, str]:
+    """Return (html, Trafilatura body) for an article page fetched with strict SSRF protection.
 
-    Returns an empty string on any network error or safety rejection.
+    Returns empty strings on any network error, safety rejection, or extraction failure.
     """
-    current_url = url
     try:
         async with asyncio.timeout(timeout_seconds):
-            for _ in range(max_redirects + 1):
-                host = _validate_public_url(current_url)
-                port = current_url.port or (443 if current_url.scheme == "https" else 80)
-                addresses = await resolver(host, port)
-                if not addresses or not all(is_public_ip(addr) for addr in addresses):
-                    return ""
-
-                target = httpx.URL(str(current_url)).copy_with(host=addresses[0])
-                active_transport = transport or httpx.AsyncHTTPTransport(
-                    limits=httpx.Limits(max_keepalive_connections=0)
-                )
-                async with active_transport:
-                    request = httpx.Request(
-                        "GET",
-                        target,
-                        headers=[
-                            ("Host", host),
-                            ("User-Agent", USER_AGENT),
-                            ("Accept", "text/html,application/xhtml+xml"),
-                        ],
-                    )
-                    request.extensions["sni_hostname"] = host
-                    request.extensions["timeout"] = httpx.Timeout(timeout_seconds).as_dict()
-                    response = await active_transport.handle_async_request(request)
-                    try:
-                        if response.status_code in {301, 302, 303, 307, 308}:
-                            location = response.headers.get("location", "").strip()
-                            if not location:
-                                return ""
-                            current_url = HttpUrl(urljoin(str(current_url), location))
-                            continue
-                        if response.status_code != 200:
-                            return ""
-                        raw_bytes = bytearray()
-                        async for chunk in response.aiter_bytes():
-                            if len(raw_bytes) + len(chunk) > max_bytes:
-                                break
-                            raw_bytes.extend(chunk)
-                        html_text = bytes(raw_bytes).decode("utf-8", errors="ignore")
-                    finally:
-                        await response.aclose()
-
-                return html_text
-    except Exception:  # noqa: BLE001 -- return empty string safely on network/SSRF error
+            html_text = await _fetch_public_html(
+                url,
+                resolver=resolver,
+                transport=transport,
+                timeout_seconds=timeout_seconds,
+                max_bytes=max_bytes,
+                max_redirects=max_redirects,
+            )
+            if not html_text:
+                return "", ""
+            body = await asyncio.to_thread(extract_clean_body_with_trafilatura, html_text)
+            return html_text, body
+    except Exception:  # noqa: BLE001 -- return empty strings safely on network/SSRF error
         logger.debug("Remote article fetch skipped for article URL")
-        return ""
-    return ""
+        return "", ""
 
 
 async def fetch_article_body_with_trafilatura(
@@ -154,7 +178,7 @@ async def fetch_article_body_with_trafilatura(
     max_redirects: int = 3,
 ) -> str:
     """Fetch an article detail page with strict SSRF protection and extract body via Trafilatura."""
-    html_text = await fetch_public_article_html(
+    _, body = await fetch_article_html_and_body(
         url,
         resolver=resolver,
         transport=transport,
@@ -162,6 +186,4 @@ async def fetch_article_body_with_trafilatura(
         max_bytes=max_bytes,
         max_redirects=max_redirects,
     )
-    if not html_text:
-        return ""
-    return await asyncio.to_thread(extract_clean_body_with_trafilatura, html_text)
+    return body

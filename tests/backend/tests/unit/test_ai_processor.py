@@ -13,7 +13,7 @@ from pydantic import HttpUrl, ValidationError
 from src.backend.app.collectors.content_extractor import (
     extract_clean_body_with_trafilatura,
     fetch_article_body_with_trafilatura,
-    fetch_public_article_html,
+    fetch_article_html_and_body,
 )
 from src.backend.app.schemas.collector import CollectedArticle
 from src.backend.app.schemas.content import (
@@ -772,8 +772,8 @@ def _patch_guarded_fetch(
     async def public_dns(_host: str, _port: int) -> tuple[str, ...]:
         return ("93.184.216.34",)
 
-    async def guarded_fetch(url: HttpUrl) -> str:
-        return await fetch_public_article_html(
+    async def guarded_fetch(url: HttpUrl) -> tuple[str, str]:
+        return await fetch_article_html_and_body(
             url,
             resolver=public_dns,
             transport=httpx.MockTransport(recording_handler),
@@ -783,7 +783,7 @@ def _patch_guarded_fetch(
         pytest.fail("Article enrichment must not use an unguarded HTTP client")
 
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.fetch_public_article_html", guarded_fetch
+        "src.backend.app.workers.ai_processor.fetch_article_html_and_body", guarded_fetch
     )
     monkeypatch.setattr(httpx.AsyncClient, "get", fail_client_get)
 
@@ -830,7 +830,7 @@ def test_google_translate_processor_paragraph_fallback_reuses_guarded_html(
         return ""
 
     monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.extract_clean_body_with_trafilatura",
+        "src.backend.app.collectors.content_extractor.extract_clean_body_with_trafilatura",
         no_trafilatura_body,
     )
     requests = _patch_guarded_fetch(monkeypatch, handler)
@@ -840,3 +840,27 @@ def test_google_translate_processor_paragraph_fallback_reuses_guarded_html(
     assert len(requests) == 1
     assert isinstance(result, SuccessContent)
     assert "doubles inference throughput" in result.translated_text
+
+
+def test_fetch_article_body_returns_empty_when_trafilatura_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def exploding_extract(_html: str) -> str:
+        msg = "parser crashed"
+        raise RuntimeError(msg)
+
+    async def public_dns(_host: str, _port: int) -> tuple[str, ...]:
+        return ("93.184.216.34",)
+
+    monkeypatch.setattr(
+        "src.backend.app.collectors.content_extractor.extract_clean_body_with_trafilatura",
+        exploding_extract,
+    )
+    body = asyncio.run(
+        fetch_article_body_with_trafilatura(
+            HttpUrl("https://news.example/article/123"),
+            resolver=public_dns,
+            transport=httpx.MockTransport(lambda _request: httpx.Response(200, text="<p>x</p>")),
+        )
+    )
+    assert body == ""
