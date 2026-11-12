@@ -1,0 +1,50 @@
+# DAIT 상세 설계서
+
+> 34 nodes
+
+## Key Concepts
+
+- **DAIT 상세 설계서** (21 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **12. 모드·설정·로깅** (4 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **5. 주요 처리 흐름** (4 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **6. API 설계** (4 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **7. 데이터 설계** (4 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **15. 배포 구조** (3 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **02_시스템상세설계서_v1.0.3.md** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **0.1 v1.0.1 화면 기준 변경** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **10. LLM 처리 설계** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **11. 인증·인가 설계** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **12.1 설정** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **12.2 release 모드** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **12.3 debug·test 모드** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **13. 오류 모델** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **14. 성능·안정성** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **15.1 목표 구조 (설계)** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **15.2 v1.0.3 실제 배포 (Render + Supabase)** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **16. 테스트 전략** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **17. 품질 게이트** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **18. 추적성** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **1. 설계 목표** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **2. 기술 기준선** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **4. 백엔드 코드 구조** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **5.1 뉴스 조회** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- **5.2 예약 수집과 AI 처리** (1 connections) — `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+- *... and 9 more nodes in this community*
+
+## Relationships
+
+- [.category](category.md) (2 shared connections)
+
+## Source Files
+
+- `docs/DAIT_v1.0.3/02_시스템상세설계서_v1.0.3.md`
+
+## Audit Trail
+
+- EXTRACTED: 35 (100%)
+- INFERRED: 0 (0%)
+- AMBIGUOUS: 0 (0%)
+
+---
+
+*Part of the graphify knowledge wiki. See [index](index.md) to navigate.*

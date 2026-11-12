@@ -1,0 +1,43 @@
+# DAIT 통합 테스트 케이스
+
+> 9 nodes
+
+## Key Concepts
+
+- **DAIT 통합 테스트 케이스** (18 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **15. 핵심 시연 시나리오 통합 테스트** (2 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **10_통합_test_cases_v1.0.2.md** (1 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **16. 통합 테스트 완료 기준** (1 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **1. 목적** (1 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **2. 통합 범위** (1 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **3. 테스트 환경 데이터 기준** (1 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **IT-DEMO-001 전체 MVP 정상 시나리오** (1 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+- **문서 이력** (1 connections) — `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+
+## Relationships
+
+- [6. 메인→상세 통합](6._메인→상세_통합.md) (1 shared connections)
+- [7. 설정 조회/저장/복원 통합](7._설정_조회-저장-복원_통합.md) (1 shared connections)
+- [8. 예약 수집 통합](8._예약_수집_통합.md) (1 shared connections)
+- [9. 수집→AI→DB→메인 통합](9._수집→AI→DB→메인_통합.md) (1 shared connections)
+- [10. 설정→예약→알림 통합](10._설정→예약→알림_통합.md) (1 shared connections)
+- [11. DB 관계/무결성 통합 테스트](11._DB_관계-무결성_통합_테스트.md) (1 shared connections)
+- [12. 오류/복구 통합 테스트](12._오류-복구_통합_테스트.md) (1 shared connections)
+- [13. 반응형/화면 통합 테스트](13._반응형-화면_통합_테스트.md) (1 shared connections)
+- [14. 보안 통합 테스트](14._보안_통합_테스트.md) (1 shared connections)
+- [4. 인증→메인 통합](4._인증→메인_통합.md) (1 shared connections)
+- [5. 메인 화면 통합](5._메인_화면_통합.md) (1 shared connections)
+
+## Source Files
+
+- `docs/DAIT_v1.0.2/10_통합_test_cases_v1.0.2.md`
+
+## Audit Trail
+
+- EXTRACTED: 19 (100%)
+- INFERRED: 0 (0%)
+- AMBIGUOUS: 0 (0%)
+
+---
+
+*Part of the graphify knowledge wiki. See [index](index.md) to navigate.*
