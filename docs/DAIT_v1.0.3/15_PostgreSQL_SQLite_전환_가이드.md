@@ -1,5 +1,13 @@
 # DAIT SQLite → PostgreSQL 전환 가이드
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT SQLite to PostgreSQL Migration Guide |
+| Search Keywords | DAIT, SQLite, PostgreSQL, database migration, dual backend, SQL dialect, placeholders, repository abstraction, Alembic, Supabase pooler, search_path, timezone-aware timestamps |
+| English Summary | Guide for keeping DAIT's repository layer working identically on local SQLite and production Supabase PostgreSQL. Covers migration principles (shared types, single dialect-abstraction layer, no `if sqlite` branching in services), placeholder differences, UTC timezone-aware timestamps, and the dual-backend implementation with Supabase pooler and search_path separation. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

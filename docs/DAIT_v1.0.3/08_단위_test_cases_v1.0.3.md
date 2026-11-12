@@ -1,5 +1,13 @@
 # DAIT 단위 테스트 케이스
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT Unit Test Cases |
+| Search Keywords | DAIT, unit test cases, pytest, pytest-asyncio, FastAPI TestClient, unittest.mock, scheduler tick, Redis cache, distributed lock, login throttle, interests, nickname, session, news read, schedule runs |
+| English Summary | Unit test case catalog for DAIT stage-1 MVP using pytest, pytest-asyncio, FastAPI TestClient, and unittest.mock. Covers the implemented suite of 586 passing tests plus v1.0.3 additions: scheduler tick, Redis cache/lock/corrupt-cache defense, login throttling, interests/nickname/session, news activity/read, and schedule run history. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

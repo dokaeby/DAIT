@@ -1,5 +1,13 @@
 # DAIT 배포 설치 가이드 (Oracle Always Free + Supabase + Cloudflare Tunnel)
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT Deployment Guide (Oracle Always Free + Supabase + Cloudflare Tunnel) |
+| Search Keywords | DAIT, deployment, Oracle Cloud Always Free, VM, Supabase PostgreSQL, Cloudflare Tunnel, cloudflared, systemd, uvicorn, free hosting, spin-down alternative |
+| English Summary | Alternative free deployment path for DAIT when Render free-tier spin-down is a problem: Oracle Cloud Always Free VM running uvicorn via systemd, Supabase PostgreSQL, and Cloudflare Tunnel for HTTPS without public ports. Kept as a fallback; current production uses Render + Supabase + Render Key Value per document 16. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

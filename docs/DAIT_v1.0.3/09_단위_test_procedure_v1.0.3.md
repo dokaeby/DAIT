@@ -1,5 +1,13 @@
 # DAIT 단위 테스트 절차서
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT Unit Test Procedure |
+| Search Keywords | DAIT, unit test procedure, pytest, Windows, PowerShell, uv run, tests/backend, SQLite temp DB, test runner, quality gate |
+| English Summary | Step-by-step procedure for running DAIT unit tests on Windows with Python 3.12+ and pytest. Documents `uv run pytest tests/backend -q`, the 586-test passing gate, per-module test file conventions, and separation of SQLite temp-DB tests from Supabase/PostgreSQL integration verification. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

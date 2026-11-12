@@ -1,5 +1,13 @@
 # DAIT UI 자동화 테스트 절차서
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT UI Automation Test Procedure |
+| Search Keywords | DAIT, UI automation procedure, Playwright, pytest, seed data, viewport, browser, evidence rules, auth dialog, slow-auth-notice, regression, reproducibility |
+| English Summary | Standardized procedure so any developer or QA can reproduce DAIT UI automation tests with identical seed data, viewport, browser, commands, and evidence rules. Covers Playwright setup across Windows/macOS/Linux, local and Render target URLs, verifying the immediate `#slow-auth-notice` popup, failure investigation, and evidence retention. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |
