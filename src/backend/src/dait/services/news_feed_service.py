@@ -93,14 +93,14 @@ def list_news(
     cache_key = cache_retry_service.list_cache_key(
         category.value, normalized, sort, page_size, cursor
     )
-    cached = cache_retry_service.cache_get(settings, cache_key)
-    if cached is not None:
-        return NewsListResponse.model_validate_json(cached)
+    hit = cache_retry_service.load_cached(settings, cache_key, NewsListResponse)
+    if hit is not None:
+        return hit
     with cache_retry_service.locked(settings, cache_key, cache_key) as acquired:
         if not acquired:
-            cached = cache_retry_service.cache_get(settings, cache_key)
-            if cached is not None:
-                return NewsListResponse.model_validate_json(cached)
+            hit = cache_retry_service.load_cached(settings, cache_key, NewsListResponse)
+            if hit is not None:
+                return hit
         response = _list_news_uncached(settings, category, normalized, sort, page_size, cursor, now)
         cache_retry_service.cache_set(
             settings, cache_key, response.model_dump_json(), cache_retry_service.list_ttl()

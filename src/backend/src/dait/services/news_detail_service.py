@@ -72,14 +72,14 @@ def get_news_detail(settings: Settings, news_id: str) -> NewsDetailResponse:
     if not news_id or len(news_id) > 64:
         raise NewsNotFoundError
     cache_key = cache_retry_service.detail_cache_key(news_id)
-    cached = cache_retry_service.cache_get(settings, cache_key)
-    if cached is not None:
-        return NewsDetailResponse.model_validate_json(cached)
+    hit = cache_retry_service.load_cached(settings, cache_key, NewsDetailResponse)
+    if hit is not None:
+        return hit
     with cache_retry_service.locked(settings, cache_key, cache_key) as acquired:
         if not acquired:
-            cached = cache_retry_service.cache_get(settings, cache_key)
-            if cached is not None:
-                return NewsDetailResponse.model_validate_json(cached)
+            hit = cache_retry_service.load_cached(settings, cache_key, NewsDetailResponse)
+            if hit is not None:
+                return hit
         response = _detail_uncached(settings, news_id)
         cache_retry_service.cache_set(
             settings, cache_key, response.model_dump_json(), cache_retry_service.detail_ttl()

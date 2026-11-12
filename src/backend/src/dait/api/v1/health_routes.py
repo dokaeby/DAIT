@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 
 from dait.core.config import Settings, get_settings
 from dait.schemas.health import HealthResponse
-from dait.services.health_service import ensure_database_ready
+from dait.services.health_service import ensure_database_ready, ensure_redis_ready
 
 router = APIRouter(tags=["health"])
 
@@ -29,7 +29,9 @@ def readyz(settings: Annotated[Settings, Depends(get_settings)]) -> HealthRespon
 
     입력: settings (의존성으로 주입되는 앱 설정)
     출력: HealthResponse ({"status": "ready"})
-    기능: DB가 응답하지 않으면 503 NOT_READY 오류 형식으로 나간다.
+    기능: DB가 응답하지 않거나 Redis가 설정됐는데 연결되지 않으면
+          503 NOT_READY 오류 형식으로 나간다.
     """
     ensure_database_ready(settings.database_url)
+    ensure_redis_ready(settings)
     return HealthResponse(status="ready")

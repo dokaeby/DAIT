@@ -12,6 +12,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import TypeVar
 
+from pydantic import BaseModel
 from redis.exceptions import RedisError
 
 from dait.core.config import Settings
@@ -128,7 +129,7 @@ def locked(
     기능: 캐시 stampede 방지용이다. 락 실패가 본 조회를 막지는 않는다.
           cache_key가 있으면 대기 중 그 키를 다시 확인해 선점자가 채운 값을 재사용하게 한다.
     """
-    key = f"dait:lock:{lock_name}"
+    key = f"lock:news:{lock_name}"
     token = redis_repository.new_lock_token()
     client = _get_redis(settings)
     if client is not None:
@@ -156,6 +157,34 @@ def locked(
             _memory_release(key, token)
 
 
+def cache_delete(settings: Settings, key: str) -> None:
+    """캐시 값을 지운다. 손상된 값을 제거할 때 쓴다. 실패해도 조용히 넘어간다."""
+    client = _get_redis(settings)
+    if client is not None:
+        _redis_call(lambda: client.delete(key))
+        return
+    with _lock:
+        _memory_cache.pop(key, None)
+
+
+def load_cached[T: BaseModel](settings: Settings, key: str, model: type[T]) -> T | None:
+    """캐시 값을 모델로 복원한다. 없거나 손상됐으면 None(미스와 동일하게 처리).
+
+    입력: settings, key (캐시 키), model (응답 모델 클래스)
+    출력: T 또는 None
+    기능: 캐시 페이로드가 깨져 있으면 지우고 미스로 돌려 본 조회가 다시 채우게 한다.
+          캐시 손상이 API 500으로 번지지 않게 하는 것이 목적이다.
+    """
+    raw = cache_get(settings, key)
+    if raw is None:
+        return None
+    try:
+        return model.model_validate_json(raw)
+    except ValueError:
+        cache_delete(settings, key)
+        return None
+
+
 def clear_memory_state() -> None:
     """테스트용: 메모리 캐시·락·Redis 상태를 초기화한다."""
     with _lock:
@@ -170,12 +199,12 @@ def list_cache_key(category: str, query: str, sort: str, page_size: int, cursor:
     digest = hashlib.sha256(
         f"{category}|{query}|{sort}|{page_size}|{cursor or ''}".encode()
     ).hexdigest()[:24]
-    return f"news:list:{digest}"
+    return f"cache:news:list:{digest}"
 
 
 def detail_cache_key(news_id: str) -> str:
     """상세 캐시 키."""
-    return f"news:detail:{news_id}"
+    return f"cache:news:detail:{news_id}"
 
 
 def list_ttl() -> int:
