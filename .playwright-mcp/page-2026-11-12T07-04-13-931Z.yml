@@ -1,0 +1,43 @@
+- generic [ref=f3e2]:
+  - banner [ref=f3e3]:
+    - link "DAIT 메인" [ref=f3e4] [cursor=pointer]:
+      - /url: /?ui=20261112-search
+      - generic [ref=f3e5]: DAIT
+      - generic [ref=f3e7]: AI 뉴스 큐레이션 서비스
+    - generic [ref=f3e9]:
+      - button "회원가입" [ref=f3e10]
+      - button "로그인" [ref=f3e11]
+  - generic [ref=f3e12]:
+    - complementary "주요 탐색" [ref=f3e13]:
+      - navigation [ref=f3e14]:
+        - generic [ref=f3e15]: Discover
+        - link "⌂ 오늘의 AI 뉴스" [ref=f3e16] [cursor=pointer]:
+          - /url: /?ui=20261112-search
+      - navigation [ref=f3e17]:
+        - generic [ref=f3e18]: Workspace
+        - link "☆ 관심 카테고리" [ref=f3e19] [cursor=pointer]:
+          - /url: /settings.html#interests
+        - link "⚙ 설정" [ref=f3e20] [cursor=pointer]:
+          - /url: /settings.html
+      - paragraph [ref=f3e21]: RSS 기반 뉴스와 AI 요약을 제공합니다.정확한 내용은 원문을 확인해 주세요.
+    - main [ref=f3e22]:
+      - generic [ref=f3e24]:
+        - paragraph [ref=f3e25]: Daily Intelligence
+        - heading "오늘의 AI 뉴스" [level=1] [ref=f3e26]
+        - paragraph [ref=f3e27]: 오늘의 주요 뉴스를 AI 3줄 요약과 함께 확인하세요.
+      - region "뉴스 검색" [ref=f3e28]:
+        - search [ref=f3e29]:
+          - generic [ref=f3e30]:
+            - generic [ref=f3e31]: 뉴스 검색
+            - searchbox "뉴스 검색" [ref=f3e32]: Nvidia
+            - button "검색" [ref=f3e33] [cursor=pointer]
+          - link "검색 초기화" [ref=f3e34] [cursor=pointer]:
+            - /url: /?ui=20261112-search
+        - status [ref=f3e35]: 뉴스를 불러오고 있습니다…
+      - region "기사 목록" [ref=f3e36]:
+        - strong [ref=f3e38]: 뉴스를 불러오고 있습니다
+        - list [ref=f3e39]:
+          - listitem [aria-hidden] [ref=f3e40]
+          - listitem [aria-hidden] [ref=f3e44]
+          - listitem [aria-hidden] [ref=f3e48]
+          - listitem [aria-hidden] [ref=f3e52]

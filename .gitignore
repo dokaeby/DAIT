@@ -267,3 +267,6 @@ test-results/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# graphify AST cache (regenerable)
+graphify-out/cache/
