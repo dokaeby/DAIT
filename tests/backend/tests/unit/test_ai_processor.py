@@ -3,15 +3,17 @@
 import asyncio
 import json
 import socket
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from pydantic import HttpUrl, ValidationError
 from src.backend.app.collectors.content_extractor import (
     extract_clean_body_with_trafilatura,
     fetch_article_body_with_trafilatura,
+    fetch_public_article_html,
 )
 from src.backend.app.schemas.collector import CollectedArticle
 from src.backend.app.schemas.content import (
@@ -744,3 +746,97 @@ def test_google_translate_processor_returns_insufficient_when_body_too_short() -
     assert isinstance(result, InsufficientContent)
     assert result.status == "INSUFFICIENT"
     assert result.summary_lines == ()
+
+
+def _short_foreign_article() -> CollectedArticle:
+    return CollectedArticle(
+        source_name="TechCrunch",
+        title="Acme unveils a new AI chip",
+        canonical_url=HttpUrl("https://news.example/article/123"),
+        category="AI",
+        published_at=datetime(2026, 11, 8, 12, 0, tzinfo=UTC),
+        raw_text="Acme unveiled a new AI accelerator chip for data centers today.",
+    )
+
+
+def _patch_guarded_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> list[httpx.Request]:
+    requests: list[httpx.Request] = []
+
+    def recording_handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return handler(request)
+
+    async def public_dns(_host: str, _port: int) -> tuple[str, ...]:
+        return ("93.184.216.34",)
+
+    async def guarded_fetch(url: HttpUrl) -> str:
+        return await fetch_public_article_html(
+            url,
+            resolver=public_dns,
+            transport=httpx.MockTransport(recording_handler),
+        )
+
+    async def fail_client_get(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Article enrichment must not use an unguarded HTTP client")
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.ai_processor.fetch_public_article_html", guarded_fetch
+    )
+    monkeypatch.setattr(httpx.AsyncClient, "get", fail_client_get)
+
+    def fake_translate(_self: object, text: str) -> str:
+        return f"번역: {text}"
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.ai_processor.GoogleTranslator.translate", fake_translate
+    )
+    return requests
+
+
+def test_google_translate_processor_does_not_follow_redirect_to_private_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "127.0.0.1":
+            return httpx.Response(200, text="<p>Internal secret paragraph that must not leak.</p>")
+        return httpx.Response(302, headers={"location": "http://127.0.0.1/"})
+
+    requests = _patch_guarded_fetch(monkeypatch, handler)
+    processor = GoogleTranslateContentProcessor(enable_network_translation=True)
+    result = asyncio.run(processor.process(_short_foreign_article()))
+
+    assert [request.url.host for request in requests] == ["93.184.216.34"]
+    assert isinstance(result, SuccessContent)
+    assert "Internal secret" not in result.translated_text
+    assert all("Internal secret" not in line for line in result.summary_lines)
+
+
+def test_google_translate_processor_paragraph_fallback_reuses_guarded_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paragraphs = (
+        "Acme said the accelerator doubles inference throughput for large models.",
+        "The company plans to ship the chip to cloud providers early next year.",
+        "Analysts expect the launch to intensify competition in the AI chip market.",
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="".join(f"<p>{p}</p>" for p in paragraphs))
+
+    def no_trafilatura_body(_html: str) -> str:
+        return ""
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.ai_processor.extract_clean_body_with_trafilatura",
+        no_trafilatura_body,
+    )
+    requests = _patch_guarded_fetch(monkeypatch, handler)
+    processor = GoogleTranslateContentProcessor(enable_network_translation=True)
+    result = asyncio.run(processor.process(_short_foreign_article()))
+
+    assert len(requests) == 1
+    assert isinstance(result, SuccessContent)
+    assert "doubles inference throughput" in result.translated_text

@@ -79,7 +79,7 @@ def extract_clean_body_with_trafilatura(html_content: str) -> str:
     return " ".join(paragraphs).strip()
 
 
-async def fetch_article_body_with_trafilatura(
+async def fetch_public_article_html(
     url: HttpUrl,
     *,
     resolver: Resolver = resolve_public_host,
@@ -88,7 +88,10 @@ async def fetch_article_body_with_trafilatura(
     max_bytes: int = 2_000_000,
     max_redirects: int = 3,
 ) -> str:
-    """Fetch an article detail page with strict SSRF protection and extract body via Trafilatura."""
+    """Fetch article HTML via pinned public IPs, validating every redirect hop (SSRF defense).
+
+    Returns an empty string on any network error or safety rejection.
+    """
     current_url = url
     try:
         async with asyncio.timeout(timeout_seconds):
@@ -134,8 +137,31 @@ async def fetch_article_body_with_trafilatura(
                     finally:
                         await response.aclose()
 
-                return await asyncio.to_thread(extract_clean_body_with_trafilatura, html_text)
+                return html_text
     except Exception:  # noqa: BLE001 -- return empty string safely on network/SSRF error
-        logger.debug("Trafilatura remote extraction skipped for article URL")
+        logger.debug("Remote article fetch skipped for article URL")
         return ""
     return ""
+
+
+async def fetch_article_body_with_trafilatura(
+    url: HttpUrl,
+    *,
+    resolver: Resolver = resolve_public_host,
+    transport: httpx.AsyncBaseTransport | None = None,
+    timeout_seconds: float = 6.0,
+    max_bytes: int = 2_000_000,
+    max_redirects: int = 3,
+) -> str:
+    """Fetch an article detail page with strict SSRF protection and extract body via Trafilatura."""
+    html_text = await fetch_public_article_html(
+        url,
+        resolver=resolver,
+        transport=transport,
+        timeout_seconds=timeout_seconds,
+        max_bytes=max_bytes,
+        max_redirects=max_redirects,
+    )
+    if not html_text:
+        return ""
+    return await asyncio.to_thread(extract_clean_body_with_trafilatura, html_text)
