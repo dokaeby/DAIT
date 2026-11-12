@@ -116,6 +116,14 @@ class ScheduleNotFoundError(AppError):
     message = "요청한 예약을 찾을 수 없습니다."
 
 
+class SchedulerAuthError(AppError):
+    """내부 스케줄러 tick 호출의 비밀값이 없거나 틀렸다."""
+
+    status_code = 401
+    code = "AUTHENTICATION_FAILED"
+    message = "인증에 실패했습니다."
+
+
 class InvalidTokenError(AppError):
     """토큰이 만료·변조됐거나 형식이 맞지 않을 때."""
 

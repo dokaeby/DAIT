@@ -283,6 +283,10 @@
     }
     const controls = form.querySelectorAll("input, button");
     controls.forEach((c) => (c.disabled = true));
+    const submitButton = form.querySelector('button[type="submit"]');
+    const submitLabel = submitButton ? submitButton.textContent : "";
+    if (submitButton) submitButton.textContent = "처리 중…";
+    showSlowAuthNotice();
     try {
       const res = await fetch(signup ? "/v1/auth/signup" : "/v1/auth/login", {
         method: "POST",
@@ -319,9 +323,34 @@
     } catch (_e) {
       feedback.textContent = "서버에 연결하지 못했습니다.";
     } finally {
+      hideSlowAuthNotice();
+      if (submitButton) submitButton.textContent = submitLabel;
       controls.forEach((c) => (c.disabled = false));
       if (dialog._signup) updateNicknameSubmit();
     }
+  }
+
+  function showSlowAuthNotice() {
+    let notice = document.getElementById("slow-auth-notice");
+    if (!notice) {
+      notice = document.createElement("dialog");
+      notice.id = "slow-auth-notice";
+      notice.className = "settings-dialog slow-notice";
+      notice.innerHTML =
+        '<div class="login-card slow-card">' +
+        '<div class="slow-spinner" aria-hidden="true"></div>' +
+        '<h2>서버를 깨우는 중입니다</h2>' +
+        '<p>무료 서버는 일정 시간 사용하지 않으면 잠시 쉬었다가, 첫 요청에 깨어나는 데 30~60초 정도 걸릴 수 있습니다. 잠시만 기다려 주세요.</p>' +
+        '<button class="secondary-button" type="button" id="slow-auth-close">계속 기다리기</button></div>';
+      document.body.appendChild(notice);
+      notice.querySelector("#slow-auth-close").addEventListener("click", () => notice.close());
+    }
+    if (!notice.open) notice.showModal();
+  }
+
+  function hideSlowAuthNotice() {
+    const notice = document.getElementById("slow-auth-notice");
+    if (notice && notice.open) notice.close();
   }
 
   document.addEventListener("DOMContentLoaded", () => {
