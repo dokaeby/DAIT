@@ -22,7 +22,7 @@ from pydantic import TypeAdapter, ValidationError
 from redis.asyncio import Redis
 from src.backend.app.collectors.content_extractor import (
     extract_clean_body_with_trafilatura,
-    fetch_article_body_with_trafilatura,
+    fetch_article_html_and_body,
 )
 from src.backend.app.core.taxonomy import GLOBAL_SOURCE_NAMES, match_category
 from src.backend.app.core.title_translation import contextualize_title
@@ -445,46 +445,35 @@ def _build_three_factual_sentences(title: str, body: str) -> tuple[str, str, str
     return candidates[0], candidates[1], candidates[2]
 
 
-async def _fetch_article_paragraphs(url: str) -> str:
-    """Fetch article body paragraphs when an RSS feed only provides a 1-sentence teaser."""
-    try:
-        async with httpx.AsyncClient(
-            timeout=5.0,
-            follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; DAITBot/1.0)"},
-        ) as client:
-            response = await client.get(url)
-            if response.status_code != 200:
-                return ""
-            paragraphs: list[str] = []
-            for raw_p in _HTML_PARA_PATTERN.findall(response.text):
-                plain = html.unescape(_HTML_TAG_PATTERN.sub(" ", raw_p))
-                cleaned = _clean_rss_body(plain)
-                if len(cleaned) < 45:
-                    continue
-                lower = cleaned.lower()
-                if any(
-                    skip in lower
-                    for skip in (
-                        "register now",
-                        "register here",
-                        "founder summit",
-                        "all rights reserved",
-                        "copyright",
-                        "image credits",
-                        "subscribe to",
-                        "sign up for",
-                    )
-                ):
-                    continue
-                if not cleaned.endswith((".", "!", "?", "다.", "요.", '"', "\u201d", "'")):
-                    continue
-                paragraphs.append(cleaned)
-                if len(paragraphs) >= 6:
-                    break
-            return " ".join(paragraphs)
-    except Exception:  # noqa: BLE001 -- return empty string if article page is unreachable
-        return ""
+def _extract_article_paragraphs(html_text: str) -> str:
+    """Extract article body paragraphs when Trafilatura finds no body in the fetched page."""
+    paragraphs: list[str] = []
+    for raw_p in _HTML_PARA_PATTERN.findall(html_text):
+        plain = html.unescape(_HTML_TAG_PATTERN.sub(" ", raw_p))
+        cleaned = _clean_rss_body(plain)
+        if len(cleaned) < 45:
+            continue
+        lower = cleaned.lower()
+        if any(
+            skip in lower
+            for skip in (
+                "register now",
+                "register here",
+                "founder summit",
+                "all rights reserved",
+                "copyright",
+                "image credits",
+                "subscribe to",
+                "sign up for",
+            )
+        ):
+            continue
+        if not cleaned.endswith((".", "!", "?", "다.", "요.", '"', "\u201d", "'")):
+            continue
+        paragraphs.append(cleaned)
+        if len(paragraphs) >= 6:
+            break
+    return " ".join(paragraphs)
 
 
 def _translate_sync_with_deep_translator(text: str) -> str | None:
@@ -725,11 +714,11 @@ class GoogleTranslateContentProcessor:
         )
         cleaned_body = _clean_rss_body(trafilatura_local or raw_input)
         if self._enable_network_translation and len(_extract_sentences(cleaned_body)) < 3:
-            remote_body = await fetch_article_body_with_trafilatura(article.canonical_url)
+            remote_html, remote_body = await fetch_article_html_and_body(article.canonical_url)
             enriched_body = (
                 _clean_rss_body(remote_body)
                 if remote_body
-                else await _fetch_article_paragraphs(str(article.canonical_url))
+                else _extract_article_paragraphs(remote_html)
             )
             if enriched_body and len(_extract_sentences(enriched_body)) >= 3:
                 cleaned_body = enriched_body
