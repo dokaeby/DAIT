@@ -864,3 +864,26 @@ def test_fetch_article_body_returns_empty_when_trafilatura_raises(
         )
     )
     assert body == ""
+
+
+def test_fetch_article_html_decodes_declared_legacy_charset() -> None:
+    korean = "<p>삼성전자가 차세대 AI 반도체 양산 계획을 발표했다.</p>"
+
+    async def public_dns(_host: str, _port: int) -> tuple[str, ...]:
+        return ("93.184.216.34",)
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=korean.encode("euc-kr"),
+            headers={"content-type": "text/html; charset=euc-kr"},
+        )
+
+    html_text, _ = asyncio.run(
+        fetch_article_html_and_body(
+            HttpUrl("https://news.example/article/123"),
+            resolver=public_dns,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    assert "삼성전자가 차세대 AI 반도체" in html_text

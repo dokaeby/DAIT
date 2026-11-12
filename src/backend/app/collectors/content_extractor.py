@@ -79,6 +79,13 @@ def extract_clean_body_with_trafilatura(html_content: str) -> str:
     return " ".join(paragraphs).strip()
 
 
+def _decode_html(raw: bytes, charset: str | None) -> str:
+    try:
+        return raw.decode(charset or "utf-8", errors="ignore")
+    except LookupError:
+        return raw.decode("utf-8", errors="ignore")
+
+
 async def _fetch_public_html(
     url: HttpUrl,
     *,
@@ -128,7 +135,7 @@ async def _fetch_public_html(
                     if len(raw_bytes) + len(chunk) > max_bytes:
                         break
                     raw_bytes.extend(chunk)
-                html_text = bytes(raw_bytes).decode("utf-8", errors="ignore")
+                html_text = _decode_html(bytes(raw_bytes), response.charset_encoding)
             finally:
                 await response.aclose()
 
