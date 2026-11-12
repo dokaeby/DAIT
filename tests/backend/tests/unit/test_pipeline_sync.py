@@ -83,11 +83,13 @@ def test_sync_inserts_success_rows_with_ready_status() -> None:
     inserted = pipeline_sync_service.sync_pipeline_news(conn)
     assert inserted == 1
     row = conn.execute(
-        "SELECT n.category, n.original_language, c.status, c.summary_lines, c.model_id "
+        "SELECT n.category, n.original_language, n.published_at, c.status, "
+        "c.summary_lines, c.model_id "
         "FROM news n JOIN content_results c ON c.news_id = n.id"
     ).fetchone()
     assert row is not None
-    category, language, status, summary, model = row
+    category, language, published_at, status, summary, model = row
+    assert published_at == "2026-11-12T01:00:00+00:00"
     assert category == "AI"
     assert language == "ko"
     assert status == "READY"

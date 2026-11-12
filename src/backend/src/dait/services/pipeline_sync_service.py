@@ -111,7 +111,15 @@ def sync_pipeline_news(conn: DbConnection) -> int:
         lines = _lines(row)
         status = "READY" if len(lines) == 3 else "INSUFFICIENT"
         news_id = uuid4().hex
-        published = published_at if isinstance(published_at, datetime) else now
+        if isinstance(published_at, datetime):
+            published = published_at
+        elif isinstance(published_at, str):
+            try:
+                published = datetime.fromisoformat(published_at)
+            except ValueError:
+                published = now
+        else:
+            published = now
         if published.tzinfo is None:
             published = published.replace(tzinfo=UTC)
         now_iso = now.isoformat()
