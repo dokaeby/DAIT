@@ -80,6 +80,7 @@ def list_news(
     page_size: int,
     cursor: str | None,
     now: datetime | None = None,
+    interests: tuple[str, ...] | None = None,
 ) -> NewsListResponse:
     """뉴스 목록을 조회한다(캐시 우선).
 
@@ -92,6 +93,10 @@ def list_news(
     """
     pipeline_sync_service.sync_if_needed(settings)
     normalized = news_search_service.normalize_query(query)
+    if interests is not None:
+        return _list_news_uncached(
+            settings, category, normalized, sort, page_size, cursor, now, interests
+        )
     cache_key = cache_retry_service.list_cache_key(
         category.value if category is not None else "ALL", normalized, sort, page_size, cursor
     )
@@ -118,6 +123,7 @@ def _list_news_uncached(
     page_size: int,
     cursor: str | None,
     now: datetime | None,
+    interests: tuple[str, ...] | None = None,
 ) -> NewsListResponse:
     """캐시를 거치지 않는 실제 목록 조회 본체."""
     try:
@@ -135,9 +141,10 @@ def _list_news_uncached(
             sort,
             page_size + 1,
             offset,
+            interests,
         )
         total = news_repository.count_public_news(
-            conn, category.value if category is not None else None, normalized
+            conn, category.value if category is not None else None, normalized, interests
         )
         partial = news_repository.has_recent_job_failures(conn, since_iso)
 

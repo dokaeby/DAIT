@@ -76,8 +76,10 @@ button:disabled { opacity: .55; cursor: wait; }
 
 /* 상위 컨테이너가 스크롤 컨테이너가 되지 않아야 목차가 따라온다. */
 .settings-shell { overflow:visible; }
-.settings-menu { position:sticky; top:16px; z-index:5; }
-@media(max-width:1100px) { .settings-menu { position:sticky; top:8px; background:#f8fafc; } }
+.settings-menu { position:sticky; top:88px; z-index:5; max-height:calc(100vh - 104px); overflow-y:auto; }
+@media(max-width:1100px) { .settings-menu { position:sticky; top:88px; background:#f8fafc; } }
+@media(max-width:820px) { .settings-menu { top:78px; max-height:calc(100vh - 94px); } }
+.settings-card { scroll-margin-top: 88px; }
 @media(max-width:1100px) { .settings-card { scroll-margin-top:115px; } }
 
 #withdraw-form .danger-button { justify-self:center; }
