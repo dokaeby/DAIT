@@ -59,8 +59,7 @@
   });
   const welcoming = new URLSearchParams(location.search).get('welcome') === '1';
   if (welcoming) { $('welcome-interests').hidden = false; $('interests').prepend($('welcome-interests')); }
-  function markSettingsSection() {
-    const section = location.hash || '#schedule';
+  function markSettingsSection(section = location.hash || '#schedule') {
     document.querySelectorAll('.settings-menu a').forEach(link => {
       const active = link.getAttribute('href') === section;
       link.classList.toggle('active', active);
@@ -73,7 +72,30 @@
     });
   }
   markSettingsSection();
-  window.addEventListener('hashchange', markSettingsSection);
+  window.addEventListener('hashchange', () => markSettingsSection());
+  let sectionScrollPending = false;
+  function updateSettingsSectionFromScroll() {
+    sectionScrollPending = false;
+    const sections = [...document.querySelectorAll('.settings-menu a')]
+      .map(link => document.getElementById(link.hash.slice(1)))
+      .filter(Boolean);
+    if (!sections.length) return;
+    const marker = Math.max(100, window.innerHeight * 0.35);
+    let current = sections[0];
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= marker) current = section;
+    }
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+      current = sections[sections.length - 1];
+    }
+    markSettingsSection('#' + current.id);
+  }
+  window.addEventListener('scroll', () => {
+    if (!sectionScrollPending) {
+      sectionScrollPending = true;
+      requestAnimationFrame(updateSettingsSectionFromScroll);
+    }
+  }, { passive: true });
 
   function renderSidebar(catalog) {
     const host = $('settings-sidebar-categories'); host.replaceChildren();

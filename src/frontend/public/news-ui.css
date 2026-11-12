@@ -65,3 +65,17 @@ button:disabled { opacity:.45; cursor:default; }
 
 .interest-expand { border-style: dashed; }
 #settings-sidebar-categories .topic-button { display:block; }
+/* Keep navigation available while scrolling long news and settings pages. */
+.app-shell { overflow: clip; }
+.app-header { position: sticky; top: 0; z-index: 30; }
+@media (min-width: 821px) {
+  .sidebar, #settings-sidebar {
+    position: sticky;
+    top: 72px;
+    align-self: start;
+    height: calc(100vh - 72px);
+    overflow-y: auto;
+  }
+}
+.settings-gear.is-current { color: var(--blue); background: var(--blue-pale); border-color: var(--blue); }
+.interest-count-note { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--ink-muted); }

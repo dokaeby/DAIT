@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from dait.api.deps import get_current_user, get_optional_user
 from dait.core.config import Settings, get_settings
 from dait.core.errors import ValidationFailedError
+from dait.repositories.interest_matching import KEYWORDS
 from dait.schemas.news import (
     ACTIVE_CATEGORIES,
     NewsActivity,
@@ -21,6 +22,7 @@ from dait.schemas.news import (
 )
 from dait.schemas.user import UserRecord
 from dait.services import news_activity_service, news_detail_service, news_feed_service
+from dait.services.interest_service import list_interests
 
 router = APIRouter(prefix="/v1/news", tags=["news"])
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -30,6 +32,8 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 def list_news(
     settings: SettingsDep,
     user: Annotated[UserRecord | None, Depends(get_optional_user)],
+    personalized: bool = False,
+    interest: Annotated[str | None, Query(max_length=50)] = None,
     category: Annotated[NewsCategory | None, Query()] = None,
     q: Annotated[str, Query(max_length=100)] = "",
     sort: Annotated[SortOrder, Query()] = "rank",
@@ -61,7 +65,15 @@ def list_news(
                 "meta": response.meta.model_copy(update={"total_visible": len(response.items)}),
             }
         )
-    return news_feed_service.list_news(settings, category, q, sort, page_size, cursor)
+    scope = None
+    if personalized:
+        saved = tuple(i.code.value for i in list_interests(settings, user.id).interests)
+        if interest is not None and (interest not in saved or interest not in KEYWORDS):
+            raise ValidationFailedError
+        scope = (interest,) if interest else (saved or None)
+    return news_feed_service.list_news(
+        settings, category, q, sort, page_size, cursor, interests=scope
+    )
 
 
 @router.get("/activity", response_model=NewsActivity)
@@ -71,12 +83,13 @@ def news_activity(
     response: Response,
     q: Annotated[str, Query(max_length=100)] = "",
     ids: Annotated[list[str] | None, Query(max_length=50)] = None,
+    personalized: bool = False,
 ) -> NewsActivity:
     """Fresh filtered counts and private read state, never publicly cached."""
     if ids and any(not identifier or len(identifier) > 64 for identifier in ids):
         raise ValidationFailedError
     response.headers["Cache-Control"] = "no-store"
-    return news_activity_service.activity(settings, user.id, q, ids or [])
+    return news_activity_service.activity(settings, user.id, q, ids or [], personalized)
 
 
 @router.put("/{news_id}/read", status_code=204)

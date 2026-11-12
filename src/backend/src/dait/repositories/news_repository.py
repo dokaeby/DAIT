@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import NamedTuple, cast
 
 from dait.repositories.db import DbConnection
+from dait.repositories.interest_matching import interest_clause
 from dait.schemas.news import ACTIVE_CATEGORIES, PUBLIC_STATUSES
 
 _STATUS_VALUES = tuple(status.value for status in PUBLIC_STATUSES)
@@ -86,6 +87,7 @@ def list_public_news(
     sort: str,
     limit: int,
     offset: int,
+    interests: tuple[str, ...] | None = None,
 ) -> list[NewsListRow]:
     """공개 가능한 뉴스 목록을 규칙 순서로 조회한다.
 
@@ -97,6 +99,10 @@ def list_public_news(
     """
     clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
     params: list[str | int] = list(_CATEGORY_VALUES)
+    if interests is not None:
+        clause, values = interest_clause(interests)
+        clauses.append(clause)
+        params.extend(values)
     if category is not None:
         clauses.append("n.category = ?")
         params.append(category)
@@ -139,7 +145,9 @@ def list_public_news(
     ]
 
 
-def count_public_news(conn: DbConnection, category: str | None, query: str) -> int:
+def count_public_news(
+    conn: DbConnection, category: str | None, query: str, interests: tuple[str, ...] | None = None
+) -> int:
     """현재 조건에서 화면에 표시 가능한 전체 건수를 센다.
 
     입력: conn (연결), category, query (정규화된 검색어)
@@ -148,6 +156,10 @@ def count_public_news(conn: DbConnection, category: str | None, query: str) -> i
     """
     clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
     params: list[str | int] = list(_CATEGORY_VALUES)
+    if interests is not None:
+        clause, values = interest_clause(interests)
+        clauses.append(clause)
+        params.extend(values)
     if category is not None:
         clauses.append("n.category = ?")
         params.append(category)
