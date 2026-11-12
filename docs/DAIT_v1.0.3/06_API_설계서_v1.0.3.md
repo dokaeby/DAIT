@@ -337,13 +337,14 @@
 |---|---|---:|---|---|
 | `category` | string enum | N | 전체 | `AI`, `ECONOMY`, `POLITICS` (WEATHER는 Enum에 있으나 미활성) |
 | `q` | string | N | `""` | 제목+검증된 요약 검색, 최대 100자 |
-| `sort` | string enum | N | `rank` | `rank`, `latest` |
+| `sort` | string enum | N | `rank` | `rank`, `latest` — 둘 다 `published_at` 최신→과거 우선, `rank`는 품질(READY)·출처 우선순위를 보조 정렬로 사용 |
 | `page_size` | integer | N | `10` | 1~50 |
 | `cursor` | string | N | null | 다음 페이지 불투명 cursor (최대 500자) |
 
 > v1.0.3 구현 노트: 비로그인 사용자는 최신순·`page_size` 최대 10·cursor 불가의 제한 목록을
 > 받는다(`Cache-Control`은 목록 캐시 정책을 따른다). 로그인 사용자는 전체 정렬·페이지네이션이
-> 가능하다. 목록/상세 조회는 저장 결과만 읽으며 LLM을 호출하지 않는다.
+> 가능하다. 화면은 `page_size=4`로 커서 페이지를 비동기 조회해 목록 뒤에 순차적으로 이어 붙인다.
+> 목록/상세 조회는 저장 결과만 읽으며 LLM을 호출하지 않는다.
 
 ### 실제 요청 예시
 

@@ -13,7 +13,8 @@
   let category = Object.hasOwn(names, params.get('category')) ? params.get('category') : '';
   const expandedGroups = new Set();
   let cursor = null;
-  let pageCursor = null, pageStack = [], busy = false;
+  let busy = false;
+  const PAGE_SIZE = '4';
   let shownCategory = '', shownQuery = '', shownHasResults = false;
   const readIds = new Set();
   const defaultCategoryMarkup = $('categories').innerHTML;
@@ -162,25 +163,23 @@
     });
   }
   async function load(direction = '', retainSearch = false) {
-    if (direction && (guest || busy)) return;
-    if (direction) { category = shownCategory; $('query').value = shownQuery; }
+    const appending = direction === 'more';
+    if (appending && (guest || busy || !cursor)) return;
+    if (!appending && busy) return;
     if (guest) category = '';
     syncSidebar();
     listRequest?.abort();
     const request = listRequest = new AbortController();
-    const target = direction === 'next' ? cursor : direction === 'prev' ? pageStack.at(-1) : null;
-    if (direction === 'next' && !target) return;
-    if (direction === 'prev' && !pageStack.length) return;
     busy = true;
     $('search-results').setAttribute('aria-busy', 'true');
-    $('load-more').disabled = true; $('load-previous').disabled = true;
-    $('search-status').textContent = '뉴스를 불러오고 있습니다…';
-    const query = new URLSearchParams({ ui: '20261112-search', sort: 'latest', page_size: '10' });
+    $('load-more').disabled = true;
+    if (!appending) $('search-status').textContent = '뉴스를 불러오고 있습니다…';
+    const query = new URLSearchParams({ ui: '20261112-search', sort: 'latest', page_size: guest ? '10' : PAGE_SIZE });
     if (category) query.set('category', category);
     const keyword = retainSearch && shownHasResults && !$('query').value.trim() ? shownQuery : $('query').value.trim();
     if (keyword) query.set('q', keyword);
-    if (target) query.set('cursor', target);
-    const initial = !direction && !$('news-list').querySelector('.news-card');
+    if (appending && cursor) query.set('cursor', cursor);
+    const initial = !appending && !$('news-list').querySelector('.news-card');
     let complete = false;
     if (initial) {
       const placeholders = count => Array.from({ length: count }, () => '<li class="news-skeleton" aria-hidden="true"><span></span><span></span><span></span></li>').join('');
@@ -207,13 +206,13 @@
         activity = await json('/v1/news/activity?' + aq, request.signal);
       }
       if (request !== listRequest) return;
-      if (direction === 'next') pageStack.push(pageCursor);
-      else if (direction === 'prev') pageStack.pop();
-      else pageStack = [];
-      pageCursor = target;
-      shownCategory = query.get('category') || ''; shownQuery = query.get('q') || ''; shownHasResults = items.length > 0;
-      history.replaceState(null, '', '/?' + query);
-      $('news-list').innerHTML = items.map(card).join('');
+      if (appending) {
+        $('news-list').insertAdjacentHTML('beforeend', items.map(card).join(''));
+      } else {
+        $('news-list').innerHTML = items.map(card).join('');
+      }
+      shownCategory = query.get('category') || ''; shownQuery = query.get('q') || ''; shownHasResults = shownHasResults || items.length > 0;
+      if (!appending) history.replaceState(null, '', '/?' + query);
       $('result-count').textContent = guest ? '최신 뉴스 ' + items.length + '건' : '전체 기사';
       document.querySelectorAll('[data-category]').forEach(el => {
         const code = el.dataset.category;
@@ -225,29 +224,30 @@
         const active = el.dataset.interestCategory === shownCategory && el.dataset.interestQuery === shownQuery;
         el.classList.toggle('active', active); el.setAttribute('aria-pressed', String(active));
       });
-      if (activity) { readIds.clear(); activity.read_ids.forEach(id => readIds.add(id)); }
+      if (activity) { activity.read_ids.forEach(id => readIds.add(id)); }
       refreshReads();
-      $('search-status').textContent = data.meta.message || '';
-      if (!items.length) $('news-list').innerHTML = '<li class="empty-result"><strong>표시할 뉴스가 없습니다</strong><p>다른 검색어나 카테고리를 선택해 주세요.</p></li>';
+      if (!appending) $('search-status').textContent = data.meta.message || '';
+      if (!items.length && !appending) $('news-list').innerHTML = '<li class="empty-result"><strong>표시할 뉴스가 없습니다</strong><p>다른 검색어나 카테고리를 선택해 주세요.</p></li>';
+      const loadedCount = $('news-list').querySelectorAll('.news-card').length;
       cursor = data.page.has_more ? data.page.next_cursor : null;
-      $('pagination').hidden = guest || !items.length;
-      $('load-more').hidden = guest; $('load-previous').hidden = guest;
-      $('page-number').textContent = (pageStack.length + 1) + ' / ' + Math.max(pageStack.length + 1, Math.ceil((activity ? (shownCategory ? activity.counts[shownCategory] || 0 : activity.total) : data.meta.total_visible) / 10)) + ' 페이지';
+      $('pagination').hidden = guest || !loadedCount;
+      $('load-more').hidden = guest;
+      $('page-number').textContent = guest ? '' : `${loadedCount} / ${activity ? (shownCategory ? activity.counts[shownCategory] || 0 : activity.total) : data.meta.total_visible}건`;
       updateScrollControls();
-      if (direction) window.scrollTo({ top: 0, behavior: 'instant' });
     } catch (error) {
       complete = true;
       if (error.name === 'AbortError') return;
       document.querySelectorAll('#news-list .news-skeleton').forEach(el => el.remove());
-      $('search-status').textContent = error.message;
+      if (!appending) $('search-status').textContent = error.message;
       const retry = document.createElement('button');
       retry.type = 'button'; retry.className = 'secondary-button'; retry.textContent = '다시 시도';
-      retry.addEventListener('click', () => load(direction));
-      if ($('news-list').children.length) $('search-status').append(' ', retry);
+      retry.addEventListener('click', () => load(appending ? 'more' : ''));
+      if (appending) { $('search-status').textContent = '뉴스를 더 불러오지 못했습니다. '; $('search-status').append(retry); }
+      else if ($('news-list').children.length) $('search-status').append(' ', retry);
       if (!$('news-list').children.length) $('news-list').innerHTML = '<li class="empty-result"><strong>뉴스를 불러올 수 없습니다</strong><br><button type="button" class="secondary-button" id="retry-news">다시 시도</button></li>';
     } finally {
       if (request === listRequest) {
-        busy = false; $('load-more').disabled = !cursor; $('load-previous').disabled = !pageStack.length;
+        busy = false; $('load-more').disabled = !cursor;
         $('search-results').setAttribute('aria-busy', 'false');
       }
     }
@@ -310,7 +310,7 @@
       document.querySelectorAll('#news-list .news-skeleton').forEach(el => el.remove());
       $('search-status').textContent = '';
       $('search-results').setAttribute('aria-busy', 'false');
-      $('load-more').disabled = !cursor; $('load-previous').disabled = !pageStack.length;
+      $('load-more').disabled = !cursor;
     } else if (shownQuery || busy) { category = ''; $('query').value = ''; load(); }
   });
   $('search-form').addEventListener('submit', event => { event.preventDefault(); load(); });
@@ -345,8 +345,7 @@
       load('', true);
     }
   });
-  $('load-more').addEventListener('click', () => load('next'));
-  $('load-previous').addEventListener('click', () => load('prev'));
+  $('load-more').addEventListener('click', () => load('more'));
   $('news-list').addEventListener('click', event => {
     const el = event.target.closest('[data-detail]');
     if (el) openDetail(el.dataset.detail);
@@ -377,7 +376,13 @@
   }
   $('scroll-up').addEventListener('click', () => window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }));
   $('scroll-down').addEventListener('click', () => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }));
-  window.addEventListener('scroll', updateScrollControls, { passive: true });
+  window.addEventListener('scroll', () => {
+    updateScrollControls();
+    // 목록 하단에 가까워지면 다음 4건을 비동기로 이어 붙인다(게스트·로딩 중·잔여 없음 제외).
+    if (!guest && cursor && !busy && window.scrollY + innerHeight >= document.documentElement.scrollHeight - 600) {
+      load('more');
+    }
+  }, { passive: true });
   window.addEventListener('resize', () => { scrollAnchor = 0; updateScrollControls(); });
   new MutationObserver(updateScrollControls).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
   buildSidebar();

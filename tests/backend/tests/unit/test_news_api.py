@@ -123,6 +123,34 @@ class TestNewsList:
         assert none.json()["items"] == []
         assert none.json()["meta"]["total_visible"] == 0
 
+    def test_rank_sort_is_recency_first(self, settings: Settings, db_url: str) -> None:
+        """rank 정렬도 최신→과거 순이다. 오래된 READY가 더 새 INSUFFICIENT보다 위에 오지 않는다."""
+        seed_news(db_url)
+        conn = sqlite3.connect(_db_path(db_url))
+        try:
+            conn.execute(
+                "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+                "collected_at, category, original_language, created_at) "
+                "VALUES ('newer01', 'src1', '최신 정보부족 기사', "
+                "'https://example.com/newer', '2026-03-01T00:00:00+00:00', ?, 'AI', 'ko', ?)",
+                (NOW, NOW),
+            )
+            conn.execute(
+                "INSERT INTO content_results (news_id, summary_lines, status, updated_at) "
+                "VALUES ('newer01', ?, 'INSUFFICIENT', ?)",
+                (SUMMARY_JSON, NOW),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        client = client_for(settings)
+        for sort in ("rank", "latest"):
+            response = client.request("GET", "/v1/news", params={"sort": sort})
+            assert response.status_code == 200
+            titles = [item["title"] for item in response.json()["items"]]
+            assert titles[0] == "최신 정보부족 기사"
+            assert titles[1:] == ["기사 2 제목", "기사 1 제목", "기사 0 제목"]
+
     def test_query_over_100_chars_is_422(self, settings: Settings) -> None:
         """검색어는 100자까지 허용한다(계약 상한)."""
         client = client_for(settings)
