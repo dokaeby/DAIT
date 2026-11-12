@@ -103,6 +103,9 @@ class SuccessContent(GeneratedContent):
     status: Literal["SUCCESS"] = "SUCCESS"
     category: CategoryType = "AI"
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    engine: str = Field(default="", max_length=50)
+    model_id: str = Field(default="", max_length=200)
+    prompt_version: str = Field(default="", max_length=50)
 
 
 class InsufficientContent(ContentModel):
@@ -111,6 +114,9 @@ class InsufficientContent(ContentModel):
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     summary_lines: tuple[()] = ()
     translated_text: None = None
+    engine: str = Field(default="", max_length=50)
+    model_id: str = Field(default="", max_length=200)
+    prompt_version: str = Field(default="", max_length=50)
 
 
 type ContentResult = Annotated[SuccessContent | InsufficientContent, Field(discriminator="status")]

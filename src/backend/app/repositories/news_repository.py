@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 from types import CoroutineType
-from typing import Protocol
+from typing import Literal, Protocol, cast
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, SecretStr, field_validator
@@ -24,16 +25,19 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     String,
     Text,
+    delete,
     event,
     func,
+    inspect,
     or_,
     select,
     type_coerce,
     update,
 )
-from sqlalchemy.engine import Connection, Dialect
+from sqlalchemy.engine import Connection, CursorResult, Dialect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -45,7 +49,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 from src.backend.app.core.taxonomy import CategoryType
 from src.backend.app.schemas.collector import CollectedArticle
-from src.backend.app.schemas.content import CONTENT_RESULT_ADAPTER, SuccessContent
+from src.backend.app.schemas.content import (
+    CONTENT_RESULT_ADAPTER,
+    ContentResult,
+    SuccessContent,
+)
 from src.backend.app.workers.collector_worker import ClaimDecision, PipelineRecord, ProcessingClaim
 
 logger = logging.getLogger(__name__)
@@ -148,6 +156,8 @@ class NewsRow(Base):
     __tablename__ = "news"
     __table_args__ = (
         CheckConstraint("category IN ('AI', 'ECONOMY', 'SOCIETY')", name="ck_news_category"),
+        Index("ix_news_category_published", "category", "published_at"),
+        Index("ix_news_published_at", "published_at"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     canonical_url: Mapped[str] = mapped_column(String(2083), unique=True, nullable=False)
@@ -183,6 +193,9 @@ class ContentResultRow(Base):
     line_2: Mapped[str | None] = mapped_column(Text)
     line_3: Mapped[str | None] = mapped_column(Text)
     translated_text: Mapped[str | None] = mapped_column(Text)
+    engine: Mapped[str] = mapped_column(String(50), nullable=False, server_default="")
+    model_id: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    prompt_version: Mapped[str] = mapped_column(String(50), nullable=False, server_default="")
 
     @property
     def summary_lines(self) -> tuple[str, ...]:
@@ -274,6 +287,33 @@ def _require_owner(row: ProcessingClaimRow, claim: ProcessingClaim, now: datetim
         raise ClaimOwnershipError(CLAIM_INVALID)
 
 
+def _ensure_content_columns(connection: Connection) -> None:
+    """Add engine/model_id columns to pre-existing content_results tables."""
+    existing = {
+        column["name"] for column in inspect(connection).get_columns("content_results")
+    }
+    for name, ddl in (
+        ("engine", "VARCHAR(50) NOT NULL DEFAULT ''"),
+        ("model_id", "VARCHAR(200) NOT NULL DEFAULT ''"),
+        ("prompt_version", "VARCHAR(50) NOT NULL DEFAULT ''"),
+    ):
+        if name not in existing:
+            connection.exec_driver_sql(
+                f"ALTER TABLE content_results ADD COLUMN {name} {ddl}"
+            )
+
+
+def _ensure_indexes(connection: Connection) -> None:
+    """Create query indexes on pre-existing tables (IF NOT EXISTS is dialect-safe)."""
+    connection.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_news_category_published "
+        "ON news (category, published_at)"
+    )
+    connection.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_news_published_at ON news (published_at)"
+    )
+
+
 def _configure_engine(engine: AsyncEngine) -> None:
     if engine.dialect.name not in {"sqlite", "postgresql"}:
         raise RepositoryError(INVALID_DRIVER)
@@ -297,6 +337,11 @@ class NewsRepository:
             _configure_engine(self.engine)
             self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
             self._ready_invalidators: list[ReadyInvalidator] = []
+            # SQLite(:memory: 포함)는 커넥션을 공유하므로 겹친 BEGIN IMMEDIATE가
+            # "cannot start a transaction within a transaction"으로 실패한다.
+            # 방언이 sqlite일 때만 세션 트랜잭션을 직렬화한다.
+            self._serialize = self.engine.dialect.name == "sqlite"
+            self._tx_lock = asyncio.Lock()
         except Exception:  # noqa: BLE001 -- invalid DSNs can contain credentials
             raise RepositoryError(DB_FAILED) from None
 
@@ -313,16 +358,28 @@ class NewsRepository:
     async def initialize(self) -> None:
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(_ensure_content_columns)
+            await connection.run_sync(_ensure_indexes)
 
     @_safe_operation
     async def close(self) -> None:
         await self.engine.dispose()
 
+    @asynccontextmanager
+    async def _session(self) -> AsyncGenerator[AsyncSession]:
+        """SQLite에서는 단일 커넥션 보호를 위해 트랜잭션을 직렬화한다."""
+        if self._serialize:
+            async with self._tx_lock, self.sessions.begin() as session:
+                yield session
+        else:
+            async with self.sessions.begin() as session:
+                yield session
+
     @_safe_operation
     async def claim(self, canonical_url: HttpUrl, lease_seconds: float) -> ClaimDecision:
         request = ClaimRequest(canonical_url=canonical_url, lease_seconds=lease_seconds)
         key = str(request.canonical_url)
-        async with self.sessions.begin() as session:
+        async with self._session() as session:
             row = await _locked_claim(session, key)
             if (
                 row.completed
@@ -357,7 +414,7 @@ class NewsRepository:
         record = PipelineRecord.model_validate_json(record.model_dump_json())
         if claim.canonical_url != record.article.canonical_url:
             raise ClaimOwnershipError(CLAIM_INVALID)
-        async with self.sessions.begin() as session:
+        async with self._session() as session:
             row = await _locked_claim(session, str(claim.canonical_url))
             _require_owner(row, claim, await _db_now(session))
             article = record.article
@@ -383,6 +440,9 @@ class NewsRepository:
                     line_2=lines[1] if lines is not None else None,
                     line_3=lines[2] if lines is not None else None,
                     translated_text=content.translated_text,
+                    engine=content.engine,
+                    model_id=content.model_id,
+                    prompt_version=content.prompt_version,
                 )
             )
             await session.flush()
@@ -401,7 +461,7 @@ class NewsRepository:
     @_safe_operation
     async def release(self, claim: ProcessingClaim) -> None:
         claim = ProcessingClaim.model_validate_json(claim.model_dump_json())
-        async with self.sessions.begin() as session:
+        async with self._session() as session:
             await session.execute(
                 update(ProcessingClaimRow)
                 .where(
@@ -415,7 +475,7 @@ class NewsRepository:
     @_safe_operation
     async def get(self, canonical_url: HttpUrl) -> PipelineRecord | None:
         key = str(NewsKey(canonical_url=canonical_url).canonical_url)
-        async with self.sessions.begin() as session:
+        async with self._session() as session:
             news = (
                 await session.scalars(select(NewsRow).where(NewsRow.canonical_url == key))
             ).one_or_none()
@@ -430,9 +490,75 @@ class NewsRepository:
             )
 
     @_safe_operation
+    async def list_candidates(
+        self,
+        *,
+        category: CategoryType,
+        cutoff: datetime | None,
+        like: str | None,
+        search_scope: Literal["title", "content", "all"],
+    ) -> tuple[StoredNews, ...]:
+        """DB-level pre-filter for list queries: category, freshness, SUCCESS, LIKE.
+
+        `like` must be a pre-escaped lowercase fragment (caller guarantees it is a
+        safe superset of the Python-side matcher). The service re-checks every row,
+        so false positives are fine but false negatives are not.
+        """
+        conditions = [
+            NewsRow.category == category,
+            ContentResultRow.status == "SUCCESS",
+        ]
+        if cutoff is not None:
+            conditions.append(NewsRow.published_at >= cutoff)
+        if like is not None:
+            pattern = f"%{like}%"
+            scope_columns = {
+                "title": (NewsRow.title,),
+                "content": (
+                    NewsRow.raw_text,
+                    ContentResultRow.line_1,
+                    ContentResultRow.line_2,
+                    ContentResultRow.line_3,
+                    ContentResultRow.translated_text,
+                ),
+                "all": (
+                    NewsRow.title,
+                    NewsRow.source_name,
+                    NewsRow.raw_text,
+                    ContentResultRow.line_1,
+                    ContentResultRow.line_2,
+                    ContentResultRow.line_3,
+                    ContentResultRow.translated_text,
+                ),
+            }[search_scope]
+            conditions.append(
+                or_(
+                    *(
+                        func.lower(column).like(pattern, escape="\\")
+                        for column in scope_columns
+                    )
+                )
+            )
+        async with self._session() as session:
+            rows = await session.execute(
+                select(NewsRow, ContentResultRow)
+                .join(ContentResultRow, ContentResultRow.news_id == NewsRow.id)
+                .where(*conditions)
+            )
+            return tuple(_stored_news(news, content) for news, content in rows.all())
+
+    @_safe_operation
+    async def count_news(self) -> int:
+        """저장된 뉴스 총건수 — 상태 폴링처럼 건수만 필요한 경로용."""
+        async with self._session() as session:
+            return int(
+                await session.scalar(select(func.count()).select_from(NewsRow)) or 0
+            )
+
+    @_safe_operation
     async def list_news(self) -> tuple[StoredNews, ...]:
         """Return all completed records so READY ranking happens before slicing."""
-        async with self.sessions.begin() as session:
+        async with self._session() as session:
             rows = await session.execute(
                 select(NewsRow, ContentResultRow).outerjoin(
                     ContentResultRow, ContentResultRow.news_id == NewsRow.id
@@ -441,9 +567,57 @@ class NewsRepository:
             return tuple(_stored_news(news, content) for news, content in rows.all())
 
     @_safe_operation
+    async def update_content(self, canonical_url: str, content: ContentResult) -> bool:
+        """Reprocess path: replace the stored result for an existing article."""
+        key = NewsKey(canonical_url=HttpUrl(canonical_url)).canonical_url
+        async with self._session() as session:
+            news = (
+                await session.scalars(
+                    select(NewsRow).where(NewsRow.canonical_url == str(key))
+                )
+            ).one_or_none()
+            if news is None:
+                return False
+            row = await session.get(ContentResultRow, news.id)
+            if row is None:
+                raise RepositoryError(DB_FAILED)
+            lines = content.summary_lines if isinstance(content, SuccessContent) else None
+            row.status = content.status
+            row.content_hash = content.content_hash
+            row.line_1 = lines[0] if lines is not None else None
+            row.line_2 = lines[1] if lines is not None else None
+            row.line_3 = lines[2] if lines is not None else None
+            row.translated_text = content.translated_text
+            row.engine = content.engine
+            row.model_id = content.model_id
+            row.prompt_version = content.prompt_version
+            return True
+
+    @_safe_operation
+    async def delete_records(self, canonical_urls: tuple[str, ...]) -> int:
+        """Delete stored articles and their processing claims so feeds re-collect them.
+
+        ContentResultRow rows cascade via the news_id foreign key. Claim rows must
+        be removed too: a completed claim would otherwise block re-processing.
+        """
+        if not canonical_urls:
+            return 0
+        async with self._session() as session:
+            result = await session.execute(
+                delete(NewsRow).where(NewsRow.canonical_url.in_(canonical_urls))
+            )
+            await session.execute(
+                delete(ProcessingClaimRow).where(
+                    ProcessingClaimRow.canonical_url.in_(canonical_urls)
+                )
+            )
+            cursor_result = cast(CursorResult[object], result)
+            return cursor_result.rowcount
+
+    @_safe_operation
     async def get_by_id(self, news_id: UUID) -> StoredNews | None:
         key = NewsIdentifier(id=news_id)
-        async with self.sessions.begin() as session:
+        async with self._session() as session:
             rows = await session.execute(
                 select(NewsRow, ContentResultRow)
                 .outerjoin(ContentResultRow, ContentResultRow.news_id == NewsRow.id)
