@@ -99,26 +99,31 @@
 
   function renderSidebar(catalog) {
     const host = $('settings-sidebar-categories'); host.replaceChildren();
-    const codes = { ai: 'AI', economy: 'ECONOMY', society: 'POLITICS' };
+    const codes = { ai: 'AI', economy: 'ECONOMY', society: 'POLITICS', en_ai: 'AI', en_economy: 'ECONOMY', en_society: 'POLITICS' };
     const labels = { ai: 'AI•인공지능', economy: '경제·비즈니스', society: '사회·문화' };
     for (const group of catalog.groups) {
       if (!codes[group.group]) continue;
+      const english = group.group.startsWith('en_');
+      const englishNames = {en_ai: 'AI & Technology', en_economy: 'Economy & Business', en_society: 'Society & Culture'};
+      if (group.group === 'en_ai') {
+        const label = document.createElement('span'); label.className = 'nav-label'; label.textContent = 'English News'; host.append(label);
+      }
       const container = document.createElement('div'); container.className = 'topic-group';
       const row = document.createElement('div'); row.className = 'topic-heading-row';
       const heading = document.createElement('a'); heading.className = 'nav-item topic-heading';
-      heading.textContent = '✦ ' + labels[group.group];
-      heading.href = '/?ui=20261112-search&category=' + codes[group.group];
+      heading.textContent = english ? englishNames[group.group] : '✦ ' + labels[group.group];
+      heading.href = '/?' + new URLSearchParams({ui: '20261112-search', category: codes[group.group], ...(english ? {language: 'en'} : {})});
       const list = document.createElement('ul'); list.className = 'topic-list'; list.hidden = true;
       list.id = 'settings-topics-' + group.group;
       const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'topic-toggle';
-      toggle.setAttribute('aria-label', labels[group.group] + ' 소주제 펼치기/접기');
+      toggle.setAttribute('aria-label', (labels[group.group] || group.group_name) + ' 소주제 펼치기/접기');
       toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', list.id);
       toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
       toggle.addEventListener('click', () => { list.hidden = !list.hidden; toggle.setAttribute('aria-expanded', String(!list.hidden)); });
       for (const item of group.interests) {
         const li = document.createElement('li'); const link = document.createElement('a');
         link.className = 'topic-button'; link.textContent = item.name;
-        link.href = '/?' + new URLSearchParams({ ui: '20261112-search', category: codes[group.group], q: item.name });
+        link.href = '/?' + new URLSearchParams({ ui: '20261112-search', category: codes[group.group], topic: item.code, ...(group.group.startsWith('en_') ? {language:'en'} : {}) });
         li.append(link); list.append(li);
       }
       row.append(heading, toggle); container.append(row, list); host.append(container);

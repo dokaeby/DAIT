@@ -84,8 +84,15 @@ def test_catalog_is_public_and_grouped(settings: Settings) -> None:
     response = client_for(settings).request("GET", "/v1/interests/catalog")
     assert response.status_code == 200
     catalog = CatalogResponse.model_validate_json(response.text)
-    assert [g.group for g in catalog.groups] == ["ai", "economy", "society"]
-    assert [len(g.interests) for g in catalog.groups] == [5, 5, 5]
+    assert [g.group for g in catalog.groups] == [
+        "ai",
+        "economy",
+        "society",
+        "en_ai",
+        "en_economy",
+        "en_society",
+    ]
+    assert [len(g.interests) for g in catalog.groups] == [5, 5, 5, 5, 5, 5]
     first = catalog.groups[0].interests[1]
     assert (first.code.value, first.name, first.group) == ("ai.agents", "AI 에이전트", "ai")
 

@@ -32,6 +32,8 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 def list_news(
     settings: SettingsDep,
     user: Annotated[UserRecord | None, Depends(get_optional_user)],
+    language: Annotated[str | None, Query(pattern="^(ko|en)$")] = None,
+    topic: Annotated[str | None, Query(max_length=50)] = None,
     personalized: bool = False,
     interest: Annotated[str | None, Query(max_length=50)] = None,
     category: Annotated[NewsCategory | None, Query()] = None,
@@ -70,9 +72,19 @@ def list_news(
         saved = tuple(i.code.value for i in list_interests(settings, user.id).interests)
         if interest is not None and (interest not in saved or interest not in KEYWORDS):
             raise ValidationFailedError
-        scope = (interest,) if interest else (saved or None)
+        if language:
+            saved_for_language = tuple(
+                c for c in saved if c.startswith("en.") == (language == "en")
+            )
+            scope = (interest,) if interest else (saved_for_language if saved else None)
+        else:
+            scope = (interest,) if interest else (saved or None)
+    if topic:
+        if topic not in KEYWORDS:
+            raise ValidationFailedError
+        scope = (topic,)
     return news_feed_service.list_news(
-        settings, category, q, sort, page_size, cursor, interests=scope
+        settings, category, q, sort, page_size, cursor, interests=scope, language=language
     )
 
 
@@ -83,13 +95,28 @@ def news_activity(
     response: Response,
     q: Annotated[str, Query(max_length=100)] = "",
     ids: Annotated[list[str] | None, Query(max_length=50)] = None,
+    language: Annotated[str | None, Query(pattern="^(ko|en)$")] = None,
     personalized: bool = False,
 ) -> NewsActivity:
     """Fresh filtered counts and private read state, never publicly cached."""
     if ids and any(not identifier or len(identifier) > 64 for identifier in ids):
         raise ValidationFailedError
     response.headers["Cache-Control"] = "no-store"
-    return news_activity_service.activity(settings, user.id, q, ids or [], personalized)
+    return news_activity_service.activity(settings, user.id, q, ids or [], personalized, language)
+
+
+@router.get("/read-state", response_model=list[str])
+def news_read_state(
+    settings: SettingsDep,
+    user: Annotated[UserRecord, Depends(get_current_user)],
+    response: Response,
+    ids: Annotated[list[str] | None, Query(max_length=50)] = None,
+) -> list[str]:
+    """Fetch private read receipts independently of public topic counts."""
+    if ids and any(not identifier or len(identifier) > 64 for identifier in ids):
+        raise ValidationFailedError
+    response.headers["Cache-Control"] = "no-store"
+    return news_activity_service.read_state(settings, user.id, ids or [])
 
 
 @router.put("/{news_id}/read", status_code=204)

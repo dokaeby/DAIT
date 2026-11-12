@@ -6,6 +6,7 @@ from typing import NamedTuple, cast
 
 from dait.repositories.db import DbConnection
 from dait.repositories.interest_matching import interest_clause
+from dait.repositories.news_language import NEWS_LANGUAGE_SQL
 from dait.schemas.news import ACTIVE_CATEGORIES, PUBLIC_STATUSES
 
 _STATUS_VALUES = tuple(status.value for status in PUBLIC_STATUSES)
@@ -25,6 +26,8 @@ class NewsListRow(NamedTuple):
     status: str
     canonical_url: str
     source_priority: int
+    original_language: str = "und"
+    author_text: str | None = None
 
 
 class NewsDetailRow(NamedTuple):
@@ -88,6 +91,7 @@ def list_public_news(
     limit: int,
     offset: int,
     interests: tuple[str, ...] | None = None,
+    language: str | None = None,
 ) -> list[NewsListRow]:
     """공개 가능한 뉴스 목록을 규칙 순서로 조회한다.
 
@@ -101,6 +105,9 @@ def list_public_news(
     """
     clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
     params: list[str | int] = list(_CATEGORY_VALUES)
+    if language:
+        clauses.append(f"({NEWS_LANGUAGE_SQL}) = ?")
+        params.append(language)
     if interests is not None:
         clause, values = interest_clause(interests)
         clauses.append(clause)
@@ -123,7 +130,8 @@ def list_public_news(
         )
     sql = (
         "SELECT n.id, n.title, s.name, n.published_at, n.category, "  # noqa: S608 - 상수 절만 결합
-        "c.summary_lines, c.status, n.canonical_url, s.priority "
+        f"c.summary_lines, c.status, n.canonical_url, s.priority, ({NEWS_LANGUAGE_SQL}), "
+        "(COALESCE(c.extracted_text, '') || '\n' || COALESCE(c.translated_text, '')) "
         "FROM news n "
         "JOIN sources s ON s.id = n.source_id "
         "JOIN content_results c ON c.news_id = n.id "
@@ -143,13 +151,19 @@ def list_public_news(
             status=row[6],
             canonical_url=row[7],
             source_priority=row[8],
+            original_language=row[9],
+            author_text=row[10],
         )
         for row in rows
     ]
 
 
 def count_public_news(
-    conn: DbConnection, category: str | None, query: str, interests: tuple[str, ...] | None = None
+    conn: DbConnection,
+    category: str | None,
+    query: str,
+    interests: tuple[str, ...] | None = None,
+    language: str | None = None,
 ) -> int:
     """현재 조건에서 화면에 표시 가능한 전체 건수를 센다.
 
@@ -159,6 +173,9 @@ def count_public_news(
     """
     clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
     params: list[str | int] = list(_CATEGORY_VALUES)
+    if language:
+        clauses.append(f"({NEWS_LANGUAGE_SQL}) = ?")
+        params.append(language)
     if interests is not None:
         clause, values = interest_clause(interests)
         clauses.append(clause)

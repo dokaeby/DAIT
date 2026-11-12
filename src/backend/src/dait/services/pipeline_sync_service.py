@@ -160,3 +160,20 @@ def sync_pipeline_news(conn: DbConnection) -> int:
         )
         inserted += 1
     return inserted
+
+
+_dispatch_lock = threading.Lock()
+_sync_workers: list[threading.Thread] = []
+
+
+def request_sync(settings: Settings) -> None:
+    """Schedule saved-article synchronization without delaying a list request."""
+    if db_module.db_dialect(settings.database_url) != "postgres":
+        return
+    if time.monotonic() - _state["last_sync_monotonic"] < _SYNC_INTERVAL_SECONDS:
+        return
+    with _dispatch_lock:
+        if _sync_workers and _sync_workers[0].is_alive():
+            return
+        _sync_workers[:] = [threading.Thread(target=sync_if_needed, args=(settings,), daemon=True)]
+        _sync_workers[0].start()

@@ -29,6 +29,17 @@ def test_interest_union_counts_search_and_pages() -> None:
                 (str(index), title, "2026-11-12T00:00:00+00:00", f"https://example.com/{index}"),
             )
             conn.execute("INSERT INTO content_results VALUES (?, '[]', ?)", (str(index), status))
+        conn.execute("ALTER TABLE news ADD COLUMN original_language TEXT DEFAULT 'ko'")
+        conn.execute("ALTER TABLE content_results ADD COLUMN extracted_text TEXT")
+        conn.execute("ALTER TABLE content_results ADD COLUMN translated_text TEXT")
+        conn.execute("UPDATE news SET original_language = 'en' WHERE id = '0'")
+        assert news_repository.count_public_news(conn, None, "", None, "en") == 1
+        assert (
+            len(news_repository.list_public_news(conn, None, "", "latest", 4, 0, None, "en")) == 1
+        )
+        assert news_repository.count_public_news(conn, None, "", ("en.ai.agents",)) == 1
+        assert news_repository.count_public_news(conn, None, "", ("en.ai.models",)) == 0
+        assert news_repository.count_public_news(conn, None, "", ("ai.agents", "en.ai.agents")) == 2
         scope = ("ai.agents", "ai.devtools")
         assert news_repository.count_public_news(conn, None, "", scope) == 3
         assert news_repository.count_public_news(conn, None, "", ("ai.agents",)) == 2
@@ -42,5 +53,12 @@ def test_interest_union_counts_search_and_pages() -> None:
         assert len(second) == 1
         assert len({row.id for row in first + second}) == 3
         assert news_repository.count_public_news(conn, None, "") == 4
+        # Legacy imports marked overseas articles as und, sometimes ko after translation.
+        conn.execute("UPDATE sources SET name = 'TechCrunch' WHERE id = 's'")
+        conn.execute("UPDATE news SET original_language = 'und' WHERE id = '0'")
+        assert news_repository.count_public_news(conn, None, "", None, "en") == 4
+        assert news_repository.count_public_news(conn, None, "", ("en.ai.agents",)) == 2
+        overseas = news_repository.list_public_news(conn, None, "", "latest", 8, 0, None, "en")
+        assert all(row.original_language == "en" for row in overseas)
     finally:
         conn.close()
