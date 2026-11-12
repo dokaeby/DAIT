@@ -1,5 +1,6 @@
 """FR-DETAIL-01 뉴스 상세: 저장된 기사·콘텐츠·관계 결과를 계약으로 조립한다."""
 
+from dait.core.article_language import needs_translation
 from dait.core.config import Settings
 from dait.core.errors import NewsNotFoundError
 from dait.repositories import news_repository
@@ -95,6 +96,10 @@ def _detail_uncached(settings: Settings, news_id: str) -> NewsDetailResponse:
             raise NewsNotFoundError
         related = ranking_relation_service.list_related(conn, news_id)
 
+    translation_required = needs_translation(row.original_language, row.source_name)
+    processing = _processing_info(row.status)
+    if not translation_required:
+        processing = processing.model_copy(update={"translation_status": "SKIPPED"})
     return NewsDetailResponse(
         article=ArticleInfo(
             id=row.id,
@@ -102,12 +107,13 @@ def _detail_uncached(settings: Settings, news_id: str) -> NewsDetailResponse:
             source_name=row.source_name,
             published_at=row.published_at,
             original_language=row.original_language,
+            translation_required=translation_required,
             category=NewsCategory(row.category),
             estimated_read_minutes=_estimate_read_minutes(row.extracted_text),
         ),
         content=ContentInfo(
             summary_lines=news_repository.parse_summary_lines(row.summary_lines),
-            translated_text=row.translated_text,
+            translated_text=row.translated_text if translation_required else None,
             processed_at=row.processed_at,
             content_status=_content_status(row.status),
             summary_model_version=row.prompt_version or row.model_id,
@@ -118,5 +124,5 @@ def _detail_uncached(settings: Settings, news_id: str) -> NewsDetailResponse:
             source_type=row.source_kind,
         ),
         related_news=related,
-        processing=_processing_info(row.status),
+        processing=processing,
     )

@@ -90,6 +90,15 @@ class PageInfo(BaseModel):
     has_more: bool
 
 
+class NewsActivity(BaseModel):
+    """Uncached counts and private read IDs for a page."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    total: int = Field(ge=0)
+    counts: dict[NewsCategory, Annotated[int, Field(ge=0)]] = Field(max_length=4)
+    read_ids: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(max_length=50)
+
+
 class NewsListMeta(BaseModel):
     """목록 부가 정보: 부분 실패 여부와 랭킹 기준 설명."""
 
@@ -121,6 +130,7 @@ class ArticleInfo(BaseModel):
     source_name: str = Field(max_length=200)
     published_at: datetime
     original_language: str = Field(min_length=2, max_length=8)
+    translation_required: bool = False
     category: NewsCategory
     estimated_read_minutes: int | None = Field(default=None, ge=1)
 

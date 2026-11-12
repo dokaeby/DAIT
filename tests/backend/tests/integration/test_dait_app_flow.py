@@ -9,8 +9,11 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from dait.core.config import Settings
 from dait.main import create_app
+from src.server import create_app as create_unified_app
 from support import HttpClient, as_client
 
 PASSWORD = "It3gr@tion-Passw0rd!"  # noqa: S105 - 테스트 전용 가짜 비밀번호
@@ -72,6 +75,30 @@ def signup(client: HttpClient, email: str = EMAIL) -> dict[str, Any]:
 
 def auth(token: str) -> Mapping[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_unified_entrypoint(settings: Settings, db_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The root factory serves UI, auth, interests, settings and one shared news DB."""
+    monkeypatch.setattr("dait.main.get_settings", lambda: settings)
+    seed_minimum(db_url)
+    app = create_unified_app()
+    client = as_client(app)
+    home = client.request("GET", "/")
+    assert home.status_code == 200
+    assert "script-src 'self'" in home.headers["content-security-policy"]
+    assert client.request("GET", "/app.js").status_code == 200
+    assert client.request("GET", "/mockup/mockup.css").status_code == 200
+    assert client.request("GET", "/settings.html").status_code == 200
+    assert client.request("GET", "/detail.html").status_code == 404
+    assert client.request("GET", "/v1/news").json()["items"][0]["id"] == "n1"
+    assert client.request("GET", "/v1/news/n1").status_code == 200
+    assert client.request("GET", "/v1/interests/catalog").status_code == 200
+    body = signup(client)
+    headers = auth(body["tokens"]["access_token"])
+    assert client.request("GET", "/v1/me/session", headers=headers).status_code == 200
+    assert client.request("GET", "/v1/me/settings", headers=headers).status_code == 200
+    assert client.request("GET", "/v1/me/interests", headers=headers).status_code == 200
+    assert client.request("GET", "/v1/me/schedules", headers=headers).status_code == 200
 
 
 def test_full_user_journey(settings: Settings, db_url: str) -> None:

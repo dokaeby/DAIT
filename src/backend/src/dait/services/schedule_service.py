@@ -20,7 +20,7 @@ from dait.schemas.settings import (
 )
 from dait.schemas.user import UserRecord
 
-MAX_SCHEDULES = 10
+MAX_SCHEDULES = 5
 
 
 def compute_next_run(local_time: str, timezone_name: str, now: datetime) -> datetime:
@@ -155,7 +155,7 @@ def create_schedule(
     입력: settings, user (본인), request (검증된 생성 요청),
           request_id (감사 추적용), now (UTC 시각)
     출력: ScheduleResponse (201)
-    기능: 시간대·출처를 검증하고 예약 상한(10개)을 적용한다.
+    기능: 시간대·출처를 검증하고 예약 상한(5개)을 적용한다.
           같은 사용자·예약·실행 창의 중복 작업 방지는 jobs.dedupe_key가 담당한다(후속 단계).
     """
     _validate_timezone(request.timezone)

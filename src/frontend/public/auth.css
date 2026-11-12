@@ -1,0 +1,41 @@
+/* Shared auth dialog rules: override general full-width form input styling. */
+#auth-dialog .login-form .auth-check {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px 0 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+#auth-dialog .login-form .auth-check input[type="checkbox"] {
+  appearance: auto;
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  min-height: 15px;
+  padding: 0;
+  margin: 0;
+  accent-color: #135fdb;
+  cursor: pointer;
+}
+#auth-dialog .auth-navigation {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+}
+#auth-dialog .auth-navigation .auth-link { font-weight: 700; }
+#auth-dialog { max-width: calc(100vw - 28px); max-height: calc(100dvh - 32px); }
+.nickname-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#auth-dialog .nickname-row input { min-width: 0; flex: 1; }
+.nickname-row button { flex: 0 0 auto; }
+#auth-dialog #nickname-feedback:empty { display: none; }
+
+/* 포인터 조작의 기본 포커스 표시는 숨기되 키보드 포커스는 유지한다. */
+#auth-close:focus:not(:focus-visible) { outline:none; }
+#auth-close:focus-visible { outline:3px solid #135fdb99; outline-offset:3px; }

@@ -21,13 +21,13 @@ from dait.schemas.interest import (
     empty_interests,
     empty_items,
 )
+from dait.schemas.nickname import Nickname
 from dait.schemas.user import UserPublic
 
 _EMAIL_MAX_LENGTH = 254  # RFC 5321 기준 주소 최대 길이
 _LENGTH_HINT = "비밀번호 (8~128자)"
 _EMAIL_TOO_LONG = "email too long"
 _MISMATCH = "password mismatch"
-_TERMS = "terms not accepted"
 
 
 class SignupRequest(BaseModel):
@@ -36,12 +36,20 @@ class SignupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     email: EmailStr
+    nickname: Nickname | None = None
     # SecretStr: 실수로 로그·repr에 찍혀도 *** 로만 보이게 한다.
     password: SecretStr = Field(min_length=8, max_length=128, description=_LENGTH_HINT)
     password_confirm: SecretStr = Field(min_length=8, max_length=128)
-    terms_accepted: bool
+    # 기존 클라이언트 요청은 호환하되 가입 조건으로 사용하지 않는다.
+    terms_accepted: bool | None = None
     # 선택 필드: 보내지 않으면 관심사 없이 가입한다(관심사 기능이 빠져도 가입 요청은 그대로 통한다).
     interests: list[InterestCode] = Field(default_factory=empty_interests, max_length=MAX_INTERESTS)
+
+    @field_validator("nickname", mode="before")
+    @classmethod
+    def _empty_nickname(cls, value: object) -> object:
+        """빈 선택 입력은 이메일 표시를 뜻한다."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("interests")
     @classmethod
@@ -68,12 +76,12 @@ class SignupRequest(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _check_confirm_and_terms(self) -> Self:
-        """비밀번호 확인 일치와 약관 동의를 확인한다.
+    def _check_password_confirmation(self) -> Self:
+        """비밀번호 확인이 일치하는지 검사한다.
 
         입력: 없음(이미 검증된 필드들)
         출력: self
-        기능: 두 비밀번호가 다르거나 약관 미동의면 ValueError. 비교는 상수 시간으로 한다.
+        기능: 두 비밀번호가 다르면 ValueError. 비교는 상수 시간으로 한다.
         """
         same = hmac.compare_digest(
             self.password.get_secret_value().encode(),
@@ -81,8 +89,6 @@ class SignupRequest(BaseModel):
         )
         if not same:
             raise ValueError(_MISMATCH)
-        if not self.terms_accepted:
-            raise ValueError(_TERMS)
         return self
 
 
@@ -112,6 +118,7 @@ class AuthResponse(BaseModel):
 
     user: UserPublic
     tokens: TokenPair
+    onboarding_required: bool = False
     # 메인 화면이 로그인 직후 바로 쓰도록 DB의 관심사를 함께 내려준다(없으면 빈 목록).
     interests: list[InterestItem] = Field(default_factory=empty_items)
 

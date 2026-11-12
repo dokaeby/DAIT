@@ -5,6 +5,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from dait.schemas.nickname import Nickname
+
 
 class UserStatus(StrEnum):
     """계정 상태. 지금은 정상 계정만 있다."""
@@ -30,6 +32,7 @@ class UserRecord(BaseModel):
     status: UserStatus
     role: UserRole
     created_at: datetime
+    nickname: Nickname | None = None
 
 
 class UserPublic(BaseModel):
@@ -41,3 +44,4 @@ class UserPublic(BaseModel):
     email: str
     status: UserStatus
     role: UserRole
+    nickname: Nickname | None = None

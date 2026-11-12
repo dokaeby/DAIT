@@ -60,6 +60,14 @@ class WeakPasswordError(AppError):
     message = "너무 흔한 비밀번호입니다. 다른 비밀번호를 사용해 주세요."
 
 
+class NicknameTakenError(AppError):
+    """표시용 닉네임만 중복 여부를 공개하며 이메일 가입 오류는 일반화한다."""
+
+    status_code = 409
+    code = "NICKNAME_TAKEN"
+    message = "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요."
+
+
 class InvalidCredentialsError(AppError):
     """이메일이 없거나 비밀번호가 틀린 로그인. 두 경우를 구분하지 않는다."""
 

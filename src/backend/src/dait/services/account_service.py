@@ -3,12 +3,23 @@
 from datetime import datetime
 
 from dait.core.config import Settings
-from dait.core.errors import InvalidCredentialsError, InvalidTokenError, TooManyAttemptsError
+from dait.core.errors import (
+    InvalidCredentialsError,
+    InvalidTokenError,
+    NicknameTakenError,
+    TooManyAttemptsError,
+)
 from dait.core.logging import audit
 from dait.core.security import decode_access_token, verify_password
 from dait.repositories.db import transaction
-from dait.repositories.user_repository import delete_user, find_by_id
+from dait.repositories.user_repository import (
+    DuplicateNicknameError,
+    delete_user,
+    find_by_id,
+    update_nickname,
+)
 from dait.schemas.auth import SessionResponse
+from dait.schemas.nickname import NicknameResult
 from dait.schemas.user import UserPublic, UserRecord, UserStatus
 from dait.services.login_throttle import LoginThrottles
 
@@ -39,8 +50,20 @@ def session_status(user: UserRecord | None) -> SessionResponse:
     """
     if user is None:
         return SessionResponse(authenticated=False)
-    public = UserPublic(id=user.id, email=user.email, status=user.status, role=user.role)
+    public = UserPublic(
+        id=user.id, email=user.email, status=user.status, role=user.role, nickname=user.nickname
+    )
     return SessionResponse(authenticated=True, user=public)
+
+
+def change_nickname(settings: Settings, user: UserRecord, nickname: str | None) -> NicknameResult:
+    """인증된 본인 닉네임만 변경하고 경합 시에도 중복을 막는다."""
+    try:
+        with transaction(settings.database_url) as conn:
+            update_nickname(conn, user.id, nickname)
+    except DuplicateNicknameError as exc:
+        raise NicknameTakenError from exc
+    return NicknameResult(nickname=nickname)
 
 
 def withdraw(
