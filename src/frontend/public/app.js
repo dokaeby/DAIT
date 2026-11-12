@@ -193,7 +193,7 @@
     const submitButton = form.querySelector('button[type="submit"]');
     const submitLabel = submitButton ? submitButton.textContent : "";
     if (submitButton) submitButton.textContent = "처리 중…";
-    const slowTimer = window.setTimeout(showSlowAuthNotice, 8000);
+    showSlowAuthNotice();
     try {
       const res = await fetch(signup ? "/v1/auth/signup" : "/v1/auth/login", {
         method: "POST",
@@ -215,7 +215,6 @@
     } catch (_e) {
       feedback.textContent = "서버에 연결하지 못했습니다.";
     } finally {
-      window.clearTimeout(slowTimer);
       hideSlowAuthNotice();
       if (submitButton) submitButton.textContent = submitLabel;
       controls.forEach((c) => (c.disabled = false));
