@@ -47,6 +47,41 @@ def connect(redis_url: str, timeout: float = 2.0) -> RedisLike | None:
         return None
 
 
+class _SharedState:
+    """공유 클라이언트와 장애 플래그를 한 곳에 묶는다(global 문 회피)."""
+
+    client: RedisLike | None = None
+    failed: bool = False
+
+
+_shared = _SharedState()
+
+
+def shared_client(redis_url: str | None, timeout: float = 2.0) -> RedisLike | None:
+    """프로セ스에서 공유하는 Redis 클라이언트를 지연 생성한다.
+
+    입력: redis_url (None이면 미설정), timeout (초)
+    출력: RedisLike 또는 None (미설정·연결 실패·redis-py 없음)
+    기능: 한 번 연결에 실패하면 프로세스가 끝날 때까지 fallback으로 둔다.
+          cache·throttle 등 여러 서비스가 같은 연결을 나눠 쓴다.
+    """
+    if _shared.failed or not redis_url:
+        return None
+    if _shared.client is None:
+        client = connect(redis_url, timeout)
+        if client is None:
+            _shared.failed = True
+            return None
+        _shared.client = client
+    return _shared.client
+
+
+def reset_shared_client() -> None:
+    """테스트용: 공유 클라이언트와 장애 플래그를 초기화한다."""
+    _shared.client = None
+    _shared.failed = False
+
+
 def new_lock_token() -> str:
     """락 소유권 토큰을 만든다. 값이 내 것일 때만 해제하기 위한 비교값이다."""
     return uuid.uuid4().hex

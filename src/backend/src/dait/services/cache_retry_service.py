@@ -28,17 +28,9 @@ _POLL_SECONDS = 0.05
 _T = TypeVar("_T")
 
 
-class _RedisState:
-    """Redis 클라이언트와 장애 플래그를 한 곳에 묶는다(global 문 회피)."""
-
-    client: redis_repository.RedisLike | None = None
-    failed: bool = False
-
-
 _lock = threading.Lock()
 _memory_cache: dict[str, tuple[float, str]] = {}
 _memory_locks: dict[str, tuple[str, float]] = {}
-_redis_state = _RedisState()
 
 
 def _jittered_ttl(base_seconds: int) -> int:
@@ -49,15 +41,7 @@ def _jittered_ttl(base_seconds: int) -> int:
 
 def _get_redis(settings: Settings) -> redis_repository.RedisLike | None:
     """설정된 Redis 클라이언트를 지연 생성한다. 없거나 연결 실패면 None."""
-    if _redis_state.failed or not settings.redis_url:
-        return None
-    if _redis_state.client is None:
-        client = redis_repository.connect(settings.redis_url)
-        if client is None:
-            _redis_state.failed = True
-            return None
-        _redis_state.client = client
-    return _redis_state.client
+    return redis_repository.shared_client(settings.redis_url)
 
 
 def _redis_call[T](fn: Callable[[], T]) -> T | None:
@@ -190,8 +174,7 @@ def clear_memory_state() -> None:
     with _lock:
         _memory_cache.clear()
         _memory_locks.clear()
-    _redis_state.client = None
-    _redis_state.failed = False
+    redis_repository.reset_shared_client()
 
 
 def list_cache_key(category: str, query: str, sort: str, page_size: int, cursor: str | None) -> str:

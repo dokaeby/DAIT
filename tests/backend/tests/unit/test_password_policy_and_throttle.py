@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from dait.core.config import Settings
 from dait.core.password_policy import is_weak_password
 from dait.services.login_throttle import AttemptThrottle, create_throttles
 
@@ -96,3 +97,97 @@ def test_default_thresholds_are_account_5_and_ip_20() -> None:
         throttles.ip.register_failure("ip", NOW)
     assert throttles.account.is_locked("a", NOW) is True
     assert throttles.ip.is_locked("ip", NOW) is False
+
+
+class _FakeRedis:
+    """RedisLike 프로토콜을 흉내 내는 인메모리 저장소."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    def set(self, name: str, value: str, *, nx: bool = False, px: int | None = None) -> bool:
+        if nx and name in self.store:
+            return False
+        self.store[name] = value
+        return True
+
+    def get(self, name: str) -> str | None:
+        return self.store.get(name)
+
+    def delete(self, *names: str) -> int:
+        return sum(1 for n in names if self.store.pop(n, None) is not None)
+
+    def eval(self, script: str, numkeys: int, *keys_and_args: object) -> object:
+        raise NotImplementedError
+
+
+def _redis_settings() -> Settings:
+    return Settings(database_url="sqlite:///:memory:", redis_url="redis://fake:6379")
+
+
+def _patch_client(monkeypatch: pytest.MonkeyPatch, client: object | None) -> None:
+    monkeypatch.setattr(
+        "dait.repositories.redis_repository.shared_client", lambda _url, timeout=2.0: client
+    )
+
+
+def test_redis_throttle_locks_at_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redis 구현도 기준 횟수에 잠기고 시간이 지나면 풀린다."""
+    from dait.services.login_throttle import RedisThrottle
+
+    _patch_client(monkeypatch, _FakeRedis())
+    throttle = RedisThrottle(_redis_settings(), "account", 5)
+    for _ in range(4):
+        throttle.register_failure("user@example.com", NOW)
+    assert throttle.is_locked("user@example.com", NOW) is False
+    throttle.register_failure("user@example.com", NOW)
+    assert throttle.is_locked("user@example.com", NOW) is True
+    assert throttle.is_locked("user@example.com", NOW + timedelta(seconds=61)) is False
+
+
+def test_redis_throttle_clear_and_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """clear는 기록을 지우고, 키는 서로 독립이다."""
+    from dait.services.login_throttle import RedisThrottle
+
+    fake = _FakeRedis()
+    _patch_client(monkeypatch, fake)
+    throttle = RedisThrottle(_redis_settings(), "ip", 2)
+    throttle.register_failure("ip1", NOW)
+    throttle.register_failure("ip1", NOW)
+    assert throttle.is_locked("ip1", NOW) is True
+    assert throttle.is_locked("ip2", NOW) is False
+    throttle.clear("ip1")
+    assert throttle.is_locked("ip1", NOW) is False
+    # 이메일·IP 원문이 키에 남지 않는다.
+    assert all("ip1" not in key and "@" not in key for key in fake.store)
+
+
+def test_redis_throttle_falls_back_to_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redis가 없으면 메모리 구현과 같은 규칙으로 동작한다."""
+    from dait.services.login_throttle import RedisThrottle
+
+    _patch_client(monkeypatch, None)
+    throttle = RedisThrottle(_redis_settings(), "account", 2)
+    throttle.register_failure("a", NOW)
+    throttle.register_failure("a", NOW)
+    assert throttle.is_locked("a", NOW) is True
+    throttle.clear("a")
+    assert throttle.is_locked("a", NOW) is False
+
+
+def test_redis_throttle_survives_redis_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redis 호출이 실패해도 예외 없이 fallback으로 동작한다."""
+    from dait.services.login_throttle import RedisThrottle
+
+    class _BrokenRedis(_FakeRedis):
+        def get(self, name: str) -> str | None:
+            raise ConnectionError("down")
+
+        def set(self, name: str, value: str, *, nx: bool = False, px: int | None = None) -> bool:
+            raise ConnectionError("down")
+
+    _patch_client(monkeypatch, _BrokenRedis())
+    throttle = RedisThrottle(_redis_settings(), "account", 2)
+    throttle.register_failure("a", NOW)  # 예외 없이 fallback 기록
+    throttle.register_failure("a", NOW)
+    assert throttle.is_locked("a", NOW) is True

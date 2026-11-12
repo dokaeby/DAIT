@@ -52,7 +52,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     # 마지막에 추가한 미들웨어가 가장 바깥이라, CORS 사전 요청 응답에도 보안 헤더가 붙는다.
     app.add_middleware(RequestContextMiddleware, csp=config.content_security_policy)
-    throttles = create_throttles()  # 앱마다 하나: 실패 기록은 프로세스 메모리에만 있다.
+    # 앱마다 하나: REDIS_URL이 있으면 실패 기록을 Redis에 공유하고, 없으면 메모리에 둔다.
+    throttles = create_throttles(config)
     app.dependency_overrides[get_throttles] = lambda: throttles
     app.include_router(health_routes.router)
     app.include_router(auth_routes.router)
