@@ -1,5 +1,13 @@
 # DAIT UI 자동화 테스트 케이스
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT UI Automation Test Cases |
+| Search Keywords | DAIT, UI automation test cases, Playwright, pytest, browser automation, E2E, main screen, detail dialog, settings screen, auth popup, category filter, sorting, schedule runs |
+| English Summary | Browser UI automation test cases for the DAIT stage-1 MVP main, detail, and settings screens using Playwright for Python and pytest. Covers the immediate auth progress popup, category filters (AI/economy/politics), ranking/latest sorting, search, pagination, read status, schedule CRUD, and schedule-run result UI against the current static SPA frontend. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

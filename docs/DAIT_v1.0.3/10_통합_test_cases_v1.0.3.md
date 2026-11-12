@@ -1,5 +1,13 @@
 # DAIT 통합 테스트 케이스
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT Integration Test Cases |
+| Search Keywords | DAIT, integration test cases, E2E, unified entrypoint, API, DB, Redis, worker, scheduler, schedule runs, readyz, Supabase, login flow, settings restore |
+| English Summary | Integration/E2E-like test cases verifying DAIT components work together across UI, API, DB, Redis, worker, and scheduler. Covers the unified entrypoint serving frontend and `/v1/*` APIs, the verified schedule E2E flow (create → tick → search → run items → history), and `/readyz` checks against Supabase PostgreSQL and Redis. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

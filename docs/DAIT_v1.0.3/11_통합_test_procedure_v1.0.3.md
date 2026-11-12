@@ -1,5 +1,13 @@
 # DAIT 통합 테스트 절차서
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT Integration Test Procedure |
+| Search Keywords | DAIT, integration test procedure, Docker Compose, PostgreSQL, SQLite, Redis, browser QA, Render, Supabase, scheduler tick secret, healthz, readyz, troubleshooting |
+| English Summary | Standardized procedure for integration testing the full DAIT MVP stack (UI + API + DB + Redis + worker + scheduler) locally with Docker Compose and against production on Render with Supabase PostgreSQL and Key Value Redis, including scheduler tick authentication and failure/recovery evidence. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

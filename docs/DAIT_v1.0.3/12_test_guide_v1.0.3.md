@@ -1,5 +1,13 @@
 # DAIT 테스트 실행 가이드
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT Test Execution Guide |
+| Search Keywords | DAIT, test guide, unit tests, integration tests, UI automation tests, quality gate, Ruff, Pyright, pytest, Docker, environments, test execution |
+| English Summary | Consolidated test execution guide for DAIT stage-1 MVP, aggregating unit, integration, and UI automation test documents. Documents environments (Windows, Docker, PostgreSQL/SQLite, Redis), test runners, and the v1.0.3 quality gate: `ruff check`, `ruff format --check`, `pyright` strict, and `pytest -q` with 586 passing tests. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |

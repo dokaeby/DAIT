@@ -1,5 +1,13 @@
 # DAIT API 설계서
 
+## English Metadata
+
+| 항목 | 값 |
+|---|---|
+| English Title | DAIT API Design Document |
+| Search Keywords | DAIT, API design, REST, /v1, FastAPI, Pydantic v2, extra forbid, Bearer auth, auth endpoints, me endpoints, news endpoints, settings, interests, scheduler tick, error contract |
+| English Summary | Complete API contract for DAIT stage-1 MVP covering main, detail, and settings screens. Defines common rules under `/v1` (JSON, FastAPI, Pydantic v2 `extra="forbid"`) and the implemented auth/me/news/settings/scheduler endpoints including `POST /v1/internal/scheduler/tick`. |
+
 | 항목 | 값 |
 |---|---|
 | 문서 버전 | 1.0.3 |
