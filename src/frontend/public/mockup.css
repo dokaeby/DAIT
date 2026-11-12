@@ -685,6 +685,22 @@ header {
 dialog[open].settings-dialog { margin: auto; }
 .settings-gear[hidden] { display: none; }
 
+/* 인증 지연 안내 팝업 */
+.slow-notice { max-width: 24rem; }
+.slow-card { padding: 1.5rem; text-align: center; }
+.slow-card h2 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+.slow-card p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.55; margin: 0 0 1rem; }
+.slow-card .secondary-button { margin: 0 auto; }
+.slow-spinner {
+  width: 2.2rem; height: 2.2rem; margin: 0 auto 0.9rem;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: slow-spin 0.8s linear infinite;
+}
+@keyframes slow-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .slow-spinner { animation-duration: 2s; }
+}
+
 /* ── 헤더 공통 (index.html·settings.html) ─────────────────
    index.html은 헤더 스타일을 페이지 안에 따로 두고 있어, settings.html에서는 헤더가 꾸며지지 않고
    왼쪽 위에 글자로만 쌓였습니다. 같은 값을 공통 CSS에도 두어 모든 화면이 같은 헤더를 갖게 합니다. */
