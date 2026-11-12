@@ -89,14 +89,29 @@ def test_keys_are_independent() -> None:
     assert throttle.is_locked("b", NOW) is False
 
 
-def test_default_thresholds_are_account_5_and_ip_20() -> None:
-    """기본 잠금은 계정 5회, IP 20회부터다."""
+def test_default_thresholds_are_account_ip_5_account_50_and_ip_20() -> None:
+    """기본 잠금은 계정+IP 5회, 계정 전체 50회, IP 20회부터다."""
     throttles = create_throttles()
     for _ in range(5):
-        throttles.account.register_failure("a", NOW)
-        throttles.ip.register_failure("ip", NOW)
-    assert throttles.account.is_locked("a", NOW) is True
-    assert throttles.ip.is_locked("ip", NOW) is False
+        throttles.register_failure("a@example.com", "1.1.1.1", NOW)
+    assert throttles.is_locked("a@example.com", "1.1.1.1", NOW) is True
+    assert throttles.is_locked("a@example.com", "2.2.2.2", NOW) is False
+    assert throttles.ip.is_locked("1.1.1.1", NOW) is False
+    for index in range(44):
+        throttles.register_failure("a@example.com", f"10.0.0.{index}", NOW)
+    assert throttles.is_locked("a@example.com", "2.2.2.2", NOW) is False
+    throttles.register_failure("a@example.com", "10.0.1.1", NOW)
+    assert throttles.is_locked("a@example.com", "2.2.2.2", NOW) is True
+
+
+def test_success_clears_account_but_keeps_ip_failures() -> None:
+    """성공하면 그 계정 기록만 지우고 IP 실패 기록은 남긴다."""
+    throttles = create_throttles()
+    for index in range(19):
+        throttles.register_failure(f"u{index}@example.com", "1.1.1.1", NOW)
+    throttles.clear("u0@example.com", "1.1.1.1")
+    throttles.register_failure("u0@example.com", "1.1.1.1", NOW)
+    assert throttles.ip.is_locked("1.1.1.1", NOW) is True
 
 
 class _FakeRedis:

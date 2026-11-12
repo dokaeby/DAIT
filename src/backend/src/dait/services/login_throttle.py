@@ -210,25 +210,75 @@ class RedisThrottle:
             self._fallback.clear(key)
 
 
+_ACCOUNT_CLIENT_THRESHOLD = 5
+_ACCOUNT_GLOBAL_THRESHOLD = 50  # 남이 IP를 바꿔 가며 실패를 쌓아도 쉽게 잠기지 않게 높게 둔다.
+_IP_THRESHOLD = 20
+_UNKNOWN_IP = "unknown"
+
+
 @dataclass(frozen=True)
 class LoginThrottles:
-    """로그인에 쓰는 두 잠금 장치: 계정 단위와 IP 단위."""
+    """로그인에 쓰는 세 잠금 장치.
+
+    account: 계정+접속 IP 단위. 한 곳에서 같은 계정을 계속 틀리면 빨리 잠근다.
+    account_global: 계정 단위. 여러 IP에 나눠 대입하는 공격을 느슨한 기준으로 막는다.
+    ip: IP 단위. 한 곳에서 여러 계정을 대입하는 공격을 막는다.
+    """
 
     account: Throttle
+    account_global: Throttle
     ip: Throttle
+
+    def is_locked(self, email: str, client_ip: str | None, now: datetime) -> bool:
+        """이 이메일·IP 조합으로 지금 시도할 수 없는지 알려 준다.
+
+        입력: email (소문자 이메일), client_ip (접속 IP, 모르면 None), now (UTC 시각)
+        출력: bool (셋 중 하나라도 잠겨 있으면 True)
+        기능: 다른 IP에서 쌓인 실패만으로는 계정+IP 잠금이 걸리지 않는다.
+        """
+        ip_key = client_ip or _UNKNOWN_IP
+        return (
+            self.account.is_locked(_account_client_key(email, ip_key), now)
+            or self.account_global.is_locked(email, now)
+            or self.ip.is_locked(ip_key, now)
+        )
+
+    def register_failure(self, email: str, client_ip: str | None, now: datetime) -> None:
+        """실패 한 번을 세 장치에 모두 기록한다."""
+        ip_key = client_ip or _UNKNOWN_IP
+        self.account.register_failure(_account_client_key(email, ip_key), now)
+        self.account_global.register_failure(email, now)
+        self.ip.register_failure(ip_key, now)
+
+    def clear(self, email: str, client_ip: str | None) -> None:
+        """성공했을 때 이 계정의 실패 기록을 지운다(IP 기록은 남긴다)."""
+        ip_key = client_ip or _UNKNOWN_IP
+        self.account.clear(_account_client_key(email, ip_key))
+        self.account_global.clear(email)
+
+
+def _account_client_key(email: str, ip_key: str) -> str:
+    """계정+IP 잠금 키. 이메일에는 개행이 들어갈 수 없어 구분자로 쓴다."""
+    return f"{email}\n{ip_key}"
 
 
 def create_throttles(settings: Settings | None = None) -> LoginThrottles:
     """잠금 장치를 만든다. REDIS_URL이 있으면 분산 구현, 없으면 메모리 구현.
 
     입력: settings (앱 설정, None이면 메모리 구현)
-    출력: LoginThrottles (계정 5회, IP 20회 실패부터 잠금)
-    기능: IP는 같은 공유기를 쓰는 여러 사용자가 있을 수 있어 기준을 더 느슨하게 둔다.
+    출력: LoginThrottles (계정+IP 5회, 계정 전체 50회, IP 20회 실패부터 잠금)
+    기능: 계정 잠금을 IP와 묶어, 이메일만 아는 남이 본인을 쉽게 잠그지 못하게 한다.
+          IP는 같은 공유기를 쓰는 여러 사용자가 있을 수 있어 기준을 더 느슨하게 둔다.
           Redis 연결이 안 되면 각 호출 시점에 메모리 fallback으로 자동 전환된다.
     """
     if settings is not None and settings.redis_url:
         return LoginThrottles(
-            account=RedisThrottle(settings, "account", 5),
-            ip=RedisThrottle(settings, "ip", 20),
+            account=RedisThrottle(settings, "account_ip", _ACCOUNT_CLIENT_THRESHOLD),
+            account_global=RedisThrottle(settings, "account", _ACCOUNT_GLOBAL_THRESHOLD),
+            ip=RedisThrottle(settings, "ip", _IP_THRESHOLD),
         )
-    return LoginThrottles(account=AttemptThrottle(5), ip=AttemptThrottle(20))
+    return LoginThrottles(
+        account=AttemptThrottle(_ACCOUNT_CLIENT_THRESHOLD),
+        account_global=AttemptThrottle(_ACCOUNT_GLOBAL_THRESHOLD),
+        ip=AttemptThrottle(_IP_THRESHOLD),
+    )

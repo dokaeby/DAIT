@@ -162,13 +162,37 @@ def test_account_is_locked_after_five_failures_even_with_right_password(settings
     )
 
 
+def test_failures_from_another_ip_do_not_lock_the_owner(settings: Settings) -> None:
+    """남이 다른 IP에서 이메일만으로 5번 틀려도 본인은 자기 IP에서 로그인할 수 있다."""
+    auth_service.signup(settings, signup_request(), None, NOW)
+    throttles = create_throttles()
+    for _ in range(5):
+        fail_login(settings, throttles, EMAIL, NOW)
+    assert (
+        auth_service.login(settings, login_request(), throttles, "1.2.3.4", NOW).user.email == EMAIL
+    )
+
+
+def test_account_global_lock_catches_ip_rotation(settings: Settings) -> None:
+    """여러 IP에 나눠 50번 틀리면 어느 IP에서든 그 계정은 잠긴다."""
+    auth_service.signup(settings, signup_request(), None, NOW)
+    throttles = create_throttles()
+    for index in range(50):
+        with pytest.raises(InvalidCredentialsError):
+            auth_service.login(
+                settings, login_request(EMAIL, WRONG), throttles, f"10.0.0.{index}", NOW
+            )
+    with pytest.raises(TooManyAttemptsError):
+        auth_service.login(settings, login_request(), throttles, "1.2.3.4", NOW)
+
+
 def test_lock_applies_to_unknown_email_too(settings: Settings) -> None:
     """없는 이메일도 같은 규칙으로 잠겨 계정 유무가 드러나지 않는다."""
     throttles = create_throttles()
     for _ in range(5):
         fail_login(settings, throttles, "ghost@example.com", NOW)
     with pytest.raises(TooManyAttemptsError):
-        auth_service.login(settings, login_request("ghost@example.com"), throttles, None, NOW)
+        auth_service.login(settings, login_request("ghost@example.com"), throttles, "9.9.9.9", NOW)
 
 
 def test_ip_lock_blocks_other_accounts(settings: Settings) -> None:
