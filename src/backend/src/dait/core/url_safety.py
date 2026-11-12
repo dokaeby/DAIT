@@ -68,13 +68,13 @@ def _is_blocked_ip(raw: str) -> bool:
     )
 
 
-def validate_public_https_url(url: str, resolver: Resolver | None = None) -> str:
-    """URL이 공인 HTTPS 주소인지 검증하고 DNS 결과까지 확인한다.
+def _resolve_public_https_url(url: str, resolver: Resolver | None) -> list[str]:
+    """URL을 검증하고 연결해도 되는 공인 IP 목록을 돌려준다.
 
     입력: url (검사할 절대 URL), resolver (테스트용 IP 해석기, None이면 DNS)
-    출력: str (검증을 통과한 원래 URL)
-    기능: http·자격증명 포함·IP 리터럴 차단 대역·사설로 해석되는 호스트를 거부한다.
-          DNS 해석 자체가 실패하면 FetchFailedError가 아닌 UnsafeUrlError로 거부한다.
+    출력: list[str] (검증을 통과한 IP 문자열, 해석 순서 유지)
+    기능: validate_public_https_url의 규칙을 그대로 적용하고, 실제 연결을 이 IP로
+          고정할 수 있도록 검증한 주소 자체를 돌려준다(DNS rebinding 방지).
     """
     try:
         parts = urlsplit(url)
@@ -92,15 +92,43 @@ def validate_public_https_url(url: str, resolver: Resolver | None = None) -> str
     if literal is not None:
         if _is_blocked_ip(str(literal)):
             raise UnsafeUrlError
-        return url
+        return [str(literal)]
     resolve = resolver if resolver is not None else _default_resolver
     try:
-        addresses = resolve(host)
+        addresses = [str(addr) for addr in resolve(host)]
     except (OSError, socket.gaierror) as exc:
         raise UnsafeUrlError from exc
-    if not addresses or any(_is_blocked_ip(str(addr)) for addr in addresses):
+    if not addresses or any(_is_blocked_ip(addr) for addr in addresses):
         raise UnsafeUrlError
+    return list(dict.fromkeys(addresses))
+
+
+def validate_public_https_url(url: str, resolver: Resolver | None = None) -> str:
+    """URL이 공인 HTTPS 주소인지 검증하고 DNS 결과까지 확인한다.
+
+    입력: url (검사할 절대 URL), resolver (테스트용 IP 해석기, None이면 DNS)
+    출력: str (검증을 통과한 원래 URL)
+    기능: http·자격증명 포함·IP 리터럴 차단 대역·사설로 해석되는 호스트를 거부한다.
+          DNS 해석 자체가 실패하면 FetchFailedError가 아닌 UnsafeUrlError로 거부한다.
+    """
+    _resolve_public_https_url(url, resolver)
     return url
+
+
+def _pinned_request(client: httpx.Client, url: str, ip: str) -> httpx.Request:
+    """검증한 IP로 직접 연결하되 Host·SNI·인증서 검증은 원래 호스트명으로 하는 요청.
+
+    입력: client (httpx.Client), url (검증된 URL), ip (검증된 공인 IP)
+    출력: httpx.Request
+    기능: httpx가 연결 시점에 DNS를 다시 조회하지 않도록 URL 호스트를 IP로 바꾼다.
+    """
+    original = httpx.URL(url)
+    return client.build_request(
+        "GET",
+        original.copy_with(host=ip),
+        headers={"User-Agent": USER_AGENT, "Host": original.netloc.decode("ascii")},
+        extensions={"sni_hostname": original.raw_host.decode("ascii")},
+    )
 
 
 def canonicalize_url(url: str) -> str:
@@ -130,6 +158,26 @@ class FetchedBody:
     final_url: str
 
 
+def _send_pinned(client: httpx.Client, url: str, addresses: Sequence[str]) -> httpx.Response:
+    """검증한 IP들에 차례로 연결을 시도해 스트리밍 응답을 돌려준다.
+
+    입력: client (httpx.Client), url (검증된 URL), addresses (검증된 공인 IP 목록)
+    출력: httpx.Response (stream=True, 호출자가 close 책임)
+    기능: 연결 실패(ConnectError)일 때만 다음 IP로 넘어간다. 검증하지 않은 주소로는
+          절대 연결하지 않는다.
+    """
+    last_error: httpx.ConnectError | None = None
+    for ip in addresses:
+        try:
+            request = _pinned_request(client, url, ip)
+            return client.send(request, stream=True, follow_redirects=False)
+        except httpx.ConnectError as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise FetchFailedError
+
+
 def fetch_public_bytes(
     client: httpx.Client,
     url: str,
@@ -145,18 +193,20 @@ def fetch_public_bytes(
     출력: FetchedBody (본문·Content-Type·최종 URL)
     기능: 매 홉마다 스킴·호스트·DNS를 다시 검증하고, 리다이렉트는 수동으로 따라간다.
           본문은 스트리밍으로 읽어 max_bytes를 넘으면 중단한다.
+          연결은 검증한 IP로 고정해 연결 시점 DNS 재조회(rebinding)를 막는다.
     """
-    current = validate_public_https_url(url, resolver)
+    current = url
+    addresses = _resolve_public_https_url(current, resolver)
     for _ in range(max_redirects + 1):
         try:
-            with client.stream(
-                "GET", current, headers={"User-Agent": USER_AGENT}, follow_redirects=False
-            ) as response:
+            response = _send_pinned(client, current, addresses)
+            try:
                 if response.is_redirect:
                     location = response.headers.get("location")
                     if not location:
                         raise FetchFailedError
-                    current = validate_public_https_url(urljoin(current, location), resolver)
+                    current = urljoin(current, location)
+                    addresses = _resolve_public_https_url(current, resolver)
                     continue
                 if response.status_code != 200:
                     raise FetchFailedError(response.status_code)
@@ -175,6 +225,8 @@ def fetch_public_bytes(
                     content_type=content_type.split(";")[0].strip().lower(),
                     final_url=current,
                 )
+            finally:
+                response.close()
         except httpx.HTTPError as exc:
             raise FetchFailedError from exc
     raise FetchFailedError
