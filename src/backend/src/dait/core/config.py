@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr = Field(default=SecretStr(""), min_length=32, max_length=256)
     access_token_minutes: int = Field(default=15, ge=1, le=1440)  # 짧을수록 탈취 피해가 적다.
     refresh_token_days: int = Field(default=14, ge=1, le=90)
+    # 외부 cron(cron-job.org 등)이 POST /v1/internal/scheduler/tick에 보내는 Bearer 비밀값.
+    # 비어 있으면 tick 엔드포인트는 모든 요청을 거절한다(기능 꺼짐). JWT 키와 다른 값을 쓴다.
+    scheduler_tick_secret: SecretStr = Field(default=SecretStr(""), max_length=256)
+    # 카카오 '나에게 보내기' 재시도: 최대 시도 횟수와 실패 후 기다릴 초(팀장님과 확정 전 기본값).
+    kakao_max_attempts: int = Field(default=3, ge=1, le=10)
+    kakao_retry_backoff_seconds: list[int] = Field(
+        default_factory=lambda: [60, 300, 900], min_length=1, max_length=10
+    )
+    # 카톡 메시지에 넣을 사이트 주소(결과가 있을 때는 첫 기사 링크를 쓴다).
+    public_base_url: str | None = Field(default=None, max_length=300)
 
     @field_validator("database_url")
     @classmethod
