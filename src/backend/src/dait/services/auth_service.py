@@ -7,6 +7,7 @@ from dait.core.config import Settings
 from dait.core.errors import (
     InvalidCredentialsError,
     InvalidTokenError,
+    NicknameTakenError,
     SignupFailedError,
     TooManyAttemptsError,
     WeakPasswordError,
@@ -20,6 +21,7 @@ from dait.core.security import (
     new_refresh_token,
     verify_password,
 )
+from dait.repositories import onboarding_repository
 from dait.repositories.db import DbConnection, transaction
 from dait.repositories.interest_repository import replace_codes
 from dait.repositories.token_repository import (
@@ -31,9 +33,11 @@ from dait.repositories.token_repository import (
 )
 from dait.repositories.user_repository import (
     DuplicateEmailError,
+    DuplicateNicknameError,
     find_by_email,
     find_by_id,
     insert_user,
+    nickname_exists,
 )
 from dait.schemas.auth import (
     AuthResponse,
@@ -42,6 +46,7 @@ from dait.schemas.auth import (
     SignupRequest,
     TokenPair,
 )
+from dait.schemas.nickname import NicknameAvailability
 from dait.schemas.token import RefreshTokenRecord
 from dait.schemas.user import UserPublic, UserRecord, UserRole, UserStatus
 from dait.services.login_throttle import LoginThrottles
@@ -87,7 +92,9 @@ def _to_response(user: UserRecord, tokens: TokenPair) -> AuthResponse:
     출력: AuthResponse (비밀번호 해시가 빠진 공개 정보)
     기능: DB 모델과 응답 모델을 분리해 내부 값이 새지 않게 한다.
     """
-    public = UserPublic(id=user.id, email=user.email, status=user.status, role=user.role)
+    public = UserPublic(
+        id=user.id, email=user.email, status=user.status, role=user.role, nickname=user.nickname
+    )
     return AuthResponse(user=public, tokens=tokens)
 
 
@@ -113,20 +120,31 @@ def signup(
         status=UserStatus.ACTIVE,
         role=UserRole.USER,
         created_at=now,
+        nickname=request.nickname,
     )
     try:
         with transaction(
             settings.database_url
         ) as conn:  # 사용자와 첫 토큰을 한 트랜잭션으로 묶는다.
             insert_user(conn, user)
+            onboarding_repository.enroll(conn, user.id)
             if request.interests:  # 관심사 저장이 실패하면 가입도 함께 취소된다.
                 replace_codes(conn, user.id, [code.value for code in request.interests])
             tokens = _issue_tokens(conn, settings, user, now)
     except DuplicateEmailError as exc:
         audit("signup", "duplicate", client_ip=client_ip)
         raise SignupFailedError from exc
+    except DuplicateNicknameError as exc:
+        raise NicknameTakenError from exc
     audit("signup", "success", user_id=user.id, client_ip=client_ip)
     return _to_response(user, tokens)
+
+
+def check_nickname(settings: Settings, nickname: str) -> NicknameAvailability:
+    """중복 확인은 안내이며 가입 시 DB 유니크 인덱스로 다시 보장한다."""
+    with transaction(settings.database_url) as conn:
+        exists = nickname_exists(conn, nickname)
+    return NicknameAvailability(nickname=nickname, available=not exists)
 
 
 def login(
@@ -165,8 +183,11 @@ def login(
     throttles.account.clear(email)
     with transaction(settings.database_url) as conn:
         tokens = _issue_tokens(conn, settings, user, now)
+        onboarding_required = onboarding_repository.consume(conn, user.id)
     audit("login", "success", user_id=user.id, client_ip=client_ip)
-    return _to_response(user, tokens)
+    return _to_response(user, tokens).model_copy(
+        update={"onboarding_required": onboarding_required}
+    )
 
 
 def _revoke_family_for_reuse(

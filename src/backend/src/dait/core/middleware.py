@@ -21,7 +21,7 @@ _REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9-]{1,64}")
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """모든 요청/응답에 공통 처리를 적용하는 미들웨어."""
 
-    def __init__(self, app: ASGIApp, csp: str) -> None:
+    def __init__(self, app: ASGIApp, csp: str, html_csp: str | None = None) -> None:
         """미들웨어를 만든다.
 
         입력: app (감쌀 ASGI 앱), csp (응답에 붙일 Content-Security-Policy 값)
@@ -30,6 +30,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         """
         super().__init__(app)
         self._csp = csp
+        self._html_csp = html_csp
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """요청을 처리하고 응답에 request_id와 보안 헤더를 붙인다.
@@ -57,7 +58,10 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 response = error_response(500, "INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.")
 
         response.headers["X-Request-ID"] = request_id
-        response.headers["Content-Security-Policy"] = self._csp
+        is_html = response.headers.get("content-type", "").startswith("text/html")
+        response.headers["Content-Security-Policy"] = (
+            self._html_csp if is_html and self._html_csp else self._csp
+        )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"

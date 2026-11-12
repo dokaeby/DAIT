@@ -271,19 +271,10 @@ async def test_application_crawls_rss_serves_categories_and_toggle_ui() -> None:
             index_res = await client.get("/")
             assert index_res.status_code == 200
             assert '<aside class="sidebar"' in index_res.text
-            assert "국내 뉴스 (14곳)" in index_res.text
-            assert "해외 뉴스 (3곳)" in index_res.text
-            # Home cards use unbracketed labels and separate original/translated title elements.
-            assert '"요약문 보기"' in index_res.text
-            assert '"요약문 닫기"' in index_res.text
-            assert 'class="btn-toggle"' in index_res.text
-            assert 'onclick="toggleSummary(' in index_res.text
-            assert 'class="summary-box"' in index_res.text
-            assert 'class="card-title-main"' in index_res.text
-            assert 'class="card-title-sub"' in index_res.text
-            assert "[한글 번역 보기]" not in index_res.text
-            assert "translation-toggle-btn" not in index_res.text
-            assert "국내 기사 (원문 한국어)" not in index_res.text
+            # v1.0.3 UI: 카테고리는 사이드바 동적 영역과 news-ui.js가 담당한다.
+            assert 'id="sidebar-categories"' in index_res.text
+            assert "news-ui.js" in index_res.text
+            assert "settings.html" in index_res.text
 
             css_res = await client.get("/mockup/mockup.css")
             assert css_res.status_code == 200

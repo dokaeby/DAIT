@@ -187,7 +187,7 @@ def list_cache_key(category: str, query: str, sort: str, page_size: int, cursor:
 
 def detail_cache_key(news_id: str) -> str:
     """상세 캐시 키."""
-    return f"cache:news:detail:{news_id}"
+    return f"cache:news:detail:language-v2:{news_id}"
 
 
 def list_ttl() -> int:

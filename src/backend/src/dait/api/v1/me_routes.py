@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from dait.api.deps import client_ip, get_current_user, get_optional_user, get_throttles
 from dait.core.config import Settings, get_settings
 from dait.schemas.auth import ResultResponse, SessionResponse, WithdrawRequest
+from dait.schemas.nickname import NicknameResult, NicknameUpdate
 from dait.schemas.user import UserRecord
 from dait.services import account_service, interest_service
 from dait.services.login_throttle import LoginThrottles
@@ -32,6 +33,16 @@ def session(
         return status
     items = interest_service.list_interests(settings, user.id).interests
     return status.model_copy(update={"interests": items})
+
+
+@router.patch("/nickname", response_model=NicknameResult)
+def change_nickname(
+    body: NicknameUpdate,
+    settings: Annotated[Settings, Depends(get_settings)],
+    user: Annotated[UserRecord, Depends(get_current_user)],
+) -> NicknameResult:
+    """로그인한 본인의 닉네임을 갱신한다."""
+    return account_service.change_nickname(settings, user, body.nickname)
 
 
 @router.delete("", response_model=ResultResponse)

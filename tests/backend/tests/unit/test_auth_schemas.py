@@ -39,10 +39,9 @@ def test_password_confirm_mismatch_is_rejected() -> None:
         SignupRequest.model_validate(signup_data(password_confirm=OTHER))
 
 
-def test_terms_not_accepted_is_rejected() -> None:
-    """UT-AUTH-004: 약관에 동의하지 않으면 거부한다."""
-    with pytest.raises(ValidationError):
-        SignupRequest.model_validate(signup_data(terms_accepted=False))
+def test_legacy_terms_field_does_not_gate_signup() -> None:
+    """기존 요청에 약관 필드가 있어도 가입 조건으로 사용하지 않는다."""
+    assert SignupRequest.model_validate(signup_data(terms_accepted=False)).terms_accepted is False
 
 
 @pytest.mark.parametrize("length", [7, 129])

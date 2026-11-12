@@ -227,3 +227,43 @@ __marimo__/
 
 # local runtime databases
 *.db
+
+# DAIT environment secrets (keep shareable templates)
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Additional local Python environments and temporary output
+.venv-*/
+.venv_*/
+.tmp/
+.tmp-*/
+*.tmp
+
+# SQLite databases and transaction sidecars
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+
+# Frontend dependencies and browser test output
+node_modules/
+playwright-report/
+test-results/
+
+# Local model caches
+.huggingface/
+.hf_cache/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
