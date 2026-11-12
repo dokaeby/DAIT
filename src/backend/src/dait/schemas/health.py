@@ -11,3 +11,13 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     status: Literal["ok", "ready"]
+
+
+class KeepAliveResponse(BaseModel):
+    """keep-alive 응답. 외부 cron이 서버를 깨워 두는 용도라 의존성 없이 즉시 반환한다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["ok"] = "ok"
+    service: str = "dait"
+    time: str

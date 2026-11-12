@@ -8,7 +8,7 @@ import pytest
 from dait.core.config import AppEnv, Settings
 from dait.core.errors import ErrorResponse
 from dait.main import create_app
-from dait.schemas.health import HealthResponse
+from dait.schemas.health import HealthResponse, KeepAliveResponse
 from support import HttpClient, as_client
 
 _SECRET_TEXT = "password=hunter2 C:/내부경로"  # noqa: S105 - 노출 여부 확인용 가짜 값
@@ -50,6 +50,16 @@ def test_readyz_db_down_returns_503_without_path(tmp_path: Path) -> None:
     assert error.code == "NOT_READY"
     assert "no_dir" not in response.text
     assert "sqlite" not in response.text.lower()
+
+
+def test_keepalive_ok_even_when_db_down(tmp_path: Path) -> None:
+    """/v1/internal/keepalive는 DB가 죽어 있어도 200을 돌려준다(스핀다운 방지용)."""
+    response = make_client(tmp_path, db="no_dir/x.db").request("GET", "/v1/internal/keepalive")
+    assert response.status_code == 200
+    body = KeepAliveResponse.model_validate_json(response.text)
+    assert body.status == "ok"
+    assert body.service == "dait"
+    assert body.time
 
 
 def test_request_id_in_header_and_body(tmp_path: Path) -> None:
