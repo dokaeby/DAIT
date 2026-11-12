@@ -58,17 +58,17 @@
           </ul>
         </li>
 
-        <li class="tree-group" data-category="POLITICS">
-          <button type="button" class="tree-category-btn" data-category="POLITICS" aria-expanded="false">
+        <li class="tree-group" data-category="SOCIETY">
+          <button type="button" class="tree-category-btn" data-category="SOCIETY" aria-expanded="false">
             <span class="tree-category-label">사회·문화</span>
             <span class="tree-chevron" aria-hidden="true">▾</span>
           </button>
           <ul class="tree-keywords">
-            <li><button type="button" class="tree-keyword-btn" data-category="POLITICS" data-keyword="정책·제도">정책·제도</button></li>
-            <li><button type="button" class="tree-keyword-btn" data-category="POLITICS" data-keyword="교육">교육</button></li>
-            <li><button type="button" class="tree-keyword-btn" data-category="POLITICS" data-keyword="건강·의료">건강·의료</button></li>
-            <li><button type="button" class="tree-keyword-btn" data-category="POLITICS" data-keyword="환경·기후">환경·기후</button></li>
-            <li><button type="button" class="tree-keyword-btn" data-category="POLITICS" data-keyword="문화·콘텐츠">문화·콘텐츠</button></li>
+            <li><button type="button" class="tree-keyword-btn" data-category="SOCIETY" data-keyword="정책·제도">정책·제도</button></li>
+            <li><button type="button" class="tree-keyword-btn" data-category="SOCIETY" data-keyword="교육">교육</button></li>
+            <li><button type="button" class="tree-keyword-btn" data-category="SOCIETY" data-keyword="건강·의료">건강·의료</button></li>
+            <li><button type="button" class="tree-keyword-btn" data-category="SOCIETY" data-keyword="환경·기후">환경·기후</button></li>
+            <li><button type="button" class="tree-keyword-btn" data-category="SOCIETY" data-keyword="문화·콘텐츠">문화·콘텐츠</button></li>
           </ul>
         </li>
       </ul>
@@ -203,6 +203,35 @@
           card.appendChild(translatedSubtitle);
         }
         card.appendChild(summaryList);
+
+        // 해외 기사: 저장된 본문 번역(translated_body)을 접이식 섹션으로 표시한다.
+        const translatedBody = String(data.content.translated_text || "").trim();
+        if (globalArticle && translatedBody.length > 200) {
+          const bodySection = document.createElement("div");
+          bodySection.className = "translated-body";
+
+          const bodyToggle = document.createElement("button");
+          bodyToggle.type = "button";
+          bodyToggle.className = "summary-toggle-btn";
+          bodyToggle.textContent = "[본문 번역 보기]";
+          bodyToggle.setAttribute("aria-expanded", "false");
+
+          const bodyText = document.createElement("p");
+          bodyText.className = "translated-body-text";
+          bodyText.textContent = translatedBody;
+          bodyText.style.display = "none";
+
+          bodyToggle.addEventListener("click", () => {
+            const isOpen = bodyText.style.display !== "none";
+            bodyText.style.display = isOpen ? "none" : "block";
+            bodyToggle.textContent = isOpen ? "[본문 번역 보기]" : "[본문 번역 닫기]";
+            bodyToggle.setAttribute("aria-expanded", isOpen ? "false" : "true");
+          });
+
+          bodySection.appendChild(bodyToggle);
+          bodySection.appendChild(bodyText);
+          card.appendChild(bodySection);
+        }
 
         const footer = document.createElement("div");
         footer.className = "card-footer";

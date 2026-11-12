@@ -296,6 +296,9 @@ class AIProcessor:
                 content_hash=content_hash,
                 summary_lines=generated.summary_lines,
                 translated_text=generated.translated_text,
+                engine="llm",
+                model_id=self.policy.model_version,
+                prompt_version=self.policy.prompt_version,
             )
             await self.cache.put(key, result.model_dump_json(), self.policy.cache_ttl_seconds)
             logger.info("AI content processing completed")
@@ -643,7 +646,8 @@ class TranslatingNewsCollector:
         for item in collected.articles:
             orig_title = item.title.split(" ||| ", 1)[0].strip()
             combined_title = orig_title
-            if is_global_source or not _contains_hangul(orig_title):
+            needs_translation = is_global_source or not _contains_hangul(orig_title)
+            if needs_translation:
                 title_ko = await translate_title_to_korean(
                     orig_title,
                     item.raw_text,
@@ -651,6 +655,11 @@ class TranslatingNewsCollector:
                 )
                 if title_ko and title_ko != orig_title:
                     combined_title = f"{orig_title} ||| {title_ko}"
+                elif self._enable_network:
+                    # 번역 실패 기사를 그대로 저장하면 영구 미번역 상태가 된다.
+                    # 저장하지 않으면 다음 수집 주기에 재시도된다.
+                    logger.warning("Skipping article: title translation unavailable")
+                    continue
             translated_articles.append(
                 CollectedArticle(
                     source_name=item.source_name,
@@ -745,4 +754,7 @@ class GoogleTranslateContentProcessor:
             content_hash=digest,
             summary_lines=(line_1, line_2, line_3),
             translated_text=translated_text,
+            engine="google-translate",
+            model_id="gtx",
+            prompt_version="google-translate-v1",
         )

@@ -40,7 +40,10 @@ from typing import Literal, NamedTuple, Protocol, Self
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
-from src.backend.app.collectors.content_extractor import extract_clean_body_with_trafilatura
+from src.backend.app.collectors.content_extractor import (
+    extract_clean_body_with_trafilatura,
+    fetch_article_body_with_trafilatura,
+)
 from src.backend.app.core.taxonomy import GLOBAL_SOURCE_NAMES, match_category
 from src.backend.app.schemas.collector import CollectedArticle
 from src.backend.app.schemas.content import (
@@ -51,11 +54,12 @@ from src.backend.app.schemas.content import (
 from src.backend.app.workers.ai_processor import (
     ProcessingError,
     ensure_terminal_punctuation,
+    translate_to_korean,
 )
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "grok-summary-v2"
+PROMPT_VERSION = "grok-summary-v3"
 _GROK_MAX_ATTEMPTS = 3
 GROK_RETRY_BACKOFF_SECONDS = 1.0
 _GROK_BATCH_WINDOW_SECONDS = 0.25
@@ -70,6 +74,7 @@ SYSTEM_INSTRUCTION = (
 _MAX_LINE_LENGTH = 400
 _MAX_SUMMARY_LINE_PARTS = 3
 _ERR_EMPTY_SUMMARY = "summary_lines must contain three non-empty bounded strings"
+_ERR_TRANSLATED_TOO_LONG = "translated text exceeds the safe output bound"
 _ERR_MALFORMED_PAYLOAD = "Malformed Grok chat completion payload"
 _ERR_EMPTY_COMPLETION = "Empty Grok completion content"
 _ERR_NO_JSON = "No JSON object found in Grok response"
@@ -158,6 +163,7 @@ class GrokSummaryCompletion(BaseModel):
         min_length=_MAX_SUMMARY_LINE_PARTS, max_length=_MAX_SUMMARY_LINE_PARTS
     )
     translated_title: str | None = None
+    translated_body: str | None = None
 
     @field_validator("summary_lines")
     @classmethod
@@ -167,13 +173,17 @@ class GrokSummaryCompletion(BaseModel):
             raise ValueError(_ERR_EMPTY_SUMMARY)
         return cleaned
 
-    @field_validator("translated_title")
+    @field_validator("translated_title", "translated_body")
     @classmethod
     def _title_must_be_non_empty(cls, value: str | None) -> str | None:
         if value is None:
             return None
         cleaned = value.strip()
-        return cleaned or None
+        if not cleaned:
+            return None
+        if len(cleaned) > 50000:
+            raise ValueError(_ERR_TRANSLATED_TOO_LONG)
+        return cleaned
 
 
 class ProcessedContent(BaseModel):
@@ -184,6 +194,7 @@ class ProcessedContent(BaseModel):
     status: ContentStatus
     summary_lines: tuple[str, ...] = ()
     translated_title: str | None = None
+    translated_body: str | None = None
     engine: Literal["grok", "regex-fallback", "none"] = "none"
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     model_id: str = ""
@@ -634,12 +645,13 @@ def _build_user_prompt(article: ArticleContent, body: str, max_chars: int) -> st
     clipped = _clip_body(body, max_chars)
     if article.is_foreign:
         return (
-            "다음은 외국어 뉴스 기사 데이터입니다. 제목을 자연스러운 한국어로 "
-            "번역하고, 본문의 시사 문맥을 반영해 정확히 3문장의 한국어 요약을 "
-            "작성하세요.\n"
+            "다음은 외국어 뉴스 기사 데이터입니다. 제목을 본문 번역의 맥락에 맞게 "
+            "자연스러운 한국어로 번역하고, 본문 전체를 한국어로 번역하며, 본문의 "
+            "시사 문맥을 반영해 정확히 3문장의 한국어 요약을 작성하세요.\n"
             "요약 규칙: 1문장은 핵심 결론 또는 주요 수치, 2문장은 배경·원인, "
             "3문장은 전망·영향입니다. 본문에 없는 수치·사실을 지어내지 마세요.\n"
             'JSON만 출력하세요: {"translated_title": "한국어 제목", '
+            '"translated_body": "본문 전체의 한국어 번역", '
             '"summary_lines": ["문장1", "문장2", "문장3"]}\n\n'
             f"원문 제목: {article.title}\n본문:\n{clipped}"
         )
@@ -697,6 +709,7 @@ class _BatchItem(BaseModel):
 
     summary_lines: list[str]
     translated_title: str | None = None
+    translated_body: str | None = None
 
 
 class _BatchEnvelope(BaseModel):
@@ -881,10 +894,13 @@ class CloudSummaryProcessor:
             "the core conclusion or key figures, line 2 the background or cause, "
             "line 3 the outlook or impact.\n"
             "- foreign=true articles: also translate the title into natural Korean "
-            "(translated_title). foreign=false articles: translated_title must be null.\n"
+            "(translated_title) and the body into Korean (translated_body). The title "
+            "translation must fit the context of the body translation. "
+            "foreign=false articles: translated_title and translated_body must be null.\n"
             "- Do not invent numbers or facts missing from each article.\n"
             'Respond as JSON: {"results": [{"summary_lines": ["...", "...", "..."], '
-            '"translated_title": "..."}, ...]} with exactly one element per input article.'
+            '"translated_title": "...", "translated_body": "..."}, ...]} with exactly '
+            "one element per input article."
         )
 
     async def _request_batch(self, batch: list[_PendingBatch]) -> list[ProcessedContent]:
@@ -955,6 +971,9 @@ class CloudSummaryProcessor:
                     translated_title=(
                         guarded.translated_title if item.article.is_foreign else None
                     ),
+                    translated_body=(
+                        guarded.translated_body if item.article.is_foreign else None
+                    ),
                     engine="grok",
                     content_hash=item.digest,
                     model_id=item.model_id,
@@ -1011,6 +1030,7 @@ class CloudSummaryProcessor:
             status=ContentStatus.READY,
             summary_lines=tuple(guarded.summary_lines),
             translated_title=(guarded.translated_title if article.is_foreign else None),
+            translated_body=(guarded.translated_body if article.is_foreign else None),
             engine="grok",
             content_hash=digest,
             model_id=model_id,
@@ -1064,6 +1084,11 @@ class CloudLLMContentProcessor:
             if "<" in raw_input and len(raw_input) >= 120
             else raw_input
         )
+        # RSS 본문이 짧으면 원문 기사 페이지에서 전체 본문을 가져와 요약 품질을 확보한다.
+        if len(body) < 600:
+            remote_body = await fetch_article_body_with_trafilatura(article.canonical_url)
+            if len(remote_body) > len(body):
+                body = remote_body
         title = article.title.split(" ||| ", 1)[0].strip()
         is_foreign = article.source_name in GLOBAL_SOURCE_NAMES or not _HANGUL.search(
             f"{title} {body}"
@@ -1079,17 +1104,34 @@ class CloudLLMContentProcessor:
             return InsufficientContent(
                 category=inferred_category,
                 content_hash=result.content_hash,
+                engine=result.engine,
+                model_id=result.model_id,
+                prompt_version=result.prompt_version,
             )
         lines = tuple(ensure_terminal_punctuation(line) for line in result.summary_lines[:3])
         while len(lines) < 3:
             lines += ("자세한 내용은 원문 기사에서 확인할 수 있습니다.",)
-        translated_text = result.translated_title if result.translated_title else " ".join(lines)
+        if is_foreign and result.engine != "grok":
+            # LLM 실패 폴백의 외국어 기사: 요약 문장도 한국어로 번역해 저장한다.
+            translated_lines: list[str] = []
+            for line in lines:
+                ko_line = await translate_to_korean(line)
+                translated_lines.append(ensure_terminal_punctuation(ko_line))
+            lines = tuple(translated_lines)
+        translated_text = (
+            result.translated_body
+            or result.translated_title
+            or " ".join(lines)
+        )
         try:
             return SuccessContent(
                 category=inferred_category,
                 content_hash=result.content_hash,
                 summary_lines=(lines[0], lines[1], lines[2]),
                 translated_text=translated_text,
+                engine=result.engine,
+                model_id=result.model_id,
+                prompt_version=result.prompt_version,
             )
         except ValidationError as exc:
             raise ProcessingError(_ERR_INVALID_OUTPUT) from exc

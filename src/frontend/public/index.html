@@ -162,20 +162,25 @@
             </ul>
           </div>
           <div class="cat-item">
-            <button class="cat-btn" data-cat="POLITICS">✦ 사회·문화</button>
+            <button class="cat-btn" data-cat="SOCIETY">✦ 사회·문화</button>
             <ul class="kw-list">
-              <li><button class="kw-btn" data-cat="POLITICS" data-kw="정책·제도">정책·제도</button></li>
-              <li><button class="kw-btn" data-cat="POLITICS" data-kw="교육">교육</button></li>
-              <li><button class="kw-btn" data-cat="POLITICS" data-kw="건강·의료">건강·의료</button></li>
-              <li><button class="kw-btn" data-cat="POLITICS" data-kw="환경·기후">환경·기후</button></li>
-              <li><button class="kw-btn" data-cat="POLITICS" data-kw="문화·콘텐츠">문화·콘텐츠</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="정책·제도">정책·제도</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="교육">교육</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="건강·의료">건강·의료</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="환경·기후">환경·기후</button></li>
+              <li><button class="kw-btn" data-cat="SOCIETY" data-kw="문화·콘텐츠">문화·콘텐츠</button></li>
             </ul>
           </div>
         </aside>
 
         <main class="main">
           <form class="search-bar" id="search-form" role="search">
-            <input class="search-input" id="search-input" type="search" maxlength="100" placeholder="뉴스 검색 (제목·요약)" aria-label="뉴스 검색">
+            <select id="search-scope" aria-label="검색 범위" style="padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; background:#fff;">
+              <option value="all">전체</option>
+              <option value="title">제목</option>
+              <option value="content">내용</option>
+            </select>
+            <input class="search-input" id="search-input" type="search" maxlength="100" placeholder="뉴스 검색 (제목·요약·본문)" aria-label="뉴스 검색">
             <button class="primary-button" type="submit">검색</button>
           </form>
           <div class="origin-tabs">
@@ -200,6 +205,7 @@
       let currentCategory = "AI";
       let currentKeyword = "";
       let currentQuery = "";
+      let currentSearchScope = "all";
       let currentOrigin = "ALL";
       let currentSort = "rank";
       let nextCursor = null;
@@ -248,6 +254,7 @@
         searchForm.addEventListener("submit", (e) => {
           e.preventDefault();
           currentQuery = (document.getElementById("search-input").value || "").trim();
+          currentSearchScope = document.getElementById("search-scope").value || "all";
           currentKeyword = "";
           document.querySelectorAll(".kw-btn").forEach((b) => b.classList.remove("active"));
           fetchNews();
@@ -274,6 +281,20 @@
         });
       });
 
+      let collectPollTimer = null;
+      function showCollecting() {
+        document.getElementById("news-container").innerHTML =
+          `<div style="text-align:center; padding: 60px; color: #94a3b8;">
+             <div style="font-size:15px; font-weight:600; margin-bottom:8px; color:#475569;">뉴스를 수집·요약하고 있습니다</div>
+             <div style="font-size:13px;">최초 수집은 기사 번역·요약에 몇 분 정도 걸릴 수 있습니다. 잠시만 기다려 주세요.</div>
+           </div>`;
+      }
+      async function waitForCollection() {
+        showCollecting();
+        if (collectPollTimer) clearTimeout(collectPollTimer);
+        collectPollTimer = setTimeout(fetchNews, 15000);
+      }
+
       async function fetchNews(append = false) {
         const container = document.getElementById("news-container");
         const moreBox = document.getElementById("more-container");
@@ -290,19 +311,54 @@
         const params = new URLSearchParams({
           category: currentCategory,
           sort: currentSort,
-          page_size: "30"
+          page_size: "30",
+          fresh_hours: "24"
         });
-        if (currentQuery) params.set("q", currentQuery);
+        if (currentQuery) {
+          params.set("q", currentQuery);
+          params.set("search_scope", currentSearchScope);
+        }
         if (append && nextCursor) params.set("cursor", nextCursor);
 
+        const originMatch = a => currentOrigin === "GLOBAL"
+          ? globalSources.includes(a.source_name)
+          : currentOrigin === "DOMESTIC"
+            ? !globalSources.includes(a.source_name)
+            : true;
+        const MIN_MATCHED = 10;
+        const MAX_PAGES = 10;
+
         try {
-          const res = await fetch(`/v1/news?${params.toString()}`);
-          if (!res.ok) throw new Error("API 요청 실패");
-          const data = await res.json();
-          const items = data.items || [];
-          articles = append ? articles.concat(items) : items;
-          nextCursor = data.page && data.page.next_cursor ? data.page.next_cursor : null;
-          hasMore = !!(data.page && data.page.has_more);
+          let pages = 0;
+          let firstPage = !append;
+          // 국내/해외 탭은 해당 권역 기사가 충분히 모일 때까지 다음 페이지를 이어서 가져온다.
+          while (true) {
+            const res = await fetch(`/v1/news?${params.toString()}`);
+            if (!res.ok) throw new Error("API 요청 실패");
+            const data = await res.json();
+            const items = data.items || [];
+            articles = firstPage ? items : articles.concat(items);
+            firstPage = false;
+            nextCursor = data.page && data.page.next_cursor ? data.page.next_cursor : null;
+            hasMore = !!(data.page && data.page.has_more);
+            pages += 1;
+            const needMore = (currentOrigin === "GLOBAL" || currentOrigin === "DOMESTIC")
+              && articles.filter(originMatch).length < MIN_MATCHED
+              && hasMore && nextCursor && pages < MAX_PAGES;
+            if (!needMore) break;
+            params.set("cursor", nextCursor);
+          }
+          if (articles.length === 0) {
+            // 저장 기사도 없고 수집이 진행 중이면 완료될 때까지 폴링한다.
+            try {
+              const sr = await fetch("/v1/collection/status");
+              const st = sr.ok ? await sr.json() : {};
+              if (st.collecting || (st.stored || 0) === 0) {
+                await waitForCollection();
+                return;
+              }
+            } catch (e) { /* 상태 확인 실패 시 빈 목록만 표시 */ }
+          }
           render();
           renderMore();
         } catch (err) {
