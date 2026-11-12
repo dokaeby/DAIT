@@ -24,6 +24,8 @@ class NewsQuery(ApiModel):
     sort: Literal["rank", "latest"] = "rank"
     page_size: int = Field(default=10, ge=1, le=50)
     cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+    fresh_hours: int = Field(default=24, ge=0, le=24 * 30)
+    search_scope: Literal["title", "content", "all"] = "all"
 
     @field_validator("page_size", mode="before")
     @classmethod

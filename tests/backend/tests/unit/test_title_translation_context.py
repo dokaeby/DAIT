@@ -137,12 +137,16 @@ async def test_offline_or_failed_translation_does_not_append_english_hint(
         unchanged,
     )
     result = await TranslatingNewsCollector(FakeCollector(), enable_network=enabled).collect(source)
-    assert result.articles[0].title == title
     if enabled:
+        # 네트워크 활성 상태에서 번역 실패 시 미번역 기사는 저장하지 않고
+        # 다음 수집 주기에 재시도하도록 제외한다.
+        assert result.articles == ()
         assert len(received) == 2
         assert "Congress prepares for elections." in received[0][0]
         assert received[1] == ("After the midterm elections", True)
     else:
+        # 오프라인 모드에서는 기존처럼 원문 제목 그대로 유지한다.
+        assert result.articles[0].title == title
         assert received == [(title, False)]
 
 

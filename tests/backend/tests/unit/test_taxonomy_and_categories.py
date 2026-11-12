@@ -283,8 +283,18 @@ async def test_application_crawls_rss_serves_categories_and_toggle_ui() -> None:
             assert "display: none;" in css_res.text
             assert "calc(1.3rem * 0.7)" in css_res.text
 
+            # 백그라운드 크롤링이 끝날 때까지 수집 상태를 폴링한다.
+            for _ in range(100):
+                status_res = await client.get("/v1/collection/status")
+                assert status_res.status_code == 200
+                if not status_res.json().get("collecting"):
+                    break
+                await asyncio.sleep(0.05)
+
             for category in ("AI", "ECONOMY", "SOCIETY"):
-                response = await client.get(f"/v1/news?category={category}&sort=rank&page_size=20")
+                response = await client.get(
+                    f"/v1/news?category={category}&sort=rank&page_size=20&fresh_hours=0"
+                )
                 assert response.status_code == 200
                 parsed = NewsListResponse.model_validate_json(response.text)
                 assert len(parsed.items) >= 1
@@ -295,7 +305,7 @@ async def test_application_crawls_rss_serves_categories_and_toggle_ui() -> None:
                     )
 
             hk_res = await client.get(
-                "/v1/news?category=ECONOMY&q=산업 동향&sort=rank&page_size=10"
+                "/v1/news?category=ECONOMY&q=산업 동향&sort=rank&page_size=10&fresh_hours=0"
             )
             assert hk_res.status_code == 200
             hk_parsed = NewsListResponse.model_validate_json(hk_res.text)
