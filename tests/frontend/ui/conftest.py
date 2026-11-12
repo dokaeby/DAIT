@@ -1,7 +1,8 @@
 """예약 검색 화면 브라우저 자동화 공통 준비 (Chromium·WebKit=Safari 엔진).
 
 임시 sqlite DB에 마이그레이션을 적용하고 기사 3건을 넣은 뒤 실제 서버(uvicorn)를 띄운다.
-실행: .venv/bin/python -m pytest tests/frontend/ui -q   (최초 1회: python -m playwright install chromium webkit)
+실행: .venv/bin/python -m pytest tests/frontend/ui -q
+(최초 1회: python -m playwright install chromium webkit)
 """
 
 import json
