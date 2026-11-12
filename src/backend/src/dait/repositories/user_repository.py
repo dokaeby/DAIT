@@ -24,6 +24,19 @@ def nickname_exists(conn: DbConnection, nickname: str) -> bool:
     )
 
 
+def update_nickname(conn: DbConnection, user_id: str, nickname: str | None) -> None:
+    """닉네임과 비교 키를 함께 갱신하고 유니크 제약으로 중복을 차단한다."""
+    try:
+        conn.execute(
+            "UPDATE users SET nickname = ?, nickname_key = ? WHERE id = ?",
+            (nickname, nickname.casefold() if nickname else None, user_id),
+        )
+    except DB_INTEGRITY_ERRORS as exc:
+        if "nickname_key" in str(exc):
+            raise DuplicateNicknameError from exc
+        raise
+
+
 def insert_user(conn: DbConnection, user: UserRecord) -> None:
     """사용자 한 명을 저장한다.
 
@@ -109,4 +122,9 @@ def delete_user(conn: DbConnection, user_id: str) -> bool:
     출력: bool (지웠으면 True)
     기능: 외래키 CASCADE로 refresh 토큰도 함께 지워진다. 비식별화가 아니라 행 삭제다.
     """
+    # 예약 작업의 외래키는 RESTRICT이므로 해당 사용자의 작업을 먼저 정리한다.
+    conn.execute(
+        "DELETE FROM jobs WHERE schedule_id IN (SELECT id FROM schedules WHERE user_id = ?)",
+        (user_id,),
+    )
     return conn.execute("DELETE FROM users WHERE id = ?", (user_id,)).rowcount == 1

@@ -89,7 +89,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ):
 
             def _serve(f: Path = frontend_dir / filename) -> FileResponse:
-                return FileResponse(path=str(f), media_type=_media_type(f))
+                return FileResponse(
+                    path=str(f), media_type=_media_type(f), headers={"Cache-Control": "no-cache"}
+                )
 
             app.add_api_route(
                 route_path,

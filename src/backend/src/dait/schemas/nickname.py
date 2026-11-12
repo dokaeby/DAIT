@@ -3,7 +3,7 @@
 import unicodedata
 from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 
 _CONTROL_CHARACTERS = "nickname contains control characters"
 
@@ -27,3 +27,23 @@ class NicknameAvailability(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     nickname: Nickname
     available: bool
+
+
+class NicknameUpdate(BaseModel):
+    """빈 입력은 닉네임 제거로 처리한다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    nickname: Nickname | None
+
+    @field_validator("nickname", mode="before")
+    @classmethod
+    def empty_to_none(cls, value: object) -> object:
+        """빈 문자열만 None으로 정규화한다."""
+        return None if isinstance(value, str) and not value.strip() else value
+
+
+class NicknameResult(BaseModel):
+    """저장된 닉네임."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    nickname: Nickname | None

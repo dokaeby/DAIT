@@ -35,3 +35,7 @@
 #auth-dialog .nickname-row input { min-width: 0; flex: 1; }
 .nickname-row button { flex: 0 0 auto; }
 #auth-dialog #nickname-feedback:empty { display: none; }
+
+/* 포인터 조작의 기본 포커스 표시는 숨기되 키보드 포커스는 유지한다. */
+#auth-close:focus:not(:focus-visible) { outline:none; }
+#auth-close:focus-visible { outline:3px solid #135fdb99; outline-offset:3px; }

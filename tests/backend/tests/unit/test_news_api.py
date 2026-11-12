@@ -170,7 +170,7 @@ class TestNewsList:
         guest = client.request(
             "GET",
             "/v1/news",
-            params={"category": "AI", "q": "no-match", "page_size": "50", "sort": "rank"},
+            params={"category": "AI", "page_size": "50", "sort": "rank"},
         )
         assert guest.status_code == 200
         body = guest.json()

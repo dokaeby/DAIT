@@ -10,7 +10,7 @@
 
   const authStyles = document.createElement("link");
   authStyles.rel = "stylesheet";
-  authStyles.href = "/mockup/auth.css";
+  authStyles.href = "/mockup/auth.css?v=safari-auth-1";
   document.head.appendChild(authStyles);
 
   function rememberEmail(email) {
@@ -94,7 +94,7 @@
       const res = await api("/v1/me/session");
       if (!res.ok) return null;
       const data = await res.json();
-      return data.authenticated && data.user ? data.user : null;
+      return data.authenticated && data.user ? { ...data.user, interests: data.interests || [] } : null;
     } catch (_e) {
       return null;
     }
@@ -148,13 +148,33 @@
       dialog = document.createElement("dialog");
       dialog.id = "auth-dialog";
       dialog.className = "settings-dialog";
+      // 모달의 바깥 영역을 누르거나 드래그해도 닫히지 않도록 명시한다.
+      dialog.setAttribute("closedby", "closerequest");
       dialog.innerHTML =
         '<div class="login-card"><div class="login-top"><h2 id="auth-title">로그인</h2>' +
         '<button class="card-close" type="button" id="auth-close" aria-label="닫기">×</button></div>' +
         '<form id="auth-form" class="login-form"></form>' +
         '<p id="auth-feedback" class="settings-feedback" role="status" aria-live="polite"></p></div>';
       document.body.appendChild(dialog);
-      dialog.querySelector("#auth-close").addEventListener("click", () => dialog.close());
+      const closeButton = dialog.querySelector("#auth-close");
+      let closePointerStarted = false;
+      let escapeRequested = false;
+      const trackStart = (event) => {
+        closePointerStarted = closeButton.contains(event.target);
+        escapeRequested = false;
+      };
+      dialog.addEventListener(window.PointerEvent ? "pointerdown" : "mousedown", trackStart, true);
+      dialog.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") escapeRequested = true;
+      }, true);
+      dialog.addEventListener("cancel", (event) => {
+        if (!escapeRequested) event.preventDefault();
+        escapeRequested = false;
+      });
+      closeButton.addEventListener("click", (event) => {
+        if (event.detail === 0 || closePointerStarted) dialog.close();
+        closePointerStarted = false;
+      });
       dialog.addEventListener("change", (e) => {
         if (e.target.id === "auth-remember" && !e.target.checked) rememberEmail("");
       });
@@ -181,6 +201,7 @@
     dialog.querySelector("#auth-feedback").textContent = "";
     if (!dialog.open) dialog.showModal();
     dialog._signup = signup;
+    form.querySelector("#auth-email").focus({ preventScroll: true });
   }
 
   function nicknameValue() {
@@ -232,7 +253,6 @@
       '<label for="auth-nickname">닉네임 (선택)</label><div class="nickname-row"><input id="auth-nickname" name="nickname" type="text" autocomplete="nickname" maxlength="30" aria-describedby="nickname-feedback nickname-help"><button class="secondary-button" type="button" id="nickname-check">중복 확인</button></div><p id="nickname-help" class="field-help">2~30자 · 비워두면 이메일로 표시됩니다.</p><p id="nickname-feedback" class="settings-feedback" role="status" aria-live="polite"></p>' +
       '<label for="auth-password">비밀번호 (8자 이상)</label><input id="auth-password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
       '<label for="auth-password-confirm">비밀번호 확인</label><input id="auth-password-confirm" name="password_confirm" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
-      '<label class="auth-check" for="auth-terms"><input id="auth-terms" name="terms_accepted" type="checkbox" required><span>이용약관 및 개인정보 처리에 동의합니다</span></label>' +
       '<button class="login-submit primary-button" type="submit">가입하기</button>' +
       '<p class="auth-navigation">이미 계정이 있으신가요? <button class="auth-link" type="button" id="auth-switch">로그인</button></p>'
     );
@@ -260,7 +280,6 @@
     if (signup) {
       payload.nickname = nicknameValue() || null;
       payload.password_confirm = data.get("password_confirm");
-      payload.terms_accepted = data.get("terms_accepted") === "on";
     }
     const controls = form.querySelectorAll("input, button");
     controls.forEach((c) => (c.disabled = true));
@@ -292,6 +311,10 @@
       setTokens(body.tokens);
       if (!signup) rememberEmail(data.get("remember_email") === "on" ? payload.email : "");
       dialog.close();
+      if (body.onboarding_required) {
+        location.assign('/settings.html?welcome=1#interests');
+        return;
+      }
       location.reload();
     } catch (_e) {
       feedback.textContent = "서버에 연결하지 못했습니다.";

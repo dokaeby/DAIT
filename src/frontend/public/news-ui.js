@@ -16,6 +16,38 @@
   let pageCursor = null, pageStack = [], busy = false;
   let shownCategory = '', shownQuery = '', shownHasResults = false;
   const readIds = new Set();
+  const defaultCategoryMarkup = $('categories').innerHTML;
+  let personalizedChips = false;
+  let interestSelection = false;
+  function configureInterestChips(user) {
+    const host = $('categories');
+    host.innerHTML = defaultCategoryMarkup;
+    personalizedChips = false;
+    interestSelection = false;
+    const groups = { ai: 'AI', economy: 'ECONOMY', society: 'POLITICS' };
+    const interests = (user?.interests || []).filter(item => groups[item.group] && item.code && item.name);
+    if (!interests.length) return;
+    personalizedChips = true;
+    const all = host.querySelector('[data-category=""]');
+    host.replaceChildren(all);
+    interests.forEach((item, index) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'chip';
+      button.dataset.interestChip = item.code;
+      button.dataset.interestCategory = groups[item.group];
+      button.dataset.interestQuery = item.name;
+      button.textContent = item.name;
+      button.hidden = index >= 5;
+      host.append(button);
+    });
+    if (interests.length > 5) {
+      const toggle = document.createElement('button');
+      toggle.type = 'button'; toggle.className = 'chip interest-expand';
+      toggle.dataset.interestExpand = 'true'; toggle.setAttribute('aria-expanded', 'false');
+      toggle.textContent = `더 보기 (${interests.length - 5})`;
+      host.append(toggle);
+    }
+  }
   function refreshReads() {
     document.querySelectorAll('[data-article-id]').forEach(el => {
       const read = readIds.has(el.dataset.articleId);
@@ -132,7 +164,7 @@
   async function load(direction = '', retainSearch = false) {
     if (direction && (guest || busy)) return;
     if (direction) { category = shownCategory; $('query').value = shownQuery; }
-    if (guest) { category = ''; $('query').value = ''; }
+    if (guest) category = '';
     syncSidebar();
     listRequest?.abort();
     const request = listRequest = new AbortController();
@@ -143,13 +175,30 @@
     $('search-results').setAttribute('aria-busy', 'true');
     $('load-more').disabled = true; $('load-previous').disabled = true;
     $('search-status').textContent = '뉴스를 불러오고 있습니다…';
-    const query = new URLSearchParams({ sort: 'latest', page_size: '10' });
+    const query = new URLSearchParams({ ui: '20261112-search', sort: 'latest', page_size: '10' });
     if (category) query.set('category', category);
     const keyword = retainSearch && shownHasResults && !$('query').value.trim() ? shownQuery : $('query').value.trim();
     if (keyword) query.set('q', keyword);
     if (target) query.set('cursor', target);
+    const initial = !direction && !$('news-list').querySelector('.news-card');
+    let complete = false;
+    if (initial) {
+      const placeholders = count => Array.from({ length: count }, () => '<li class="news-skeleton" aria-hidden="true"><span></span><span></span><span></span></li>').join('');
+      $('news-list').innerHTML = placeholders(4);
+      const previewQuery = new URLSearchParams(query);
+      previewQuery.set('page_size', '4');
+      json('/v1/news?' + previewQuery, request.signal).then(preview => {
+        if (request !== listRequest || complete || !preview.items.length) return;
+        const first = preview.items.slice(0, 4);
+        $('news-list').innerHTML = first.map(card).join('') + placeholders(6);
+        shownHasResults = true; shownQuery = query.get('q') || ''; shownCategory = query.get('category') || '';
+        refreshReads();
+        updateScrollControls();
+      }).catch(() => {});
+    }
     try {
       const data = await json('/v1/news?' + query, request.signal);
+      complete = true;
       const items = guest ? data.items.slice(0, 10) : data.items;
       let activity;
       if (!guest) {
@@ -172,6 +221,10 @@
         el.setAttribute('aria-pressed', String(code === category));
         if (activity) el.textContent = (names[code] || '전체') + '(' + (code ? activity.counts[code] || 0 : activity.total) + ')';
       });
+      document.querySelectorAll('[data-interest-chip]').forEach(el => {
+        const active = el.dataset.interestCategory === shownCategory && el.dataset.interestQuery === shownQuery;
+        el.classList.toggle('active', active); el.setAttribute('aria-pressed', String(active));
+      });
       if (activity) { readIds.clear(); activity.read_ids.forEach(id => readIds.add(id)); }
       refreshReads();
       $('search-status').textContent = data.meta.message || '';
@@ -183,7 +236,9 @@
       updateScrollControls();
       if (direction) window.scrollTo({ top: 0, behavior: 'instant' });
     } catch (error) {
+      complete = true;
       if (error.name === 'AbortError') return;
+      document.querySelectorAll('#news-list .news-skeleton').forEach(el => el.remove());
       $('search-status').textContent = error.message;
       const retry = document.createElement('button');
       retry.type = 'button'; retry.className = 'secondary-button'; retry.textContent = '다시 시도';
@@ -252,13 +307,44 @@
     if ($('query').value.trim()) return;
     if (shownHasResults) {
       listRequest?.abort(); busy = false;
+      document.querySelectorAll('#news-list .news-skeleton').forEach(el => el.remove());
       $('search-status').textContent = '';
       $('search-results').setAttribute('aria-busy', 'false');
       $('load-more').disabled = !cursor; $('load-previous').disabled = !pageStack.length;
     } else if (shownQuery || busy) { category = ''; $('query').value = ''; load(); }
   });
   $('search-form').addEventListener('submit', event => { event.preventDefault(); load(); });
-  $('categories').addEventListener('click', event => { const el = event.target.closest('[data-category]'); if (el) { category = el.dataset.category; load('', true); } });
+  document.querySelector('.clear-search').addEventListener('click', event => {
+    event.preventDefault();
+    $('query').value = '';
+    category = '';
+    load();
+  });
+  $('categories').addEventListener('click', event => {
+    const toggle = event.target.closest('[data-interest-expand]');
+    if (toggle) {
+      const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+      toggle.setAttribute('aria-expanded', String(expanded));
+      const buttons = [...$('categories').querySelectorAll('[data-interest-chip]')];
+      buttons.forEach((el, index) => { el.hidden = index >= 5 && !expanded; });
+      toggle.textContent = expanded ? '접기' : `더 보기 (${buttons.length - 5})`;
+      return;
+    }
+    const topic = event.target.closest('[data-interest-chip]');
+    if (topic) {
+      category = topic.dataset.interestCategory; $('query').value = topic.dataset.interestQuery;
+      interestSelection = true; load(); return;
+    }
+    const el = event.target.closest('[data-category]');
+    if (el) {
+      category = el.dataset.category;
+      const topicSelected = [...$('categories').querySelectorAll('[data-interest-chip]')].some(
+        chip => chip.dataset.interestQuery === shownQuery && chip.dataset.interestCategory === shownCategory
+      );
+      if (personalizedChips && (interestSelection || topicSelected)) { $('query').value = ''; interestSelection = false; load(); return; }
+      load('', true);
+    }
+  });
   $('load-more').addEventListener('click', () => load('next'));
   $('load-previous').addEventListener('click', () => load('prev'));
   $('news-list').addEventListener('click', event => {
@@ -295,11 +381,23 @@
   window.addEventListener('resize', () => { scrollAnchor = 0; updateScrollControls(); });
   new MutationObserver(updateScrollControls).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
   buildSidebar();
-  DAIT.currentUser().then(user => {
+  function applySession(user) {
     guest = !user;
+    configureInterestChips(user);
     if (guest) { try { const ids = JSON.parse(localStorage.getItem('dait_guest_reads') || '[]'); if (Array.isArray(ids)) ids.filter(id => typeof id === 'string').slice(-2000).forEach(id => readIds.add(id)); } catch {} }
+    $('search-form').removeAttribute('data-member-only');
+    $('search-form').hidden = false;
     document.querySelectorAll('[data-member-only]').forEach(el => { el.hidden = guest; });
     document.querySelector('.page-title').textContent = user?.nickname ? `${user.nickname}님의 AI 뉴스` : '오늘의 AI 뉴스';
     load();
+  }
+  DAIT.currentUser().then(applySession);
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    DAIT.currentUser().then(user => {
+      if (!user) { category = ''; $('query').value = ''; }
+      applySession(user);
+      DAIT.renderAuthArea();
+    });
   });
 })();

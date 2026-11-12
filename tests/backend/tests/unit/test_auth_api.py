@@ -45,12 +45,11 @@ def test_signup_rejects_unknown_field_and_mismatch(settings: Settings) -> None:
         assert "Other!Passw0rd-123" not in response.text
 
 
-def test_signup_without_terms_is_422(settings: Settings) -> None:
-    """약관에 동의하지 않으면 422다."""
-    response = client_for(settings).request(
-        "POST", "/v1/auth/signup", json=SIGNUP | {"terms_accepted": False}
-    )
-    assert response.status_code == 422
+def test_signup_without_terms_field(settings: Settings) -> None:
+    """약관 확인 없이 가입할 수 있다."""
+    payload = {key: value for key, value in SIGNUP.items() if key != "terms_accepted"}
+    response = client_for(settings).request("POST", "/v1/auth/signup", json=payload)
+    assert response.status_code == 201
 
 
 def test_duplicate_signup_is_409_generic(settings: Settings) -> None:

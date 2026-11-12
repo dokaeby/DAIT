@@ -72,6 +72,55 @@ def test_nickname_duplicate_and_session(settings: Settings) -> None:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 3
 
 
+def test_authenticated_nickname_update(settings: Settings) -> None:
+    """본인 변경·중복·초기화와 인증을 검증한다."""
+    client = as_client(create_app(settings))
+    first = client.request(
+        "POST", "/v1/auth/signup", json=signup_payload("first@example.com", "첫번째")
+    )
+    second = client.request(
+        "POST", "/v1/auth/signup", json=signup_payload("second@example.com", "두번째")
+    )
+    assert first.status_code == second.status_code == 201
+    headers = {"Authorization": "Bearer " + first.json()["tokens"]["access_token"]}
+    assert (
+        client.request("PATCH", "/v1/me/nickname", json={"nickname": "새이름"}).status_code == 401
+    )
+    assert (
+        client.request(
+            "PATCH", "/v1/me/nickname", headers=headers, json={"nickname": "한"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.request(
+            "PATCH", "/v1/me/nickname", headers=headers, json={"nickname": "두번째"}
+        ).status_code
+        == 409
+    )
+    changed = client.request(
+        "PATCH", "/v1/me/nickname", headers=headers, json={"nickname": " 새이름 "}
+    )
+    assert changed.status_code == 200
+    assert changed.json()["nickname"] == "새이름"
+    assert (
+        client.request("GET", "/v1/me/session", headers=headers).json()["user"]["nickname"]
+        == "새이름"
+    )
+    assert (
+        client.request(
+            "PATCH", "/v1/me/nickname", headers=headers, json={"nickname": "새이름"}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.request("PATCH", "/v1/me/nickname", headers=headers, json={"nickname": ""}).json()[
+            "nickname"
+        ]
+        is None
+    )
+
+
 def test_nickname_upgrade_preserves_accounts_and_downgrade(db_url: str) -> None:
     """기존 계정·NULL 닉네임을 유지하고 롤백 후 재적용할 수 있다."""
     config = alembic_config(db_url)

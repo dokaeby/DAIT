@@ -22,3 +22,66 @@
 .auth-required .primary-button { min-height: 46px; }
 button:disabled { opacity: .55; cursor: wait; }
 @media(max-width:600px) { .settings-page { padding: 24px 14px; } .settings-card { padding: 18px; } }
+
+.settings-body-layout { flex:1; min-height:0; }
+.settings-page { flex:1; min-width:0; width:100%; max-width:none; margin:0; }
+#settings-body { min-width:0; }
+.settings-layout { grid-template-columns:150px minmax(0,1fr); gap:24px; }
+.settings-card { border:1px solid var(--line); border-radius:18px; background:white; box-shadow:0 6px 20px #182e5008; }
+.welcome-interests { border:1px solid var(--line-strong); background:var(--blue-pale); border-radius:16px; padding:22px; margin-bottom:24px; }
+.welcome-interests h2 { margin:0 0 10px; font-size:21px; }
+.welcome-interests p { line-height:1.7; }
+.account-info { display:grid; grid-template-columns:auto 1fr; gap:12px; margin-bottom:24px; overflow-wrap:anywhere; }
+.account-info dd { margin:0; min-width:0; }
+@media(max-width:1100px) { .settings-layout { grid-template-columns:1fr; } .settings-menu { position:static; display:flex; flex-wrap:wrap; gap:6px; } }
+@media(max-width:820px) { .settings-page { padding:24px 18px 100px; } .settings-layout { gap:16px; } }
+
+.settings-body-layout { display:flex; }
+#settings-sidebar { flex:0 0 224px; width:224px; }
+
+.schedule-time-inputs { display:flex; gap:8px; }
+.schedule-time-inputs select { min-width:0; flex:1; }
+.schedule-list { display:flex; flex-wrap:wrap; }
+.schedule-item { border-radius:20px; background:var(--blue-pale); }
+.schedule-meta { flex:initial; }
+#withdraw-form { display:grid; gap:12px; }
+
+/* 예약도 선택된 관심 주제와 같은 크기와 색상의 칩으로 표시한다. */
+.schedule-list { gap:10px; }
+.schedule-item { min-height:42px; max-width:100%; padding:3px 5px 3px 15px; gap:4px; border:1px solid var(--blue); border-radius:999px; background:var(--blue-pale); color:var(--blue-strong); font-size:14px; }
+.schedule-meta { flex:initial; min-width:0; padding-right:4px; }
+.schedule-item .secondary-button, .schedule-item .danger-button { min-height:34px; min-width:38px; padding:0 7px; border:0; border-radius:999px; box-shadow:none; background:transparent; font-size:12px; }
+.schedule-item .secondary-button:hover, .schedule-item .danger-button:hover { background:#fff; }
+.schedule-item button:focus-visible { outline:3px solid #135fdb66; outline-offset:2px; }
+
+.schedule-selection { margin-top:24px; padding-top:20px; border-top:1px solid var(--line); }
+.schedule-selection strong { font-size:14px; }
+.schedule-list { margin:12px 0 0; }
+.schedule-item { padding:0 4px 0 15px; gap:2px; }
+.schedule-remove { border:0; background:transparent; color:var(--blue-strong); cursor:pointer; border-radius:50%; width:34px; height:40px; font-size:19px; line-height:1; }
+.schedule-remove:hover { background:white; }
+.schedule-remove:focus-visible { outline:3px solid #135fdb66; outline-offset:2px; }
+
+#withdraw-dialog { position:fixed; inset:0; margin:auto; width:min(480px, calc(100vw - 32px)); max-height:calc(100dvh - 32px); border:1px solid var(--line); border-radius:20px; padding:0; }
+.withdraw-card { padding:28px; }
+.withdraw-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.withdraw-heading h2 { margin:0; font-size:21px; line-height:1.4; }
+.withdraw-heading .card-close { flex:0 0 36px; }
+#withdraw-description { margin:16px 0 20px; line-height:1.7; color:var(--ink); }
+#withdraw-form label { font-size:14px; font-weight:700; }
+#withdraw-feedback { margin:0; color:#b42318; }
+#withdraw-feedback:empty { display:none; }
+#withdraw-form .danger-button { justify-self:end; min-height:42px; }
+@media(max-width:600px) { .withdraw-card { padding:22px; } }
+
+/* 상위 컨테이너가 스크롤 컨테이너가 되지 않아야 목차가 따라온다. */
+.settings-shell { overflow:visible; }
+.settings-menu { position:sticky; top:16px; z-index:5; }
+@media(max-width:1100px) { .settings-menu { position:sticky; top:8px; background:#f8fafc; } }
+@media(max-width:1100px) { .settings-card { scroll-margin-top:115px; } }
+
+#withdraw-form .danger-button { justify-self:center; }
+.nickname-settings-row { display:flex; align-items:center; gap:10px; margin-top:8px; }
+.nickname-settings-row input { flex:1; min-width:0; }
+.nickname-settings-row button { flex-shrink:0; }
+@media(max-width:420px) { .nickname-settings-row { flex-wrap:wrap; } .nickname-settings-row input { flex-basis:100%; } }
