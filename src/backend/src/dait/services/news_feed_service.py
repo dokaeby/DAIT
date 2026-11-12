@@ -21,11 +21,12 @@ from dait.schemas.news import (
     decode_cursor,
     encode_cursor,
 )
-from dait.services import cache_retry_service, news_search_service
+from dait.services import cache_retry_service, news_search_service, pipeline_sync_service
 
 _PARTIAL_WINDOW = timedelta(hours=24)
 _PARTIAL_MESSAGE = "일부 출처의 수집이 지연되고 있습니다."
-_RANK_BASIS = ["quality", "published_at", "source_priority", "id"]
+# rank도 최신→과거가 최우선이다. 품질·출처 우선순위는 동률 보조 정렬이다.
+_RANK_BASIS = ["published_at", "quality", "source_priority", "id"]
 _LATEST_BASIS = ["published_at", "id"]
 
 
@@ -89,6 +90,7 @@ def list_news(
           목록·상세 조회는 저장 결과만 읽고 AI 작업을 만들지 않는다.
           Redis(또는 메모리 fallback) 캐시 5분+jitter, 락으로 stampede를 막는다.
     """
+    pipeline_sync_service.sync_if_needed(settings)
     normalized = news_search_service.normalize_query(query)
     cache_key = cache_retry_service.list_cache_key(
         category.value if category is not None else "ALL", normalized, sort, page_size, cursor
