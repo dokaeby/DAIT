@@ -2,7 +2,12 @@
 
 import pytest
 
-from dait.core.article_language import is_korean_text, looks_foreign_text, needs_translation
+from dait.core.article_language import (
+    allowed_summary_lines,
+    is_korean_text,
+    looks_foreign_text,
+    needs_translation,
+)
 
 
 @pytest.mark.parametrize(
@@ -35,3 +40,19 @@ def test_text_language_heuristics_reject_latin_dominant_text() -> None:
         )
         is False
     )
+
+
+def test_allowed_summary_lines_keeps_korean_or_english_up_to_three() -> None:
+    """공개 요약은 한국어/영어 문장만 남기고 최대 3줄로 자른다."""
+    assert allowed_summary_lines(
+        [
+            "",
+            "English summary line.",
+            "한국어 요약 줄입니다.",
+            "日本語の要約です。",
+            "これはテストです。AI",
+            "人工智能发展迅速AI",
+            "Fourth allowed line.",
+        ]
+    ) == ["English summary line.", "한국어 요약 줄입니다.", "Fourth allowed line."]
+    assert allowed_summary_lines(["   ", "日文です。", ""]) == []

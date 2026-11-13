@@ -26,11 +26,12 @@
 | 1.0.2 | seonghoon.yang | 2026-11-10 | mockup 경로를 DAIT_v1.0.2로 수정, 문서 세트 버전 1.0.2로 갱신 |
 | 1.0.3 | seonghoon.yang | 2026-11-12 | UI 자동화 절차를 현재 프론트엔드 구조와 Playwright 환경 기준으로 갱신 |
 | 1.0.4 | seonghoon.yang | 2026-11-13 | v1.0.4 UI 요소 반영 — 지역/관심사 칩, member-only 게이팅, 출처 태그·기자명 |
+| 1.0.4.1 | seonghoon.yang | 2026-11-13 | 상세보기 화면·설정 `노출·알림` 메뉴 UI 제거 반영 — 상세·노출·알림 UI 자동화 케이스 폐기/API 수준 전환 |
 
 ## 0.1 v1.0.3 UI 자동화 환경
 
 - 대상 URL: 로컬 `http://127.0.0.1:8000` 또는 `https://dait.onrender.com`.
-- Playwright MCP로 인증 다이얼로그·팝업·목록·상세 다이얼로그·설정 화면을 검증한다.
+- Playwright MCP로 인증 다이얼로그·팝업·목록·설정 화면을 검증한다. (1.0.4.1: 상세 다이얼로그·`노출·알림` 섹션 제거)
 - 로그인 팝업은 제출 즉시 `#slow-auth-notice`가 `open` 되고 응답 완료/실패 시 닫히는 것을 확인한다.
 
 ## 1. 목적
@@ -82,11 +83,9 @@ tests/
     conftest.py
     pages/
       home_page.py
-      detail_page.py
       settings_page.py
     test_common_ui.py
     test_home_ui.py
-    test_detail_ui.py
     test_settings_ui.py
     test_state_recovery_ui.py
     snapshots/
@@ -212,7 +211,7 @@ uv run pytest tests/ui/test_common_ui.py -m static -q
 확인:
 
 - 1440×900과 390×844에서 가로 넘침 없음
-- 메인·설정 heading·navigation·button 이름과 메인 내 상세 패널 이름 존재
+- 메인·설정 heading·navigation·button 이름 존재 (상세 패널은 1.0.4.1에서 제거)
 - Desktop sidebar와 Mobile bottom navigation 전환
 
 ### 10.2 Dynamic UI P0 smoke
@@ -226,7 +225,7 @@ uv run pytest tests/ui -m "ui and p0" -q
 
 1. 인증 상태 준비
 2. 메인 기본 목록·랭킹·검색
-3. 첫 카드 상세·3줄 요약
+3. 첫 카드 원문 열기·`GET /v1/news/{id}` 상세 API 확인 (상세 화면 미제공 — 1.0.4.1)
 4. 설정 조회·저장·재진입
 5. 검증 오류와 API 오류 일반화
 
@@ -319,8 +318,8 @@ axe 기반 검사를 추가하더라도 키보드 실제 조작과 상태 메시
 | 브라우저·뷰포트 | Chromium 1440×900 |
 | 실행 명령 | `uv run pytest ... -vv` |
 | seed | ui-seed-2026-11-06 |
-| 기대 | 예약·관심·목록 표시·계정 설정값을 저장 후 복원한다. 설정 화면에 알림 항목은 없다. |
-| 실제 | 새로고침 후 목록 표시 기본값으로 복귀 |
+| 기대 | 예약·관심·계정 설정값을 저장 후 복원한다. 설정 화면에 알림·노출 항목은 없다(1.0.4.1). |
+| 실제 | 새로고침 후 API 값 그대로 복원 (노출·알림은 UI 없음) |
 | 증거 | screenshot, trace, request body |
 | 심각도 | P0/P1/P2 |
 | 관련 FR·API | FR-SET-03, PATCH `/v1/me/settings` |

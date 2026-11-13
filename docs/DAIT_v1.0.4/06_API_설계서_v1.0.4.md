@@ -25,10 +25,12 @@
 | 1.0.2 | seonghoon.yang | 2026-11-10 | 7.3절 내부 스케줄러 tick API(POST /v1/internal/scheduler/tick) 추가 |
 | 1.0.3 | seonghoon.yang | 2026-11-12 | 실제 구현 엔드포인트 기준으로 갱신 — auth/me/news/settings/scheduler 전체 경로·스키마·오류 계약 반영 |
 | 1.0.4 | seonghoon.yang | 2026-11-13 | v1.0.4 구현 반영 — 뉴스 language/topic/personalized/interest·interest_counts·read-state·keepalive, 관심사 30개(en.* 포함), 로그인 잠금 3단계 명세 |
+| 1.0.4.1 | seonghoon.yang | 2026-11-13 | 상세보기 화면·설정 `노출·알림` 메뉴 UI 제거 반영 — 상세 API(`/v1/news/{id}`)·설정 필드(`default_count`/`keywords`/`in_app_notice`/`email_notice`)는 유지, 화면 매핑만 제거 |
 
 ## 1. 문서 목적
 
-이 문서는 DAIT 단계 1(MVP)의 메인, 메인 내 상세 조회, 설정 화면과 연결되는 API 계약을 상세히 정의한다.
+이 문서는 DAIT 단계 1(MVP)의 메인, 뉴스 상세 API, 설정 화면과 연결되는 API 계약을 상세히 정의한다.
+(1.0.4.1: 상세보기 화면과 설정 `노출·알림` 메뉴는 UI에서 제거됐으나 본 문서의 API 계약은 모두 유지한다.)
 기존 문서에서 확정된 기능 ID와 엔드포인트를 기준으로 하며, v1.0.3부터는 **develop 브랜치에 구현된
 실제 계약**(Bearer 토큰 인증, 관심사/세션/닉네임/뉴스 읽음/예약 실행 이력 API 포함)을 기준으로 갱신한다.
 v1.0.4에서는 뉴스 탐색 필터(language/topic/personalized/interest), 관심사 집계
@@ -519,6 +521,8 @@ GET /v1/news?category=ECONOMY&q=multimodal&sort=rank&page_size=10
 
 # 5. 상세보기 API
 
+> **1.0.4.1**: 상세보기 화면은 제거됐다. 본 API는 UI 미사용 상태로 유지되며, 메인 카드는 원문 새 탭·링크 복사만 제공한다.
+
 ## 5.1 GET `/v1/news/{news_id}`
 
 ### Path Parameter
@@ -652,7 +656,7 @@ GET /v1/news/news_01JXYZ001
 ## 6.1 GET `/v1/me/settings`
 
 ### 목적
-현재 사용자의 관심 조건, 목록 노출 수, 알림 채널을 조회한다.
+현재 사용자의 관심 조건, 목록 노출 수, 알림 채널을 조회한다. (`노출·알림` 설정 UI는 1.0.4.1에서 제거 — 필드는 API로만 유지)
 
 ### Response 200
 
@@ -1000,9 +1004,9 @@ keep-alive ping이다. DB·Redis· readiness 검사를 거치지 않고 즉시 2
 | 메인 | 국내/해외·관심사 필터 | `GET /v1/news?language=&topic=&personalized=&interest=` | FR-SEARCH-01 |
 | 메인 | 관심사별 건수 | `GET /v1/news/activity?personalized=&language=` | FR-HOME-01 |
 | 메인 | 읽음 상태 조회 | `GET /v1/news/read-state?ids=` | FR-HOME-01 |
-| 메인 | 카드 상세 진입 | `GET /v1/news/{id}` | FR-DETAIL-01 |
-| 상세 | 원문 새 탭 | API가 준 `original_url` 사용 | FR-DETAIL-02 |
-| 상세 | 링크 복사 | API가 준 `original_url` 사용 | FR-DETAIL-02 |
+| 메인 | 카드 원문 열기 (상세 화면 미제공) | API가 준 `original_url` 사용 | FR-DETAIL-02 |
+| 메인 | 링크 복사 | API가 준 `original_url` 사용 | FR-DETAIL-02 |
+| (API 전용) | 뉴스 상세 조회 | `GET /v1/news/{id}` | FR-DETAIL-01 |
 | 설정 | 현재 설정 조회 | `GET /v1/me/settings` | FR-SET-02/03 |
 | 설정 | 설정 저장 | `PATCH /v1/me/settings` | FR-SET-02/03 |
 | 설정 | 예약 조회 | `GET /v1/me/schedules` | FR-SET-01 |
@@ -1020,7 +1024,7 @@ keep-alive ping이다. DB·Redis· readiness 검사를 거치지 않고 즉시 2
 
 ---
 
-# 9. 메인→상세→설정 API Flow
+# 9. 메인→설정 API Flow (상세 API는 화면 미사용, 1.0.4.1)
 
 ```mermaid
 sequenceDiagram
@@ -1042,14 +1046,8 @@ sequenceDiagram
     end
     A-->>W: NewsListResponse
 
-    U->>W: 뉴스 카드 상세보기
-    W->>A: GET /v1/news/{id}
-    A->>R: 상세 캐시 조회
-    alt cache miss
-      A->>D: 뉴스+content+relations 조회
-      D-->>A: detail rows
-    end
-    A-->>W: NewsDetailResponse
+    U->>W: 카드 원문 열기/링크 복사 (상세 화면 미제공)
+    Note over W,A: GET /v1/news/{id}는 API 전용으로 유지(화면 미호출)
 
     U->>W: 설정 열기
     W->>A: GET /v1/me/settings
@@ -1077,4 +1075,4 @@ sequenceDiagram
 - [ ] 설정 `default_count`는 5 또는 10만 허용한다.
 - [ ] 예약 timezone은 IANA 이름만 허용한다.
 - [ ] 오류 응답에 스택트레이스·SQL·비밀값을 포함하지 않는다.
-- [ ] 메인·상세 조회·설정의 모든 주요 동작이 본 API 문서와 추적 가능하다.
+- [ ] 메인·상세 API·설정의 모든 주요 동작이 본 API 문서와 추적 가능하다(상세 API는 화면 미사용).

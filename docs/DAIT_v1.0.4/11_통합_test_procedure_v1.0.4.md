@@ -25,6 +25,7 @@
 | 1.0.2 | seonghoon.yang | 2026-11-10 | 문서 세트 버전 1.0.2로 갱신 |
 | 1.0.3 | seonghoon.yang | 2026-11-12 | 통합 테스트 절차를 로컬+Render/Supabase 환경 기준으로 갱신 |
 | 1.0.4 | seonghoon.yang | 2026-11-13 | v1.0.4 절차 추가 — 언어/관심사 필터·read-state·keepalive·pipeline 동기화·로그인 잠금 3단계 검증 |
+| 1.0.4.1 | seonghoon.yang | 2026-11-13 | 상세보기 화면·설정 `노출·알림` 메뉴 UI 제거 반영 — 상세·노출·알림 검증을 API 수준으로 전환 |
 
 ## 0.1 v1.0.3 통합 절차 환경
 
@@ -38,7 +39,7 @@
 
 ## 1. 목적
 
-메인·설정 화면과 메인 내 상세 조회, API, DB, Redis, Worker, Scheduler가 함께 동작하는지 검증하고, 장애·복구·보안까지 재현 가능한 증거를 남긴다.
+메인·설정 화면과 뉴스 상세 API, API, DB, Redis, Worker, Scheduler가 함께 동작하는지 검증하고, 장애·복구·보안까지 재현 가능한 증거를 남긴다. (1.0.4.1: 상세보기 화면·설정 `노출·알림` 메뉴 UI 제거 — 상세·노출·알림은 API 수준 검증)
 
 ## 2. 권장 통합 테스트 토폴로지
 
@@ -188,20 +189,21 @@ pytest tests/integration/test_failure_recovery.py -vv
 - `/v1/news` response JSON
 - DB query 결과
 
-## 9. 상세보기 검증 절차
+## 9. 상세보기 검증 절차 (1.0.4.1: 화면 미제공 — API 수준)
 
-1. 메인 첫 카드 `상세 보기`
-2. URL/news_id 확인
-3. `GET /v1/news/{id}` response 저장
-4. 화면 article header와 API 비교
+1. ~~메인 첫 카드 `상세 보기`~~ — 상세 화면 제거, 카드는 원문 직결
+2. 목록 첫 카드의 news ID로 `GET /v1/news/{id}` 호출
+3. response JSON 저장
+4. 기사 헤더(article)·출처 필드 확인
 5. 3줄 요약 정확히 3개
 6. 한국어 번역
 7. 처리 정보
 8. 원본 정보 source/url/published
-9. 관련 뉴스 목록
-10. 원문 새 탭
-11. 링크 복사 성공
-12. Clipboard 차단 환경에서 대체 UI
+9. related_news id 유효성 확인
+10. ~~관련 뉴스 목록 화면~~ — API 응답으로 확인
+11. 원문 새 탭(카드 `원문 열기`)
+12. 링크 복사 성공
+13. Clipboard 차단 환경에서 대체 UI
 
 ## 10. 설정 화면 검증 절차
 
@@ -212,9 +214,9 @@ pytest tests/integration/test_failure_recovery.py -vv
 5. 관심 키워드 추가/삭제
 6. 승인 출처 선택
 7. AI 카테고리 확인
-8. default_count 10→5
-9. 인앱 ON
-10. 메일 ON
+8. default_count 10→5 (`노출·알림` UI 제거 — 1.0.4.1, PATCH API로 검증)
+9. 인앱 ON (동일 — API)
+10. 메일 ON (동일 — API)
 11. 설정 저장
 12. PATCH/POST request payload 저장
 13. DB row 확인
@@ -301,7 +303,7 @@ docker compose -f docker-compose.integration.yml start redis
 ### 13.2 Fake LLM 500
 - fake LLM mode를 500으로 변경
 - 신규 AI 처리 실패 기록
-- 기존 READY 상세/목록 조회 정상
+- 기존 READY 상세 API/목록 조회 정상 (상세 화면 미제공 — 1.0.4.1)
 
 ### 13.3 Source 500
 - 한 source만 500
@@ -374,9 +376,9 @@ https://fixture.test/redirect -> http://127.0.0.1:8080/private
 - 좌측 sidebar desktop
 - mobile bottom tabs
 
-상세:
-- desktop 2열
-- mobile 1열
+상세 API(화면 미제공 — 1.0.4.1):
+- ~~desktop 2열~~ — 화면 미제공
+- ~~mobile 1열~~ — 화면 미제공
 
 설정:
 - desktop menu + content
@@ -479,7 +481,7 @@ docker compose -f docker-compose.integration.yml down -v
 - Unit 전체 PASS
 - Integration P0/P1 전체 PASS
 - IT-DEMO-001 PASS
-- 메인/상세/설정 desktop/mobile PASS
+- 메인/설정 desktop/mobile + 상세 API PASS (상세 화면 미제공 — 1.0.4.1)
 - 설정 실제 저장/복원 PASS
 - 중복 작업/알림 0
 - 외부 제공자 장애 시 기존 뉴스 조회 유지
