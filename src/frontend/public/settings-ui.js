@@ -148,7 +148,8 @@
     $('interests-retry').hidden = true;
     show('interests-feedback', '관심사를 불러오고 있습니다…');
     try {
-      const [catalog, mine] = await Promise.all([request('/v1/interests/catalog'), request('/v1/me/interests')]);
+      // Session already contains this account's saved interests.
+      const catalog = await request('/v1/interests/catalog');
       renderSidebar(catalog);
       const fragment = document.createDocumentFragment();
       for (const group of catalog.groups) {
@@ -165,7 +166,7 @@
         section.append(pills); fragment.append(section);
       }
       $('interest-options').replaceChildren(fragment);
-      applyInterests(mine);
+      applyInterests({ interests: user.interests || [] });
       $('interest-fields').disabled = false;
       show('interests-feedback', '선택하거나 해제하면 자동으로 저장됩니다.');
       if (location.hash === '#interests') $('interests').scrollIntoView();
@@ -176,7 +177,11 @@
   }
   const autosave = window.createInterestAutosave({
     read: () => interestInputs().filter(el => el.checked).map(el => el.value),
-    write: interests => request('/v1/me/interests', { method: 'PUT', body: JSON.stringify({ interests }) }),
+    write: async interests => {
+      const result = await request('/v1/me/interests', { method: 'PUT', body: JSON.stringify({ interests }) });
+      user.interests = result.interests;
+      return result;
+    },
     status: state => {
       $('interests-save-retry').hidden = state !== 'error';
       show('interests-feedback', state === 'saving' ? '저장 중…' : state === 'saved' ? '저장되었습니다.' : '저장하지 못했습니다. 다시 시도해 주세요.', state !== 'error');

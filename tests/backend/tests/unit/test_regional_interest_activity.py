@@ -5,6 +5,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 
 from dait.core.config import Settings
+from dait.repositories import news_repository
 from dait.services import feed_index_service, news_activity_service
 
 
@@ -47,6 +48,27 @@ def test_counts_keep_saved_interests_in_their_region(monkeypatch) -> None:
         assert domestic.interest_counts == {"ai.agents": 1}
         assert overseas.total == 1
         assert overseas.interest_counts == {"en.ai.agents": 1}
+        # An article matching two topics must still count once in the regional total.
+        conn.execute("INSERT INTO news_topics VALUES ('ko', 'ai.models')")
+        topics = ("ai.agents", "ai.models", "en.ai.agents")
+        for language in (None, "ko", "en"):
+            for scope in (None, (), topics):
+                for query in ("", "agent", "%", "_"):
+                    statements = []
+                    conn.set_trace_callback(statements.append)
+                    counts, per_topic = news_repository.public_news_counts(
+                        conn, query, scope, topics, language
+                    )
+                    conn.set_trace_callback(None)
+                    assert len(statements) == 1
+                    for category, count in counts.items():
+                        assert count == news_repository.count_public_news(
+                            conn, category, query, scope, language
+                        )
+                    for topic, count in per_topic.items():
+                        assert count == news_repository.count_public_news(
+                            conn, None, query, (topic,), language
+                        )
         conn.execute("DELETE FROM user_interests WHERE interest_code = 'en.ai.agents'")
         assert news_activity_service.activity(settings, "u", "", [], True, "en").total == 0
         conn.execute("DELETE FROM user_interests")

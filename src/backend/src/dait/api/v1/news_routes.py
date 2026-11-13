@@ -41,6 +41,7 @@ def list_news(
     sort: Annotated[SortOrder, Query()] = "rank",
     page_size: Annotated[int, Query(ge=1, le=50)] = 10,
     cursor: Annotated[str | None, Query(max_length=500)] = None,
+    refresh: bool = False,
 ) -> NewsListResponse:
     """공개 가능한 기사를 랭킹순/최신순으로 조회한다.
 
@@ -59,7 +60,7 @@ def list_news(
         if cursor is not None:
             raise ValidationFailedError
         response = news_feed_service.list_news(
-            settings, None, q, "latest", min(page_size, 10), None
+            settings, None, q, "latest", min(page_size, 10), None, refresh=refresh
         )
         return response.model_copy(
             update={
@@ -84,7 +85,15 @@ def list_news(
             raise ValidationFailedError
         scope = (topic,)
     return news_feed_service.list_news(
-        settings, category, q, sort, page_size, cursor, interests=scope, language=language
+        settings,
+        category,
+        q,
+        sort,
+        page_size,
+        cursor,
+        interests=scope,
+        language=language,
+        refresh=refresh,
     )
 
 

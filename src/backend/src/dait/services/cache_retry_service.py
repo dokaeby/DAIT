@@ -18,7 +18,7 @@ from redis.exceptions import RedisError
 from dait.core.config import Settings
 from dait.repositories import redis_repository
 
-_LIST_TTL_SECONDS = 300  # 목록 캐시 5분
+_LIST_TTL_SECONDS = 900  # 목록 캐시 15분
 _DETAIL_TTL_SECONDS = 1800  # 상세 캐시 30분
 _JITTER_RATIO = 0.1  # TTL의 ±10% 지터로 만료 시각을 분산한다
 _LOCK_WAIT_SECONDS = 2.0
