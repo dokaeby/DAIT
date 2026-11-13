@@ -60,5 +60,24 @@ def test_interest_union_counts_search_and_pages() -> None:
         assert news_repository.count_public_news(conn, None, "", ("en.ai.agents",)) == 2
         overseas = news_repository.list_public_news(conn, None, "", "latest", 8, 0, None, "en")
         assert all(row.original_language == "en" for row in overseas)
+        # A funding story must be reachable from the investment subtopic,
+        # even if neither its title nor translated summary says startup/funding.
+        conn.execute(
+            "UPDATE news SET category = 'ECONOMY', title = ? WHERE id = '0'",
+            ("OpenAI raises an additional $11 billion at a $1.25 trillion valuation",),
+        )
+        conn.execute(
+            "UPDATE content_results SET summary_lines = ? WHERE news_id = '0'",
+            ('["새로운 자본 조달 라운드에서 110억 달러를 확보했다."]',),
+        )
+        assert news_repository.count_public_news(conn, "ECONOMY", "", None, "en") == 1
+        assert (
+            news_repository.count_public_news(conn, None, "", ("en.economy.startups",), "en") == 1
+        )
+        funding = news_repository.list_public_news(
+            conn, "ECONOMY", "", "latest", 8, 0, ("en.economy.startups",), "en"
+        )
+        assert [row.id for row in funding] == ["0"]
+        assert news_repository.count_public_news(conn, None, "", ("en.economy.jobs",), "en") == 0
     finally:
         conn.close()

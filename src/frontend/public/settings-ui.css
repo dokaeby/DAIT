@@ -87,3 +87,16 @@ button:disabled { opacity: .55; cursor: wait; }
 .nickname-settings-row input { flex:1; min-width:0; }
 .nickname-settings-row button { flex-shrink:0; }
 @media(max-width:420px) { .nickname-settings-row { flex-wrap:wrap; } .nickname-settings-row input { flex-basis:100%; } }
+
+.settings-page-head { padding:12px 0; }
+.settings-page-head.is-compact { padding:8px 0; }
+.settings-menu { top:calc(var(--app-header-height) + var(--page-controls-height) + 12px); max-height:calc(100dvh - var(--app-header-height) - var(--page-controls-height) - 24px); }
+.settings-card { scroll-margin-top:var(--section-offset); }
+@media(max-width:1100px) {
+  .settings-menu { top:calc(var(--app-header-height) + var(--page-controls-height)); z-index:15; max-height:22vh; }
+  .settings-card { scroll-margin-top:var(--section-offset); }
+}
+@media(max-height:650px) {
+  .settings-page-head .eyebrow, .settings-page-head .page-description { display:none; }
+  .settings-page-head .page-title { font-size:22px; }
+}

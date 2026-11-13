@@ -2,6 +2,8 @@
 
 from dait.repositories.news_language import NEWS_LANGUAGE_SQL
 
+MATCHING_VERSION = "topics-v2-financing"
+
 KEYWORDS = {
     "ai.models": ("언어모델", "언어 모델", "llm", "gpt", "모델 학습", "인공지능 연구"),
     "ai.agents": ("에이전트", "ai agent", "인공지능 비서", "자율 에이전트"),
@@ -65,6 +67,16 @@ KEYWORDS["economy.startups"] += (
     "startup",
     "venture",
     "funding",
+    "자금 조달",
+    "자금조달",
+    "자본 조달",
+    "자본조달",
+    "투자금",
+    "financing",
+    "fundraising",
+    "fund-raising",
+    "valuation",
+    "capital raise",
 )
 KEYWORDS["en.economy.startups"] = KEYWORDS["economy.startups"]
 KEYWORDS["economy.markets"] += (
