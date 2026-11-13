@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from hashlib import sha256
 from typing import NamedTuple, cast
 
 from dait.repositories.db import DbConnection
@@ -156,6 +157,22 @@ def list_public_news(
         )
         for row in rows
     ]
+
+
+def public_data_version(conn: DbConnection) -> str:
+    """공개 목록 결과에 영향을 주는 데이터 변경 토큰을 만든다.
+
+    입력: conn (연결)
+    출력: str (짧은 해시)
+    기능: 기사 삽입·공개 상태 전환·요약 갱신이 일어나면 값이 바뀐다.
+          목록 캐시 키에 넣어 DB 변경 시 캐시가 자동으로 무효화되게 한다.
+    """
+    row = conn.execute(
+        "SELECT (SELECT COUNT(*) FROM news), "
+        "(SELECT MAX(collected_at) FROM news), "
+        "(SELECT MAX(updated_at) FROM content_results)"
+    ).fetchone()
+    return sha256(repr(tuple(row) if row else None).encode()).hexdigest()[:16]
 
 
 def count_public_news(

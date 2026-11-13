@@ -286,6 +286,39 @@ class TestNewsList:
             assert detail.json()["article"]["id"] == news_id
         assert client.request("GET", "/v1/news/news00").status_code == 404
 
+    def test_list_cache_refreshes_when_public_data_changes(
+        self, settings: Settings, db_url: str
+    ) -> None:
+        """새 공개 기사가 DB에 저장되면 다음 요청이 오래된 캐시를 쓰지 않는다."""
+        seed_news(db_url)
+        client = client_for(settings)
+        first = client.request("GET", "/v1/news", params={"language": "ko"})
+        assert first.status_code == 200
+        assert [item["id"] for item in first.json()["items"]] == [
+            "news02",
+            "news01",
+            "news00",
+        ]
+        # 같은 요청은 캐시를 재사용한다.
+        cached = client.request("GET", "/v1/news", params={"language": "ko"})
+        assert cached.json() == first.json()
+        with sqlite3.connect(_db_path(db_url)) as conn:
+            conn.execute(
+                "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+                "collected_at, category, original_language, created_at) "
+                "VALUES ('new01', 'src1', '최신 기사', 'https://example.com/new01', "
+                "'2026-02-01T00:00:00+00:00', ?, 'AI', 'ko', ?)",
+                (NOW, NOW),
+            )
+            conn.execute(
+                "INSERT INTO content_results (news_id, summary_lines, status, updated_at) "
+                "VALUES ('new01', ?, 'READY', ?)",
+                (SUMMARY_JSON, NOW),
+            )
+        fresh = client.request("GET", "/v1/news", params={"language": "ko"})
+        assert fresh.status_code == 200
+        assert fresh.json()["items"][0]["id"] == "new01"
+
 
 class TestNewsDetail:
     def test_counts_and_private_read_history(self, settings: Settings, db_url: str) -> None:

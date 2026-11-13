@@ -101,12 +101,16 @@ def list_news(
     출력: NewsListResponse (items, page, meta)
     기능: 커서는 불투명 offset 문자열이다. 형식이 어긋나면 422.
           목록·상세 조회는 저장 결과만 읽고 AI 작업을 만들지 않는다.
-          Redis(또는 메모리 fallback) 캐시 5분+jitter, 락으로 stampede를 막는다.
+          Redis(또는 메모리 fallback) 캐시 15분+jitter. 공개 데이터 버전을
+          캐시 키에 포함해 DB에 새 기사가 저장되면 캐시가 자동으로 무효화된다.
+          락으로 stampede를 막는다.
     """
     pipeline_sync_service.request_sync(settings)
     normalized = news_search_service.normalize_query(query)
+    with transaction(settings.database_url) as conn:
+        data_version = news_repository.public_data_version(conn)
     scope_key = sha256(
-        repr((MATCHING_VERSION, settings.database_url, language, interests)).encode()
+        repr((MATCHING_VERSION, settings.database_url, language, interests, data_version)).encode()
     ).hexdigest()[:24]
     cache_key = cache_retry_service.list_cache_key(
         scope_key + ":" + (category.value if category is not None else "ALL"),

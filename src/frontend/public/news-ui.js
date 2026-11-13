@@ -20,7 +20,7 @@
   let pageStart = null, pageHistory = [], currentPage = 1;
   let language = params.get('language') === 'en' ? 'en' : 'ko', sidebarTopic = params.get('topic') || '';
   const responseCache = new Map();
-  const FEED_TTL = 15 * 60 * 1000;
+  const FEED_TTL = 60 * 1000;
   const FEED_RETENTION = 24 * 60 * 60 * 1000;
   const feedCacheKey = 'dait_feed_cache_v1';
   let feedScope = '';
@@ -434,7 +434,6 @@
   $('load-more').addEventListener('click', () => load('next'));
   $('load-previous').addEventListener('click', () => load('prev'));
   $('news-list').addEventListener('click', event => {
-    if (event.target.closest('.read-badge')) return;
     const el = event.target.closest('[data-detail]');
     if (el) return;
     const copy = event.target.closest('[data-copy-url]');
