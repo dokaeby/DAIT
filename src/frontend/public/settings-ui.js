@@ -39,6 +39,16 @@
     if (values.length > 20 || values.some(value => value.length > 50)) throw new Error('키워드는 최대 20개, 각 50자까지 입력해 주세요.');
     return values;
   }
+  // The taxonomy is public and independent of account verification.
+  const catalogPromise = (async () => {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem('dait_catalog_v1') || 'null');
+      if (cached && Date.now() - cached.time < 3600000) return cached.value;
+    } catch { /* optional cache */ }
+    const value = await request('/v1/interests/catalog');
+    try { sessionStorage.setItem('dait_catalog_v1', JSON.stringify({time: Date.now(), value})); } catch { /* optional cache */ }
+    return value;
+  })().catch(() => null);
   const user = await DAIT.currentUser();
   if (!user) { showGuest(); return; }
   $('settings-body').hidden = false;
@@ -75,8 +85,23 @@
   markSettingsSection();
   window.addEventListener('hashchange', () => markSettingsSection());
   let sectionScrollPending = false;
+  let clickedSection = location.hash || '';
+  document.querySelector('.settings-menu').addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    if (link) { clickedSection = link.hash; markSettingsSection(clickedSection); }
+  });
+  const releaseSection = () => { clickedSection = ''; };
+  window.addEventListener('wheel', releaseSection, {passive: true});
+  window.addEventListener('touchstart', releaseSection, {passive: true});
+  window.addEventListener('pointerdown', event => {
+    if (!event.target.closest('.settings-menu')) releaseSection();
+  }, {passive: true});
+  window.addEventListener('keydown', event => {
+    if (['ArrowDown','ArrowUp','PageDown','PageUp','Home','End',' '].includes(event.key)) releaseSection();
+  });
   function updateSettingsSectionFromScroll() {
     sectionScrollPending = false;
+    if (clickedSection) { markSettingsSection(clickedSection); return; }
     const sections = [...document.querySelectorAll('.settings-menu a')]
       .map(link => document.getElementById(link.hash.slice(1)))
       .filter(Boolean);
@@ -149,7 +174,7 @@
     show('interests-feedback', '관심사를 불러오고 있습니다…');
     try {
       // Session already contains this account's saved interests.
-      const catalog = await request('/v1/interests/catalog');
+      const catalog = await catalogPromise || await request('/v1/interests/catalog');
       renderSidebar(catalog);
       const fragment = document.createDocumentFragment();
       for (const group of catalog.groups) {
@@ -226,6 +251,15 @@
     });
   });
   for (let hour = 0; hour < 24; hour++) { const option = document.createElement('option'); option.value = String(hour).padStart(2, '0'); option.textContent = option.value + '시'; $('sched-hour').append(option); }
+  // Test mode: set data-minute-step back to 30 in settings.html to restore normal options.
+  const minuteStep = Number($('sched-minute').dataset.minuteStep) === 5 ? 5 : 30;
+  for (let minute = 0; minute < 60; minute += minuteStep) {
+    const option = document.createElement('option');
+    option.value = String(minute).padStart(2, '0');
+    option.textContent = option.value + '분';
+    $('sched-minute').append(option);
+  }
+  $('schedule-timezone-note').textContent = `시간대: Asia/Seoul (KST) · ${minuteStep}분 단위${minuteStep === 5 ? ' (테스트용)' : ''}`;
   const getTime = () => $('sched-hour').value + ':' + $('sched-minute').value;
   let scheduleCount = 0;
   // 비밀번호 칸은 한글 조합이 안 돼서, 구글 전용 계정은 일반 글자칸에 '탈퇴'를 입력해 확인한다.
@@ -248,8 +282,14 @@
       location.assign('/?ui=20261112-search');
     });
   });
+  let scheduleItems = [];
   async function loadSchedules() {
     const data = await request('/v1/me/schedules');
+    renderSchedules(data.items);
+  }
+  function renderSchedules(items) {
+    scheduleItems = items;
+    const data = {items};
     scheduleCount = data.items.length;
     $('schedule-count').textContent = `${scheduleCount} / 5`;
     const fragment = document.createDocumentFragment();
@@ -264,7 +304,7 @@
       remove.addEventListener('click', () => action(remove, 'schedule-feedback', async () => {
         await request('/v1/me/schedules/' + encodeURIComponent(schedule.id), { method: 'DELETE' });
         show('schedule-feedback', '예약을 삭제했습니다.');
-        await loadSchedules();
+        renderSchedules(scheduleItems.filter(item => item.id !== schedule.id));
       }));
       li.append(text, remove); fragment.append(li);
     }
@@ -278,8 +318,9 @@
     action(form, 'schedule-feedback', async () => {
       if (scheduleCount >= 5) throw new Error('예약은 최대 5개까지 추가할 수 있습니다.');
       const payload = { local_time: getTime(), timezone: 'Asia/Seoul', criteria: { categories: ['AI'], source_ids: [], keywords: [] }, enabled: true };
-      await request('/v1/me/schedules', { method: 'POST', body: JSON.stringify(payload) });
-      form.reset(); show('schedule-feedback', '예약을 추가했습니다.'); await loadSchedules();
+      const created = await request('/v1/me/schedules', { method: 'POST', body: JSON.stringify(payload) });
+      renderSchedules([...scheduleItems, created]);
+      form.reset(); show('schedule-feedback', '예약을 추가했습니다.');
     });
   });
   await Promise.all([
