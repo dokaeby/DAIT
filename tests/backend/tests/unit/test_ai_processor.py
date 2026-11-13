@@ -647,6 +647,35 @@ def test_techcrunch_global_article_produces_pure_korean_three_line_summary(
             assert phrase not in line
 
 
+def test_google_translate_processor_fails_when_summary_stays_english(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """외국어 기사 요약 번역이 실패하면 영어 원문을 저장하지 않고 실패시킨다."""
+    from src.backend.app.workers.ai_processor import ProcessingError
+
+    async def untranslated(text: str, *, enable_network: bool = True) -> str:
+        return text
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.ai_processor.translate_to_korean", untranslated
+    )
+    techcrunch_article = CollectedArticle(
+        source_name="TechCrunch",
+        title="Acme unveils a new AI chip",
+        canonical_url=HttpUrl("https://techcrunch.com/2026/11/08/acme-chip/"),
+        category="AI",
+        published_at=datetime(2026, 11, 8, 12, 0, tzinfo=UTC),
+        raw_text=(
+            "Acme unveiled a new AI accelerator chip for data centers today. "
+            "The chip doubles inference throughput for large models. "
+            "Analysts expect the launch to intensify AI chip competition."
+        ),
+    )
+    processor = GoogleTranslateContentProcessor(enable_network_translation=False)
+    with pytest.raises(ProcessingError):
+        asyncio.run(processor.process(techcrunch_article))
+
+
 def test_translate_to_korean_logs_error_and_retries_on_translator_failure(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,

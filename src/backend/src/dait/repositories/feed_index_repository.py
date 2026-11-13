@@ -25,15 +25,18 @@ def list_classification_candidates(
     기능: 공개 상태·활성 카테고리·https URL 조건은 목록 조회와 동일하게 적용한다.
           최신 기사부터 처리해 화면에 먼저 보이는 기사가 우선 분류된다.
     """
+    # content_updated_at은 varchar로 저장하므로 timestamptz 컬럼과 직접 비교할 수
+    # 없다(PostgreSQL은 varchar < timestamptz 연산자가 없다). 비교·저장 모두
+    # 같은 TEXT 표현으로 맞춘다.
     rows = conn.execute(
-        "SELECT n.id, n.title, c.summary_lines, c.updated_at "  # noqa: S608 - 상수 절만 결합
+        "SELECT n.id, n.title, c.summary_lines, CAST(c.updated_at AS TEXT) "  # noqa: S608 - 상수 절만 결합
         "FROM news n "
         "JOIN content_results c ON c.news_id = n.id "
         "LEFT JOIN news_classified nc ON nc.news_id = n.id "
         f"WHERE c.status IN {_in_clause(_STATUS_VALUES)} "
         "AND n.canonical_url LIKE 'https://%' "
         f"AND n.category IN {_in_clause(_CATEGORY_VALUES)} "
-        "AND (nc.news_id IS NULL OR nc.content_updated_at < c.updated_at) "
+        "AND (nc.news_id IS NULL OR nc.content_updated_at < CAST(c.updated_at AS TEXT)) "
         "ORDER BY n.published_at DESC LIMIT ?",
         (*_STATUS_VALUES, *_CATEGORY_VALUES, limit),
     ).fetchall()

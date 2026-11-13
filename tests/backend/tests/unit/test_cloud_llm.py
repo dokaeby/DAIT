@@ -486,3 +486,68 @@ def test_content_processor_foreign_title_translation() -> None:
 
     assert isinstance(result, SuccessContent)
     assert result.translated_text == "AI 수요에 반도체 주가 급등"
+
+
+def _foreign_collected_article() -> CollectedArticle:
+    return _collected_article(
+        source_name="TechCrunch",
+        title="Chip stocks rally on AI demand",
+        raw_text=FOREIGN_BODY,
+    )
+
+
+def test_content_processor_translates_english_grok_summary_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Grok가 요약 3줄을 영어로 반환해도 저장 전 한국어로 번역한다."""
+    payload = _completion_payload(
+        summary_lines=[
+            "Chip stocks rallied on AI demand.",
+            "Data center orders drove the trend.",
+            "The rally is expected to continue.",
+        ]
+    )
+    client = FakeGrokClient(payload)
+    inner = CloudSummaryProcessor(_settings(), client=client, batch_size=1)
+    processor = CloudLLMContentProcessor(_settings(), processor=inner)
+
+    async def fake_translate(text: str) -> str:
+        return f"번역된 문장: {text}"
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.cloud_llm.translate_to_korean", fake_translate
+    )
+
+    result = asyncio.run(processor.process(_foreign_collected_article()))
+
+    assert isinstance(result, SuccessContent)
+    assert len(result.summary_lines) == 3
+    assert all(any("가" <= ch <= "힣" for ch in line) for line in result.summary_lines)
+
+
+def test_content_processor_rejects_untranslated_foreign_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """번역마저 실패하면 영어 요약을 저장하지 않고 ProcessingError를 던진다."""
+    from src.backend.app.workers.ai_processor import ProcessingError
+
+    payload = _completion_payload(
+        summary_lines=[
+            "Chip stocks rallied on AI demand.",
+            "Data center orders drove the trend.",
+            "The rally is expected to continue.",
+        ]
+    )
+    client = FakeGrokClient(payload)
+    inner = CloudSummaryProcessor(_settings(), client=client, batch_size=1)
+    processor = CloudLLMContentProcessor(_settings(), processor=inner)
+
+    async def untranslated(text: str) -> str:
+        return text
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.cloud_llm.translate_to_korean", untranslated
+    )
+
+    with pytest.raises(ProcessingError):
+        asyncio.run(processor.process(_foreign_collected_article()))
