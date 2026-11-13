@@ -84,9 +84,11 @@ def test_interest_union_counts_search_and_pages() -> None:
             ("OpenAI raises an additional $11 billion at a $1.25 trillion valuation",),
         )
         conn.execute(
-            "UPDATE content_results SET summary_lines = ? WHERE news_id = '0'",
+            "UPDATE content_results SET summary_lines = ?, "
+            "updated_at = '2026-11-14T00:00:00+00:00' WHERE news_id = '0'",
             ('["새로운 자본 조달 라운드에서 110억 달러를 확보했다."]',),
         )
+        feed_index_service.classify_pending(conn)
         assert news_repository.count_public_news(conn, "ECONOMY", "", None, "en") == 1
         assert (
             news_repository.count_public_news(conn, None, "", ("en.economy.startups",), "en") == 1

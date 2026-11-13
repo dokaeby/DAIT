@@ -5,8 +5,11 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import ClassVar
 
+import pytest
+
 from dait.core.config import Settings
 from dait.main import create_app
+from dait.services import feed_index_service
 from support import HttpClient, as_client
 
 PASSWORD = "Str0ng!Passw0rd-xyz"  # noqa: S105 - 테스트 전용 가짜 비밀번호
@@ -444,3 +447,41 @@ class TestSchedules:
             ).status_code
             == 422
         )
+
+
+class TestFeedIndexClassification:
+    """카테고리·주제 조회는 저장된 분류만 읽고 분류 작업을 예약하지 않는다."""
+
+    def test_category_and_topic_reads_do_not_classify(
+        self, settings: Settings, db_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seed_news(db_url)
+        client = client_for(settings)
+        token = sign_up(client)
+        headers = bearer(token)
+
+        calls: list[Settings] = []
+        monkeypatch.setattr(feed_index_service, "request_classify", calls.append)
+        for params in (
+            {"category": "AI"},
+            {"category": "ECONOMY", "topic": "economy.industry"},
+            {"language": "en", "topic": "en.ai.models"},
+        ):
+            response = client.request("GET", "/v1/news", headers=headers, params=params)
+            assert response.status_code == 200, params
+        activity = client.request(
+            "GET", "/v1/news/activity", headers=headers, params={"language": "ko"}
+        )
+        assert activity.status_code == 200
+        assert calls == []
+
+    def test_session_schedules_classification(
+        self, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[Settings] = []
+        monkeypatch.setattr(feed_index_service, "request_classify", calls.append)
+        client = client_for(settings)
+        token = sign_up(client)
+        response = client.request("GET", "/v1/me/session", headers=bearer(token))
+        assert response.status_code == 200
+        assert calls == [settings]

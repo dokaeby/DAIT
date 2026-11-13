@@ -2,17 +2,15 @@
 
 import sqlite3
 from contextlib import nullcontext
-from types import SimpleNamespace
+
+import pytest
+from pydantic import SecretStr
 
 from dait.core.config import Settings
 from dait.services import feed_index_service, news_activity_service
 
 
-def _ignore_classify_request(_settings: Settings) -> None:
-    """request_classify의 백그라운드 스레드 생성을 막는다."""
-
-
-def test_counts_keep_saved_interests_in_their_region(monkeypatch) -> None:
+def test_counts_keep_saved_interests_in_their_region(monkeypatch: pytest.MonkeyPatch) -> None:
     conn = sqlite3.connect(":memory:")
     try:
         conn.executescript("""
@@ -38,9 +36,12 @@ def test_counts_keep_saved_interests_in_their_region(monkeypatch) -> None:
         """)
         # 관심사 조회는 저장된 분류만 읽으므로 1회 분류를 실행한다.
         feed_index_service.classify_pending(conn)
-        monkeypatch.setattr(news_activity_service, "transaction", lambda _: nullcontext(conn))
-        monkeypatch.setattr(feed_index_service, "request_classify", _ignore_classify_request)
-        settings = SimpleNamespace(database_url="test")
+
+        def fake_transaction(_database_url: str) -> nullcontext[sqlite3.Connection]:
+            return nullcontext(conn)
+
+        monkeypatch.setattr(news_activity_service, "transaction", fake_transaction)
+        settings = Settings(database_url="sqlite:///:memory:", jwt_secret=SecretStr("0" * 32))
         domestic = news_activity_service.activity(settings, "u", "", [], True, "ko")
         overseas = news_activity_service.activity(settings, "u", "", [], True, "en")
         assert domestic.total == 1

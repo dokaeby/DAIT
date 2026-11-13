@@ -235,7 +235,7 @@
       });
 
   }
-  async function load(direction = '', retainSearch = false) {
+  async function load(direction = '') {
     if (direction && (guest || busy)) return;
     const target = direction === 'next' ? cursor : direction === 'prev' ? pageHistory.at(-1) : null;
     if (direction === 'next' && !target || direction === 'prev' && !pageHistory.length) return;
@@ -259,7 +259,7 @@
       query.set('personalized', 'true');
       if (selectedInterest) query.set('interest', selectedInterest);
     }
-    const keyword = retainSearch && shownHasResults && !$('query').value.trim() ? shownQuery : $('query').value.trim();
+    const keyword = $('query').value.trim();
     if (keyword) query.set('q', keyword);
     if (target) query.set('cursor', target);
     $('search-status').textContent = '뉴스를 불러오고 있습니다…';
@@ -365,10 +365,11 @@
     }
     const el = event.target.closest('[data-chip-language]');
     if (!el) return;
-    globalSearch = false; language = el.dataset.chipLanguage; sidebarTopic = '';
+    globalSearch = false; searchAllArticles = false; language = el.dataset.chipLanguage; sidebarTopic = '';
     selectedInterest = el.dataset.interestChip || '';
     category = el.dataset.category || '';
-    load('', true);
+    $('query').value = '';
+    load();
   });
   $('load-more').addEventListener('click', () => load('next'));
   $('load-previous').addEventListener('click', () => load('prev'));
