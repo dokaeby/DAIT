@@ -99,6 +99,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for route_path, filename in (
             ("/", "index.html"),
             ("/settings.html", "settings.html"),
+            ("/privacy.html", "privacy.html"),
+            ("/terms.html", "terms.html"),
             ("/app.js", "app.js"),
         ):
 
