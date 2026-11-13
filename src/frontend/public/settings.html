@@ -28,7 +28,7 @@
 
           <div class="settings-layout"><nav class="settings-menu" aria-label="설정 구역"><a href="#schedule">예약 수집</a><a href="#interests">관심 설정</a><a href="#nickname-settings">닉네임 변경</a><a href="#account">계정 정보</a></nav><div class="settings-sections"><section class="settings-card" id="schedule">
             <h2>예약 수집</h2>
-            <p class="card-note">예약 조건을 계정에 저장합니다. 실제 수집·알림 실행 연결은 후속 단계입니다. 최대 5개.</p>
+            <p class="card-note">예약 조건을 계정에 저장하고 cron-job.org에 실행 시간을 등록합니다. 카카오 알림 연결은 후속 단계입니다. 최대 5개.</p>
             <form id="schedule-form" class="form-grid"><label class="form-field"><span class="field-label">예약 시간 · 시</span><select class="field-control" id="sched-hour" aria-label="시간" required></select></label><label class="form-field"><span class="field-label">예약 시간 · 분</span><select class="field-control" id="sched-minute" aria-label="분" required><option value="00">00분</option><option value="30">30분</option></select></label><div class="form-field"><button class="secondary-button" type="submit" id="sched-submit">예약 추가</button></div></form>
             <p class="card-note">시간대: Asia/Seoul (KST) · 30분 단위</p><p id="schedule-feedback" class="settings-feedback" role="status" aria-live="polite"></p>
             <div class="schedule-selection"><strong>선택한 예약 시간 <span id="schedule-count" aria-live="polite">0 / 5</span></strong><p class="card-note" id="schedule-timezone-warning" hidden>기존 예약 중 다른 시간대로 저장된 항목이 있습니다.</p><ul class="schedule-list" id="schedule-list"></ul></div>

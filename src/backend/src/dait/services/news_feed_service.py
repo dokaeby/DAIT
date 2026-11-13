@@ -7,7 +7,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
-from dait.core.article_language import is_korean_text
+from dait.core.article_language import allowed_summary_lines
 from dait.core.config import Settings
 from dait.core.errors import ValidationFailedError
 from dait.repositories import news_repository
@@ -62,13 +62,10 @@ def _to_item(row: news_repository.NewsListRow, rank: int) -> NewsListItem | None
     if not row.canonical_url.startswith("https://"):
         return None
     status = _processing_status(row.status)
-    summary_lines = news_repository.parse_summary_lines(row.summary_lines)
-    if status == "READY":
-        if not (len(summary_lines) == 3 and all(is_korean_text(line) for line in summary_lines)):
-            status = "INSUFFICIENT"
-            summary_lines = []
-    elif status == "INSUFFICIENT":
-        summary_lines = [line for line in summary_lines if is_korean_text(line)]
+    summary_lines = allowed_summary_lines(news_repository.parse_summary_lines(row.summary_lines))
+    if status == "READY" and not summary_lines:
+        status = "INSUFFICIENT"
+        summary_lines = []
     return NewsListItem(
         original_language=row.original_language,
         author_name=_author_name(row.author_text),

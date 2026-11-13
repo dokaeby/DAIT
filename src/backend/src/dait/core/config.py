@@ -26,6 +26,10 @@ _GOOGLE_PARTIAL_MESSAGE = (
 _GOOGLE_URI_MESSAGE = (
     "GOOGLE_REDIRECT_URI는 https 주소여야 합니다(debug에서만 http://localhost 허용)."
 )
+_CRON_JOB_ORG_PARTIAL_MESSAGE = (
+    "CRON_JOB_ORG_API_KEY를 쓰려면 PUBLIC_BASE_URL과 SCHEDULER_TICK_SECRET도 함께 설정해야 합니다."
+)
+_CRON_JOB_ORG_URL_MESSAGE = "CRON_JOB_ORG_API_URL은 https 주소여야 합니다."
 _RELEASE_CSP = "default-src 'none'; frame-ancestors 'none'"
 # debug에서만 열리는 /docs(Swagger UI)가 CDN 스크립트를 쓰므로 그 범위만 허용한다.
 _DEBUG_CSP = (
@@ -57,6 +61,10 @@ class Settings(BaseSettings):
     # 외부 cron(cron-job.org 등)이 POST /v1/internal/scheduler/tick에 보내는 Bearer 비밀값.
     # 비어 있으면 tick 엔드포인트는 모든 요청을 거절한다(기능 꺼짐). JWT 키와 다른 값을 쓴다.
     scheduler_tick_secret: SecretStr = Field(default=SecretStr(""), max_length=256)
+    # cron-job.org REST API 키. 예약 1건 = cron-job.org job 1건으로 외부 등록한다.
+    # 비어 있으면 예약은 DB에만 저장되고 외부 cron 등록은 하지 않는다(로컬/테스트 기본).
+    cron_job_org_api_key: SecretStr = Field(default=SecretStr(""), max_length=255)
+    cron_job_org_api_url: str = Field(default="https://api.cron-job.org", max_length=200)
     # 카카오 '나에게 보내기' 재시도: 최대 시도 횟수와 실패 후 기다릴 초(팀장님과 확정 전 기본값).
     kakao_max_attempts: int = Field(default=3, ge=1, le=10)
     kakao_retry_backoff_seconds: list[int] = Field(
@@ -105,6 +113,22 @@ class Settings(BaseSettings):
                 raise ValueError(_CORS_MESSAGE)
         return value
 
+    # 입력: 환경변수에서 읽은 cron-job.org API 기본 주소.
+    # 출력: 끝의 슬래시를 뗀 https 주소.
+    # 동작: API 키가 외부로 새지 않게 평문 http는 허용하지 않는다.
+    @field_validator("cron_job_org_api_url")
+    @classmethod
+    def _check_cron_job_org_api_url(cls, value: str) -> str:
+        """cron-job.org API 주소가 https인지 확인한다.
+
+        입력: value (환경변수 CRON_JOB_ORG_API_URL)
+        출력: 검증을 통과한 주소(끝 슬래시 제거)
+        기능: http 주소는 거부하고 https만 허용한다.
+        """
+        if not value.startswith("https://"):
+            raise ValueError(_CRON_JOB_ORG_URL_MESSAGE)
+        return value.rstrip("/")
+
     # 입력: 검증을 통과한 설정 전체.
     # 출력: 구글 설정이 모두 있거나 모두 없는 같은 설정.
     # 동작: 일부만 설정된 반쪽 구성과 release의 비https 리다이렉트 주소를 거부한다.
@@ -131,6 +155,24 @@ class Settings(BaseSettings):
             )
             if not allowed:
                 raise ValueError(_GOOGLE_URI_MESSAGE)
+        return self
+
+    # 입력: 검증을 통과한 설정 전체.
+    # 출력: cron-job.org 설정이 모두 있거나 모두 없는 같은 설정.
+    # 동작: API 키만 있고 tick URL/비밀값이 없으면 시작을 거부해 반쪽 연동을 막는다.
+    @model_validator(mode="after")
+    def _check_cron_job_org(self) -> "Settings":
+        """cron-job.org API 키 사용에 필요한 공개 주소와 tick 비밀값을 확인한다.
+
+        입력: 없음(self)
+        출력: self
+        기능: CRON_JOB_ORG_API_KEY가 있으면 PUBLIC_BASE_URL·SCHEDULER_TICK_SECRET이
+              모두 있어야 외부 job이 Render tick을 인증해 호출할 수 있다.
+        """
+        if self.cron_job_org_api_key.get_secret_value() and (
+            not self.public_base_url or not self.scheduler_tick_secret.get_secret_value()
+        ):
+            raise ValueError(_CRON_JOB_ORG_PARTIAL_MESSAGE)
         return self
 
     # 입력: 구글 설정 세 값.

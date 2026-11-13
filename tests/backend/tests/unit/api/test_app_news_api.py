@@ -123,7 +123,7 @@ class FakeNewsService:
                 title="private-body",
                 source_name="Fake Source",
                 published_at=TIME,
-                summary_lines=("One.",),
+                summary_lines=(),
                 original_url=HttpUrl("https://news.example/a"),
             )
             return NewsListResponse.model_construct(

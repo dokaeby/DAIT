@@ -1,6 +1,6 @@
 """FR-DETAIL-01 뉴스 상세: 저장된 기사·콘텐츠·관계 결과를 계약으로 조립한다."""
 
-from dait.core.article_language import is_korean_text, needs_translation
+from dait.core.article_language import allowed_summary_lines, is_korean_text, needs_translation
 from dait.core.config import Settings
 from dait.core.errors import NewsNotFoundError
 from dait.repositories import news_repository
@@ -98,16 +98,13 @@ def _detail_uncached(settings: Settings, news_id: str) -> NewsDetailResponse:
 
     translation_required = needs_translation(row.original_language, row.source_name)
     status = row.status
-    summary_lines = news_repository.parse_summary_lines(row.summary_lines)
+    summary_lines = allowed_summary_lines(news_repository.parse_summary_lines(row.summary_lines))
     translated_text = row.translated_text
-    if status == "READY" and not (
-        len(summary_lines) == 3 and all(is_korean_text(line) for line in summary_lines)
-    ):
+    if status == "READY" and not summary_lines:
         status = "INSUFFICIENT"
         summary_lines = []
         translated_text = None
     elif status == "INSUFFICIENT":
-        summary_lines = [line for line in summary_lines if is_korean_text(line)]
         translated_text = None
     if translated_text is not None and not is_korean_text(translated_text):
         translated_text = None

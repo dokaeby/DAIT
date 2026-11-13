@@ -180,7 +180,9 @@ def test_malformed_json_falls_back() -> None:
 
 
 def test_wrong_summary_line_count_falls_back() -> None:
-    client = FakeGrokClient(json.dumps({"summary_lines": ["하나.", "둘."]}, ensure_ascii=False))
+    client = FakeGrokClient(
+        json.dumps({"summary_lines": ["하나.", "둘.", "셋.", "넷."]}, ensure_ascii=False)
+    )
     processor = _processor(client=client)
 
     result = asyncio.run(processor.process(_domestic_article()))

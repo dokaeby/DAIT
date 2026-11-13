@@ -234,6 +234,8 @@ def public_news_counts(
         f"WHERE {' AND '.join(clauses)}"
     )
     row = conn.execute(sql, params).fetchone()
+    if row is None:
+        return {}, {}
     size = len(_CATEGORY_VALUES)
     return (
         {category: int(row[i]) for i, category in enumerate(_CATEGORY_VALUES)},
@@ -427,4 +429,4 @@ def parse_summary_lines(raw: str | None) -> list[str]:
     if not isinstance(value, list):
         return []
     items = cast("list[object]", value)
-    return [item[:500] for item in items if isinstance(item, str)][:3]
+    return [item.strip()[:500] for item in items if isinstance(item, str) and item.strip()][:3]
