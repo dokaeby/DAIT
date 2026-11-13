@@ -93,7 +93,7 @@
     }
   }
   function selectionTitle() {
-    if (globalSearch) return '국내·해외 · 전체 검색';
+    if (globalSearch) return '국내 · 전체 검색';
     const prefix = language === 'en' ? '해외' : '국내';
     let name = (language === 'en' ? englishNames : names)[category] || '전체';
     const code = selectedInterest || sidebarTopic;
@@ -329,7 +329,7 @@
     const query = new URLSearchParams({sort: 'latest', page_size: guest ? '10' : PAGE_SIZE});
     if (category) query.set('category', category);
     if (searchAllArticles) query.set('search_scope', globalSearch ? 'all' : 'filtered');
-    if (!globalSearch && language) query.set('language', language);
+    query.set('language', language);
     if (searchAllArticles && selectedInterest) query.set('topic', selectedInterest);
     if (sidebarTopic) query.set('topic', sidebarTopic);
     if (personalizedChips && !guest && !sidebarTopic && !searchAllArticles && !category) {
