@@ -26,10 +26,12 @@
 | 1.0.1 | seonghoon.yang | 2026-11-06 | 화면설계서 v1.0.1 반영 및 문서 세트 정합성 보강 |
 | 1.0.2 | seonghoon.yang | 2026-11-10 | 문서 세트 버전 1.0.2로 갱신 |
 | 1.0.3 | devin | 2026-11-12 | 구현된 단위 테스트 스위트(백엔드 586건 통과)와 1.0.3 신규 기능(스케줄 tick, Redis, 검색 확장) 케이스 반영 |
+| 1.0.3 | 그린컬 | 2026-11-13 | 구글 로그인·계정 연결 선택 케이스 UT-AUTH-013~029 추가(백엔드 646건 통과) |
 
 ## 0.1 v1.0.3 구현 테스트 현황
 
-- 백엔드 pytest 스위트 **586건 전부 통과**(develop `4d7e60d` 기준).
+- 백엔드 pytest 스위트 **586건 전부 통과**(develop `4d7e60d` 기준). 구글 로그인·계정 연결 반영 후
+  `develop`과 합친 상태에서 **646건 전부 통과**(2026-11-13).
 - v1.0.3에서 추가된 테스트 영역: 스케줄러 tick(`scheduler_routes`/`schedule_run_service`),
   Redis 캐시·락·손상 캐시 방어, Redis 로그인 스로틀, 관심사/닉네임/세션,
   뉴스 activity·읽음, `schedule_runs` 실행 이력.
@@ -127,6 +129,83 @@
 
 ### UT-AUTH-012 회원탈퇴 재인증 실패
 - 기대: 사용자 상태/데이터 변경 0건
+
+### UT-AUTH-013 구글 신규 사용자 가입·로그인
+- 관련 기능: FR-AUTH-02
+- 대상: `social_auth_service.finish_login`/`exchange` (가짜 `GoogleClient`)
+- 기대: 비밀번호 없는 사용자 1건 + `social_identities` 1건 생성, 교환 코드로 토큰 발급, `onboarding_required=true`
+- 테스트: `test_new_google_user_gets_passwordless_account_and_tokens`
+
+### UT-AUTH-014 구글 재로그인은 같은 계정
+- 기대: 두 번째 로그인에서 사용자 수 증가 없음
+- 테스트: `test_second_google_login_reuses_same_account`
+
+### UT-AUTH-015 로그인 URL의 PKCE·state·nonce·redirect_uri
+- 기대: `code_challenge_method=S256`, `code_challenge`가 verifier의 SHA-256, state·nonce 포함,
+  `redirect_uri`가 설정값과 정확히 일치, state 쿠키 HttpOnly·SameSite=Lax
+- 테스트: `test_login_url_has_pkce_state_nonce_and_exact_redirect`, `test_state_cookie_is_httponly_lax`
+
+### UT-AUTH-016 state 거부(불명·재사용·쿠키 불일치)
+- 기대: 모두 `state_invalid`, 다른 브라우저(쿠키 없음)에서 남의 state를 써도 거부(로그인 CSRF)
+- 테스트: `test_unknown_or_reused_state_is_rejected`, `test_cookie_state_mismatch_is_rejected`
+
+### UT-AUTH-017 id_token 검증 실패
+- 기대: nonce 불일치·aud 불일치·만료·iss 불일치는 `invalid_id_token`, `email_verified=false`는
+  `email_unverified`이며 계정이 만들어지지 않음
+- 테스트: `test_bad_id_token_is_rejected`(4개 인자), `test_unverified_google_email_is_rejected`
+
+### UT-AUTH-018 구글 장애·사용자 취소
+- 기대: 장애는 `provider_unavailable`(계정 미생성), 취소는 `access_denied`
+- 테스트: `test_google_outage_creates_nothing`, `test_user_cancel_at_google_returns_access_denied`
+
+### UT-AUTH-019 교환 코드 1회용
+- 기대: 첫 사용 200, 재사용·모르는 코드는 같은 401 `INVALID_TOKEN`
+- 테스트: `test_exchange_code_is_single_use_and_unknown_is_401`
+
+### UT-AUTH-020 같은 이메일 자동 병합 금지와 연결하지 않기
+- 기대: 같은 이메일 계정이 있어도 자동 병합 없음(사용자 1명, 연결 0건), 연결 표만 발급,
+  연결하지 않으면 이메일 로그인이 그대로 성공
+- 테스트: `test_same_email_account_is_not_merged_automatically`, `test_user_can_decline_link_and_keep_email_login`
+
+### UT-AUTH-021 연결하기 성공
+- 기대: 기존 비밀번호가 맞으면 200과 토큰, 연결 1건, 이후 구글 로그인은 같은 사용자, 기존 비밀번호 로그인 유지
+- 테스트: `test_link_with_correct_password_then_google_login_works`
+
+### UT-AUTH-022 연결 비밀번호 오입력과 잠금
+- 기대: 틀리면 401(연결 0건)이며 같은 표로 다시 입력 가능, 5회 틀리면 맞는 비밀번호도 429
+- 테스트: `test_wrong_password_does_not_link_but_ticket_survives`, `test_repeated_wrong_passwords_lock_the_link`
+
+### UT-AUTH-023 연결 표 1회용·불명
+- 기대: 성공한 표 재사용 401, 모르는 표 401
+- 테스트: `test_link_ticket_is_single_use_and_unknown_is_401`
+
+### UT-AUTH-024 연결 대상이 아닌 계정
+- 기대: 이미 구글이 연결된 계정, 비밀번호 없는 구글 전용 계정과 이메일이 같은 다른 구글 계정은
+  `google_account_mismatch`
+- 테스트: `test_other_google_account_with_same_email_is_refused`, `test_passwordless_account_with_same_email_is_refused`
+
+### UT-AUTH-025 구글 전용 계정의 비밀번호 로그인과 로그인 중 시작
+- 기대: 비밀번호 로그인은 일반 401, 이미 로그인한 요청이 구글 로그인을 시작하면 409
+- 테스트: `test_google_only_account_cannot_password_login`, `test_logged_in_user_cannot_start_google_login`
+
+### UT-AUTH-026 구글 전용 계정 탈퇴
+- 관련 기능: FR-AUTH-04
+- 기대: 로그인 5분 이내 + `탈퇴` 문구일 때만 삭제(연결도 함께 삭제), 문구가 다르면 422, 문구 없음·5분 경과는 403,
+  비밀번호 계정은 문구만으로 탈퇴 불가(401)
+- 테스트: `test_google_only_withdraw_needs_recent_login_and_phrase`, `test_password_account_cannot_withdraw_with_phrase_only`
+
+### UT-AUTH-027 구글 설정 꺼짐·반쪽 설정
+- 기대: 설정이 없으면 세 엔드포인트 404, 일부만 설정하거나 release에서 http 주소면 시작 거부
+- 테스트: `test_disabled_when_unconfigured`, `test_partial_or_insecure_config_refuses_start`
+
+### UT-AUTH-028 1회용 저장소
+- 기대: `pop`은 한 번만 값을 돌려주고 TTL 후 없음, `peek`은 지우지 않음
+- 테스트: `test_one_time_store_pops_once_and_expires`, `test_one_time_store_peek_keeps_value`
+
+### UT-AUTH-029 마이그레이션 0008
+- 기대: 비밀번호 없는 사용자 저장 가능, `(provider, subject)`·`(user_id, provider)` 유니크,
+  비밀번호 없는 계정이 있으면 downgrade 거부, downgrade 후 upgrade 왕복 시 데이터 유지
+- 테스트: `tests/backend/tests/unit/test_social_migration.py` 3건
 
 ## 5. 메인 화면 / 뉴스 목록 단위 테스트
 
