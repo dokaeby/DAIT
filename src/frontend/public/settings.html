@@ -4,15 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DAIT · 설정</title>
-    <link rel="stylesheet" href="/mockup/local-design.css"><link rel="stylesheet" href="/mockup/local-app.css"><link rel="stylesheet" href="/mockup/news-ui.css?v=settings-sidebar-3"><link rel="stylesheet" href="/mockup/settings-ui.css?v=workspace-10">
-  </head>
+    <link rel="stylesheet" href="/mockup/local-design.css"><link rel="stylesheet" href="/mockup/local-app.css"><link rel="stylesheet" href="/mockup/news-ui.css?v=header-search-4"><link rel="stylesheet" href="/mockup/settings-ui.css?v=sticky-controls-2">
+  <script src="/mockup/sticky-controls.js?v=4" defer></script>
+</head>
   <body>
     <div class="app-shell settings-shell">
       <header class="app-header">
         <a class="brand" href="/?ui=20261112-search" aria-label="DAIT 메인"><span class="brand-mark">DAIT</span><span class="brand-divider"></span><span class="brand-copy">AI 뉴스 큐레이션 서비스</span></a>
-        <div class="header-actions"><span id="auth-area"></span></div>
+        <div class="header-actions"><span id="auth-area"></span><a class="secondary-button settings-gear is-current" href="/settings.html" aria-current="page" hidden>설정</a></div>
       </header>
-      <div class="app-body settings-body-layout"><aside class="sidebar" id="settings-sidebar" hidden aria-label="주요 탐색"><nav class="nav-group"><span class="nav-label">Discover</span><a class="nav-item" href="/?ui=20261112-search">⌂ 오늘의 AI 뉴스</a><div id="settings-sidebar-categories" aria-label="카테고리와 키워드"></div></nav><nav class="nav-group"><span class="nav-label">Workspace</span><a class="nav-item" href="/settings.html#interests">☆ 관심 카테고리</a><a class="nav-item" href="/settings.html">⚙ 설정</a></nav><p class="nav-note">RSS 기반 뉴스와 AI 요약을 제공합니다.<br>정확한 내용은 원문을 확인해 주세요.</p></aside><main class="settings-page" id="settings-main">
+      <div class="app-body settings-body-layout"><aside class="sidebar" id="settings-sidebar" hidden aria-label="주요 탐색"><nav class="nav-group"><span class="nav-label">Discover</span><a class="nav-item" href="/?ui=20261112-search">⌂ 오늘의 AI 뉴스</a><div id="settings-sidebar-categories" aria-label="카테고리와 키워드"></div></nav><nav class="nav-group"><span class="nav-label">Workspace</span><a class="nav-item" href="/settings.html#interests">☆ 관심 카테고리</a></nav><p class="nav-note">RSS 기반 뉴스와 AI 요약을 제공합니다.<br>정확한 내용은 원문을 확인해 주세요.</p></aside><main class="settings-page" id="settings-main">
         <div class="auth-required" id="auth-required" hidden role="status">
           <span class="auth-required-icon" aria-hidden="true">🔒</span>
           <h1>로그인이 필요합니다</h1>
@@ -20,12 +21,12 @@
           <a class="primary-button" href="/?ui=20261112-search">메인으로 돌아가기</a>
         </div>
         <div id="settings-body" hidden><section id="welcome-interests" class="welcome-interests" hidden aria-labelledby="welcome-title"><h2 id="welcome-title">관심 있는 주제를 선택해 보세요</h2><p>선택은 자유입니다. 저장하지 않고 다른 화면으로 이동해도 됩니다.</p><a class="secondary-button" href="/?ui=20261112-search">나중에 설정하고 뉴스 보기</a></section>
-          <div class="page-head">
+          <div class="page-head settings-page-head" data-sticky-controls>
             <p class="eyebrow">Personal Workspace</p><h1 class="page-title">설정</h1>
-            <p class="page-description">뉴스 노출과 알림, 예약 수집을 관리합니다.</p>
+            <p class="page-description">관심 카테고리와 예약 수집, 계정 정보를 관리합니다.</p>
           </div>
 
-          <div class="settings-layout"><nav class="settings-menu" aria-label="설정 구역"><a href="#schedule">예약 수집</a><a href="#interests">관심 설정</a><a href="#display">노출·알림</a><a href="#nickname-settings">닉네임 변경</a><a href="#account">계정 정보</a></nav><div class="settings-sections"><section class="settings-card" id="schedule">
+          <div class="settings-layout"><nav class="settings-menu" aria-label="설정 구역"><a href="#schedule">예약 수집</a><a href="#interests">관심 설정</a><a href="#nickname-settings">닉네임 변경</a><a href="#account">계정 정보</a></nav><div class="settings-sections"><section class="settings-card" id="schedule">
             <h2>예약 수집</h2>
             <p class="card-note">예약 조건을 계정에 저장합니다. 실제 수집·알림 실행 연결은 후속 단계입니다. 최대 5개.</p>
             <form id="schedule-form" class="form-grid"><label class="form-field"><span class="field-label">예약 시간 · 시</span><select class="field-control" id="sched-hour" aria-label="시간" required></select></label><label class="form-field"><span class="field-label">예약 시간 · 분</span><select class="field-control" id="sched-minute" aria-label="분" required><option value="00">00분</option><option value="30">30분</option></select></label><div class="form-field"><button class="secondary-button" type="submit" id="sched-submit">예약 추가</button></div></form>
@@ -35,11 +36,11 @@
             <div class="panel-head"><h2 class="panel-title">관심 카테고리</h2><span id="interest-count" class="interest-count" role="status" aria-live="polite"></span></div>
             <p class="card-note">저장한 관심 주제는 메인 화면의 소주제 칩에 반영됩니다. 칩을 누르면 해당 주제의 키워드로 기사를 찾습니다.</p>
             <form id="interests-form">
-              <fieldset id="interest-fields" disabled><legend class="sr-only">관심 카테고리 선택</legend><div class="interest-tools"><button type="button" class="auth-link" id="interests-all">전체 선택</button><button type="button" class="auth-link" id="interests-clear">선택 해제</button></div><div id="interest-options"></div><button class="primary-button" type="submit">관심사 저장</button></fieldset>
+              <fieldset id="interest-fields" disabled><legend class="sr-only">관심 카테고리 선택</legend><div class="interest-tools"><button type="button" class="auth-link" id="interests-all">전체 선택</button><button type="button" class="auth-link" id="interests-clear">선택 해제</button></div><div id="interest-options"></div></fieldset>
             </form>
             <p id="interests-feedback" class="settings-feedback" role="status" aria-live="polite">관심사를 불러오고 있습니다…</p>
-            <button class="secondary-button" id="interests-retry" type="button" hidden>다시 불러오기</button>
-          </section><section class="settings-card" id="display">
+            <button class="secondary-button" id="interests-save-retry" type="button" hidden>다시 저장</button><button class="secondary-button" id="interests-retry" type="button" hidden>다시 불러오기</button>
+          </section><section class="settings-card" id="display" hidden>
             <h2>노출·알림</h2>
             <p class="card-note">변경 사항은 저장 버튼을 눌러야 적용됩니다.</p>
             <form id="settings-form">
@@ -75,7 +76,8 @@
       </main></div>
     </div>
     <dialog id="withdraw-dialog" aria-labelledby="withdraw-title" aria-describedby="withdraw-description"><div class="withdraw-card"><div class="withdraw-heading"><h2 id="withdraw-title">정말로 탈퇴하시겠습니까?</h2><button type="button" class="card-close" id="withdraw-cancel" aria-label="회원 탈퇴 확인창 닫기">×</button></div><p id="withdraw-description">탈퇴하면 계정과 저장된 관심사, 설정, 예약 및 읽음 기록이 삭제되며 복구할 수 없습니다.</p><form id="withdraw-form"><label for="withdraw-password">비밀번호 확인</label><input class="field-control" id="withdraw-password" type="password" autocomplete="current-password" maxlength="128"><label for="withdraw-confirm">구글로 가입한 계정은 비밀번호 대신 여기에 &quot;탈퇴&quot;를 입력</label><input class="field-control" id="withdraw-confirm" type="text" autocomplete="off" maxlength="10"><p id="withdraw-feedback" role="status" aria-live="polite"></p><button type="submit" class="danger-button">탈퇴 확인</button></form></div></dialog>
-    <script src="/app.js?v=safari-auth-1"></script>
-    <script src="/mockup/settings-ui.js?v=workspace-10"></script>
+    <script src="/app.js?v=domestic-login-1"></script>
+    <script src="/mockup/interest-autosave.js?v=1"></script>
+    <script src="/mockup/settings-ui.js?v=autosave-settings-2"></script>
   </body>
 </html>

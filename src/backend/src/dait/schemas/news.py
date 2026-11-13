@@ -57,6 +57,8 @@ class NewsListItem(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str = Field(min_length=1, max_length=64)
+    original_language: str = "und"
+    author_name: str | None = None
     rank: int = Field(ge=1)
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
     source_name: str = Field(min_length=1, max_length=200)
@@ -94,6 +96,7 @@ class NewsActivity(BaseModel):
     """Uncached counts and private read IDs for a page."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+    interest_counts: dict[str, int] = Field(default_factory=dict)
     total: int = Field(ge=0)
     counts: dict[NewsCategory, Annotated[int, Field(ge=0)]] = Field(max_length=4)
     read_ids: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(max_length=50)

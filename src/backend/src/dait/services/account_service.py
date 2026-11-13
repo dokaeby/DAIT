@@ -105,19 +105,17 @@ def withdraw(
     기능: 잠겨 있으면 TooManyAttemptsError, 비밀번호가 틀리면 InvalidCredentialsError이며 이때는
           아무것도 바꾸지 않고 실패를 잠금 횟수에 더한다. 맞으면 한 트랜잭션으로 사용자 행을 지운다.
     """
-    ip_key = client_ip or "unknown"
-    if throttles.account.is_locked(user.email, now) or throttles.ip.is_locked(ip_key, now):
+    if throttles.is_locked(user.email, client_ip, now):
         audit("withdraw", "locked", user_id=user.id, client_ip=client_ip)
         raise TooManyAttemptsError
     # 비밀번호 없는 계정은 이 경로에서 항상 실패한다(withdraw_without_password를 써야 한다).
     if not verify_password(password, user.password_hash):
-        throttles.account.register_failure(user.email, now)
-        throttles.ip.register_failure(ip_key, now)
+        throttles.register_failure(user.email, client_ip, now)
         audit("withdraw", "invalid_credentials", user_id=user.id, client_ip=client_ip)
         raise InvalidCredentialsError
     with transaction(settings.database_url) as conn:
         delete_user(conn, user.id)
-    throttles.account.clear(user.email)
+    throttles.clear(user.email, client_ip)
     audit("withdraw", "success", user_id=user.id, client_ip=client_ip)
 
 

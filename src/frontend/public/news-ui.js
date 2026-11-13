@@ -10,43 +10,80 @@
   };
   const labels = { READY: '✓ 요약 준비 완료', INSUFFICIENT: '△ 정보 부족', FAILED: '! 생성 실패', PENDING: '○ 요약 준비 중' };
   const params = new URLSearchParams(location.search);
+  let globalSearch = params.get('search_scope') === 'all';
+  let searchAllArticles = ['all', 'filtered'].includes(params.get('search_scope'));
   let category = Object.hasOwn(names, params.get('category')) ? params.get('category') : '';
   const expandedGroups = new Set();
   let cursor = null;
-  let pageCursor = null, pageStack = [], busy = false;
+  let busy = false;
+  const PAGE_SIZE = '4';
+  let pageStart = null, pageHistory = [], currentPage = 1;
+  let language = params.get('language') === 'en' ? 'en' : 'ko', sidebarTopic = params.get('topic') || '';
+  const responseCache = new Map();
   let shownCategory = '', shownQuery = '', shownHasResults = false;
   const readIds = new Set();
-  const defaultCategoryMarkup = $('categories').innerHTML;
   let personalizedChips = false;
-  let interestSelection = false;
+  let selectedInterest = params.get('interest') || '';
+  let savedInterests = [];
+  const englishNames = { AI: 'AI & Technology', ECONOMY: 'Economy & Business', POLITICS: 'Society & Culture' };
+  const topicCodes = {AI: ['models','agents','devtools','opensource','infra'], ECONOMY: ['industry','business','startups','markets','jobs'], POLITICS: ['policy','education','health','climate','culture']};
+  const groupCodes = {AI:'ai', ECONOMY:'economy', POLITICS:'society'};
   function configureInterestChips(user) {
     const host = $('categories');
-    host.innerHTML = defaultCategoryMarkup;
-    personalizedChips = false;
-    interestSelection = false;
-    const groups = { ai: 'AI', economy: 'ECONOMY', society: 'POLITICS' };
-    const interests = (user?.interests || []).filter(item => groups[item.group] && item.code && item.name);
-    if (!interests.length) return;
-    personalizedChips = true;
-    const all = host.querySelector('[data-category=""]');
-    host.replaceChildren(all);
-    interests.forEach((item, index) => {
-      const button = document.createElement('button');
-      button.type = 'button'; button.className = 'chip';
-      button.dataset.interestChip = item.code;
-      button.dataset.interestCategory = groups[item.group];
-      button.dataset.interestQuery = item.name;
-      button.textContent = item.name;
-      button.hidden = index >= 5;
-      host.append(button);
-    });
-    if (interests.length > 5) {
-      const toggle = document.createElement('button');
-      toggle.type = 'button'; toggle.className = 'chip interest-expand';
-      toggle.dataset.interestExpand = 'true'; toggle.setAttribute('aria-expanded', 'false');
-      toggle.textContent = `더 보기 (${interests.length - 5})`;
-      host.append(toggle);
+    host.replaceChildren();
+    savedInterests = user?.interests || [];
+    personalizedChips = savedInterests.length > 0;
+    $('interest-count-note').hidden = !personalizedChips;
+    if (!savedInterests.some(item => item.code === selectedInterest)) selectedInterest = '';
+    if (selectedInterest) language = selectedInterest.startsWith('en.') ? 'en' : 'ko';
+    for (const region of ['ko', 'en']) {
+      const row = document.createElement('div'); row.className = 'region-chip-row'; row.dataset.region = region;
+      const label = document.createElement('strong'); label.className = 'region-chip-label'; label.textContent = region === 'ko' ? '국내' : '해외';
+      const chips = document.createElement('div'); chips.className = 'region-chips';
+      const make = (name, code, interest) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'chip'; button.dataset.chipLanguage = region; button.dataset.chipLabel = name;
+        if (interest) { button.dataset.interestChip = code; button.dataset.interestQuery = name; }
+        else button.dataset.category = code;
+        button.textContent = name + '(…)'; chips.append(button); return button;
+      };
+      make(region === 'ko' ? '전체' : 'All', '', false);
+      if (personalizedChips) {
+        const interests = savedInterests.filter(item => item.code.startsWith('en.') === (region === 'en'));
+        interests.forEach((item, index) => { make(item.name, item.code, true).hidden = index >= 5; });
+        if (interests.length > 5) {
+          const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'chip interest-toggle'; toggle.dataset.interestExpand = region;
+          chips.id = 'interest-chips-' + region;
+          toggle.setAttribute('aria-controls', chips.id); toggle.setAttribute('aria-label', (region === 'ko' ? '국내' : '해외') + ' 관심사 펼치기');
+          toggle.setAttribute('aria-expanded','false'); toggle.textContent = '더 보기 (' + (interests.length - 5) + ')'; row.append(toggle);
+        }
+        if (!interests.length) {
+          const note = document.createElement('span'); note.className = 'region-empty'; note.textContent = '선택한 관심사가 없습니다'; chips.append(note);
+        }
+      } else {
+        for (const code of Object.keys(names)) make((region === 'ko' ? names : englishNames)[code], code, false);
+      }
+      row.prepend(label, chips); host.append(row);
     }
+  }
+  function selectionTitle() {
+    if (globalSearch) return '국내·해외 · 전체 검색';
+    const prefix = language === 'en' ? '해외' : '국내';
+    let name = (language === 'en' ? englishNames : names)[category] || '전체';
+    const code = selectedInterest || sidebarTopic;
+    if (code) {
+      const saved = savedInterests.find(item => item.code === code);
+      if (saved) name = saved.name;
+      else {
+        const base = code.replace(/^en\./, '').split('.');
+        const cat = Object.keys(groupCodes).find(key => groupCodes[key] === base[0]);
+        const index = cat ? topicCodes[cat].indexOf(base[1]) : -1;
+        if (index >= 0) {
+          const englishButton = document.querySelector('[data-english-topic="' + base.join('.') + '"]');
+          name = language === 'en' && englishButton ? englishButton.textContent : topics[cat][index];
+        }
+      }
+    }
+    return prefix + ' · ' + name;
   }
   function refreshReads() {
     document.querySelectorAll('[data-article-id]').forEach(el => {
@@ -69,8 +106,6 @@
     } catch { $('search-status').textContent = '읽음 기록을 저장하지 못했습니다. 기사를 다시 열면 재시도합니다.'; }
   }
   let listRequest;
-  let detailRequest;
-  let originalUrl = '';
   let guest = true;
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function safeUrl(raw) {
@@ -84,19 +119,30 @@
     return lines?.length ? `<ul class="summary-list">${lines.map(line => `<li>${escape(line)}</li>`).join('')}</ul>` : `<p class="empty-summary">${escape(status === 'INSUFFICIENT' ? '요약을 작성하기에 기사 정보가 부족합니다.' : labels[status] || '저장된 요약이 없습니다.')}</p>`;
   }
   async function json(url, signal) {
+    const canonical = new URL(url, location.origin);
+    canonical.searchParams.sort();
+    const cacheKey = canonical.pathname + canonical.search;
+    const cached = responseCache.get(cacheKey);
+    const ttl = canonical.pathname === '/v1/news/activity' ? 15000 : 60000;
+    if (cached && Date.now() - cached.time < ttl) return cached.value;
     const res = await DAIT.api(url, { signal, headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(res.status === 404 ? '기사를 찾을 수 없습니다.' : '뉴스를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
-    return res.json();
+    const value = await res.json();
+    if (url.startsWith('/v1/news?') || url.startsWith('/v1/news/activity?')) {
+      if (responseCache.size > 100) responseCache.clear();
+      responseCache.set(cacheKey, {time: Date.now(), value});
+    }
+    return value;
   }
   function card(item) {
     const id = escape(item.id);
     const url = safeUrl(item.original_url);
-    return `<li class="article news-card" data-article-id="${id}"><div class="rank" aria-label="목록 ${escape(item.rank)}번째">${escape(item.rank)}</div><div class="news-main"><p class="category-tag ai">${escape(names[item.category] || item.category)}</p><h2 class="news-title"><button type="button" data-detail="${id}">${escape(item.title)}</button></h2><div class="news-meta"><span>${escape(item.source_name)}</span><span class="meta-dot"></span><time>${escape(date(item.published_at))}</time></div></div><div class="summary-box"><p class="summary-title">✦ AI 3줄 요약</p>${summary(item.summary_lines, item.processing_status)}</div><div class="card-actions"><span class="status-tag ${item.processing_status === 'READY' ? 'ready' : 'partial'}">${escape(labels[item.processing_status] || '상태 확인 중')}</span><button class="primary-button" type="button" data-detail="${id}">상세 보기</button>${url ? `<a class="secondary-button" href="${escape(url)}" target="_blank" rel="noopener noreferrer">원문 열기 ↗</a>` : ''}</div></li>`;
+    return `<li class="article news-card" data-article-id="${id}"><div class="rank" aria-label="목록 ${escape(item.rank)}번째">${escape(item.rank)}</div><div class="news-main"><p class="article-tags"><span class="category-tag ai">${escape(names[item.category] || item.category)}</span><span class="origin-tag">${item.original_language === 'ko' ? '국내' : item.original_language && item.original_language !== 'und' ? '해외' : '구분 미확인'}</span></p><h2 class="news-title"><a href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(item.title)}</a></h2><div class="news-meta"><span>${escape(item.source_name)}</span>${item.author_name ? `<span> · ${escape(item.author_name)}</span>` : ''}<span class="meta-dot"></span><time>${escape(date(item.published_at))}</time></div></div><div class="summary-box"><p class="summary-title">✦ AI 3줄 요약</p>${summary(item.summary_lines, item.processing_status)}</div><div class="card-actions">${item.processing_status === 'READY' ? '' : `<span class="status-tag partial">${escape(labels[item.processing_status] || '상태 확인 중')}</span>`}${url ? `<a class="secondary-button" href="${escape(url)}" target="_blank" rel="noopener noreferrer">원문 열기 ↗</a>` : ''}<button type="button" class="secondary-button" data-copy-url="${escape(url)}">링크 복사</button></div></li>`;
   }
   function syncSidebar() {
     const query = $('query').value.trim();
     document.querySelectorAll('[data-topic-group]').forEach(button => {
-      const active = button.dataset.topicGroup === category;
+      const active = language !== 'en' && !selectedInterest.startsWith('en.') && button.dataset.topicGroup === category;
       button.classList.toggle('active', active);
       button.parentElement.classList.toggle('is-active', active);
     });
@@ -106,9 +152,23 @@
       $(button.getAttribute('aria-controls')).hidden = !expanded;
     });
     document.querySelectorAll('[data-topic]').forEach(button => {
-      const active = button.dataset.topicCategory === category && button.dataset.topic === query;
+      const code = groupCodes[button.dataset.topicCategory] + '.' + topicCodes[button.dataset.topicCategory][topics[button.dataset.topicCategory].indexOf(button.dataset.topic)];
+      const active = language === 'ko' && (sidebarTopic || selectedInterest) === code;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
+    });
+    const englishTopic = selectedInterest.startsWith('en.') ? selectedInterest.slice(3) : sidebarTopic;
+    const englishCategory = selectedInterest.startsWith('en.') ? ({ai:'AI', economy:'ECONOMY', society:'POLITICS'}[englishTopic.split('.')[0]]) : category;
+    const englishSelected = language === 'en' || selectedInterest.startsWith('en.');
+    document.querySelectorAll('[data-english-group]').forEach(button => {
+      const active = englishSelected && button.dataset.englishGroup === englishCategory;
+      button.classList.toggle('active', active);
+      button.parentElement.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    document.querySelectorAll('[data-english-topic]').forEach(button => {
+      const active = englishSelected && button.dataset.englishTopic === englishTopic;
+      button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
     });
     $('topic-select').value = topics[category]?.includes(query) ? category + ':' + query : '';
   }
@@ -147,159 +207,123 @@
         return;
       }
       const topic = event.target.closest('[data-topic]');
-      if (topic) { category = topic.dataset.topicCategory; $('query').value = topic.dataset.topic; load(); return; }
+      if (topic) { globalSearch = false; searchAllArticles = false; language = 'ko'; selectedInterest = ''; category = topic.dataset.topicCategory; sidebarTopic = groupCodes[category] + '.' + topicCodes[category][topics[category].indexOf(topic.dataset.topic)]; $('query').value = ''; load(); return; }
       const group = event.target.closest('[data-topic-group]');
       if (!group) return;
+      globalSearch = false; searchAllArticles = false; language = 'ko'; sidebarTopic = ''; selectedInterest = '';
       category = group.dataset.topicGroup;
       $('query').value = '';
       load();
     });
     $('topic-select').addEventListener('change', () => {
       const value = $('topic-select').value;
-      if (value) { const split = value.indexOf(':'); category = value.slice(0, split); $('query').value = value.slice(split + 1); }
+      language = 'ko'; selectedInterest = ''; sidebarTopic = '';
+      if (value) { const split = value.indexOf(':'); category = value.slice(0, split); const name = value.slice(split + 1); sidebarTopic = groupCodes[category] + '.' + topicCodes[category][topics[category].indexOf(name)]; $('query').value = ''; }
       else $('query').value = '';
       load();
     });
   }
-  async function load(direction = '', retainSearch = false) {
+  function updateChips(activities) {
+      document.querySelectorAll('[data-chip-language]').forEach(el => {
+        const region = el.dataset.chipLanguage, activity = activities[region];
+        const interest = el.dataset.interestChip;
+        const code = el.dataset.category || '';
+        const selectedTopic = selectedInterest || (sidebarTopic ? (language === 'en' ? 'en.' + sidebarTopic.replace(/^en\./,'') : sidebarTopic) : '');
+        const active = !globalSearch && language === region && (interest ? interest === selectedTopic : !selectedTopic && code === category);
+        el.classList.toggle('active', active); el.setAttribute('aria-pressed', String(active));
+        if (activity) el.textContent = el.dataset.chipLabel + '(' + (interest ? activity.interest_counts?.[interest] || 0 : code ? activity.counts[code] || 0 : activity.total) + ')';
+      });
+
+  }
+  async function load(direction = '') {
     if (direction && (guest || busy)) return;
+    const target = direction === 'next' ? cursor : direction === 'prev' ? pageHistory.at(-1) : null;
+    if (direction === 'next' && !target || direction === 'prev' && !pageHistory.length) return;
     if (direction) { category = shownCategory; $('query').value = shownQuery; }
+    window.dispatchEvent(new Event('dait-search-sync'));
     if (guest) category = '';
     syncSidebar();
+    updateChips({});
     listRequest?.abort();
     const request = listRequest = new AbortController();
-    const target = direction === 'next' ? cursor : direction === 'prev' ? pageStack.at(-1) : null;
-    if (direction === 'next' && !target) return;
-    if (direction === 'prev' && !pageStack.length) return;
     busy = true;
     $('search-results').setAttribute('aria-busy', 'true');
     $('load-more').disabled = true; $('load-previous').disabled = true;
-    $('search-status').textContent = '뉴스를 불러오고 있습니다…';
-    const query = new URLSearchParams({ ui: '20261112-search', sort: 'latest', page_size: '10' });
+    const query = new URLSearchParams({sort: 'latest', page_size: guest ? '10' : PAGE_SIZE});
     if (category) query.set('category', category);
-    const keyword = retainSearch && shownHasResults && !$('query').value.trim() ? shownQuery : $('query').value.trim();
+    if (searchAllArticles) query.set('search_scope', globalSearch ? 'all' : 'filtered');
+    if (!globalSearch && language) query.set('language', language);
+    if (searchAllArticles && selectedInterest) query.set('topic', selectedInterest);
+    if (sidebarTopic) query.set('topic', sidebarTopic);
+    if (personalizedChips && !guest && !sidebarTopic && !searchAllArticles) {
+      query.set('personalized', 'true');
+      if (selectedInterest) query.set('interest', selectedInterest);
+    }
+    const keyword = $('query').value.trim();
     if (keyword) query.set('q', keyword);
     if (target) query.set('cursor', target);
-    const initial = !direction && !$('news-list').querySelector('.news-card');
-    let complete = false;
-    if (initial) {
-      const placeholders = count => Array.from({ length: count }, () => '<li class="news-skeleton" aria-hidden="true"><span></span><span></span><span></span></li>').join('');
-      $('news-list').innerHTML = placeholders(4);
-      const previewQuery = new URLSearchParams(query);
-      previewQuery.set('page_size', '4');
-      json('/v1/news?' + previewQuery, request.signal).then(preview => {
-        if (request !== listRequest || complete || !preview.items.length) return;
-        const first = preview.items.slice(0, 4);
-        $('news-list').innerHTML = first.map(card).join('') + placeholders(6);
-        shownHasResults = true; shownQuery = query.get('q') || ''; shownCategory = query.get('category') || '';
-        refreshReads();
-        updateScrollControls();
-      }).catch(() => {});
-    }
+    $('search-status').textContent = '뉴스를 불러오고 있습니다…';
+    const countsPromise = guest ? Promise.resolve({}) : Promise.all(['ko','en'].map(async region => {
+      const aq = new URLSearchParams({q: keyword, language: region});
+      if (personalizedChips && !searchAllArticles) aq.set('personalized', 'true');
+      return [region, await json('/v1/news/activity?' + aq, request.signal)];
+    })).then(entries => Object.fromEntries(entries));
+    countsPromise.then(activities => {
+      if (request === listRequest) updateChips(activities);
+    }).catch(error => {
+      if (request === listRequest && error.name !== 'AbortError') $('search-status').textContent = '기사 수를 갱신하지 못했습니다.';
+    });
     try {
-      const data = await json('/v1/news?' + query, request.signal);
-      complete = true;
-      const items = guest ? data.items.slice(0, 10) : data.items;
-      let activity;
-      if (!guest) {
-        const aq = new URLSearchParams({ q: query.get('q') || '' });
-        items.forEach(item => aq.append('ids', item.id));
-        activity = await json('/v1/news/activity?' + aq, request.signal);
+      let data = await json('/v1/news?' + query, request.signal);
+      if (request !== listRequest) return;
+      let items = data.items;
+      $('news-list').innerHTML = items.map(card).join('');
+      refreshReads();
+      if (!guest && data.page.has_more) {
+        $('news-list').innerHTML = items.map(card).join('');
+        const next = new URLSearchParams(query);
+        next.set('cursor', data.page.next_cursor);
+        const second = await json('/v1/news?' + next, request.signal);
+        if (request !== listRequest) return;
+        items = [...items, ...second.items];
+        data = {...data, page: second.page};
       }
       if (request !== listRequest) return;
-      if (direction === 'next') pageStack.push(pageCursor);
-      else if (direction === 'prev') pageStack.pop();
-      else pageStack = [];
-      pageCursor = target;
-      shownCategory = query.get('category') || ''; shownQuery = query.get('q') || ''; shownHasResults = items.length > 0;
+      if (direction === 'next') { pageHistory.push(pageStart); currentPage++; }
+      else if (direction === 'prev') { pageHistory.pop(); currentPage--; }
+      else { pageHistory = []; currentPage = 1; }
+      pageStart = target;
+      shownCategory = category; shownQuery = keyword; shownHasResults = items.length > 0;
       history.replaceState(null, '', '/?' + query);
       $('news-list').innerHTML = items.map(card).join('');
-      $('result-count').textContent = guest ? '최신 뉴스 ' + items.length + '건' : '전체 기사';
-      document.querySelectorAll('[data-category]').forEach(el => {
-        const code = el.dataset.category;
-        el.classList.toggle('active', code === category);
-        el.setAttribute('aria-pressed', String(code === category));
-        if (activity) el.textContent = (names[code] || '전체') + '(' + (code ? activity.counts[code] || 0 : activity.total) + ')';
-      });
-      document.querySelectorAll('[data-interest-chip]').forEach(el => {
-        const active = el.dataset.interestCategory === shownCategory && el.dataset.interestQuery === shownQuery;
-        el.classList.toggle('active', active); el.setAttribute('aria-pressed', String(active));
-      });
-      if (activity) { readIds.clear(); activity.read_ids.forEach(id => readIds.add(id)); }
-      refreshReads();
+      $('result-count').textContent = guest ? '최신 뉴스 ' + items.length + '건' : selectionTitle() + ' · ' + data.meta.total_visible + '건';
+
+
       $('search-status').textContent = data.meta.message || '';
-      if (!items.length) $('news-list').innerHTML = '<li class="empty-result"><strong>표시할 뉴스가 없습니다</strong><p>다른 검색어나 카테고리를 선택해 주세요.</p></li>';
+      if (!items.length) $('news-list').innerHTML = '<li class="empty-result"><strong>' + escape(guest ? '표시할 뉴스가 없습니다' : selectionTitle() + '에 해당하는 기사가 없습니다') + '</strong></li>';
       cursor = data.page.has_more ? data.page.next_cursor : null;
       $('pagination').hidden = guest || !items.length;
       $('load-more').hidden = guest; $('load-previous').hidden = guest;
-      $('page-number').textContent = (pageStack.length + 1) + ' / ' + Math.max(pageStack.length + 1, Math.ceil((activity ? (shownCategory ? activity.counts[shownCategory] || 0 : activity.total) : data.meta.total_visible) / 10)) + ' 페이지';
+      $('page-number').textContent = currentPage + ' / ' + Math.max(1, Math.ceil(data.meta.total_visible / 8)) + ' 페이지';
+      if (direction) window.scrollTo({top: 0, behavior: 'instant'});
+      refreshReads();
+      if (!guest && items.length) {
+        const reads = new URLSearchParams();
+        items.forEach(item => reads.append('ids', item.id));
+        json('/v1/news/read-state?' + reads, request.signal).then(ids => {
+          if (request !== listRequest) return;
+          ids.forEach(id => readIds.add(id)); refreshReads();
+        }).catch(() => {});
+      }
       updateScrollControls();
-      if (direction) window.scrollTo({ top: 0, behavior: 'instant' });
     } catch (error) {
-      complete = true;
-      if (error.name === 'AbortError') return;
-      document.querySelectorAll('#news-list .news-skeleton').forEach(el => el.remove());
-      $('search-status').textContent = error.message;
-      const retry = document.createElement('button');
-      retry.type = 'button'; retry.className = 'secondary-button'; retry.textContent = '다시 시도';
-      retry.addEventListener('click', () => load(direction));
-      if ($('news-list').children.length) $('search-status').append(' ', retry);
-      if (!$('news-list').children.length) $('news-list').innerHTML = '<li class="empty-result"><strong>뉴스를 불러올 수 없습니다</strong><br><button type="button" class="secondary-button" id="retry-news">다시 시도</button></li>';
+      if (error.name !== 'AbortError') $('search-status').textContent = error.message;
     } finally {
       if (request === listRequest) {
-        busy = false; $('load-more').disabled = !cursor; $('load-previous').disabled = !pageStack.length;
+        busy = false; $('load-more').disabled = !cursor;
+        $('load-previous').disabled = !pageHistory.length;
         $('search-results').setAttribute('aria-busy', 'false');
       }
-    }
-  }
-  async function openDetail(id) {
-    detailRequest?.abort();
-    const request = detailRequest = new AbortController();
-    originalUrl = '';
-    $('detail-copy').disabled = true;
-    $('detail-original').hidden = true;
-    $('detail-original').removeAttribute('href');
-    $('detail-title').textContent = '기사 불러오는 중';
-    $('detail-meta').textContent = '';
-    $('detail-category').textContent = '';
-    $('detail-summary').replaceChildren();
-    $('detail-text').textContent = '';
-    $('detail-translation').hidden = true;
-    $('detail-feedback').textContent = '';
-    $('detail-copy-status').textContent = '';
-    $('detail-sources').hidden = true;
-    $('detail-source-name').textContent = '';
-    $('detail-source-url').textContent = '';
-    $('detail-source-url').removeAttribute('href');
-    if (!$('detail').open) $('detail').showModal();
-    updateScrollControls();
-    try {
-      const data = await json('/v1/news/' + encodeURIComponent(id), request.signal);
-      if (request !== detailRequest || !$('detail').open) return;
-      markRead(id);
-      $('detail-title').textContent = data.article.title;
-      $('detail-category').textContent = names[data.article.category] || data.article.category;
-      $('detail-meta').textContent = `${data.article.source_name} · ${date(data.article.published_at)}`;
-      $('detail-summary').innerHTML = summary(data.content.summary_lines, data.content.content_status);
-      document.querySelector('#detail-summary ul')?.classList.add('key-points');
-      document.querySelectorAll('#detail-summary li').forEach(line => {
-        const text = document.createElement('span');
-        text.textContent = line.textContent;
-        line.replaceChildren(text);
-      });
-      $('detail-text').textContent = data.content.translated_text || '저장된 번역 본문이 없습니다. 원문에서 확인해 주세요.';
-      $('detail-translation').hidden = !(data.article.translation_required ?? (data.article.original_language && !['ko', 'und'].includes(data.article.original_language)));
-      $('detail-feedback').textContent = labels[data.content.content_status] || '';
-      originalUrl = safeUrl(data.source.original_url);
-      if (originalUrl) {
-        $('detail-original').href = originalUrl; $('detail-original').hidden = false; $('detail-copy').disabled = false;
-        $('detail-source-name').textContent = data.article.source_name;
-        $('detail-source-url').href = originalUrl;
-        $('detail-source-url').textContent = originalUrl;
-        $('detail-sources').hidden = false;
-      }
-    } catch (error) {
-      if (error.name !== 'AbortError') { $('detail-title').textContent = '기사를 불러올 수 없습니다'; $('detail-feedback').textContent = error.message; }
     }
   }
   $('query').value = (params.get('q') || '').slice(0, 100);
@@ -310,14 +334,22 @@
       document.querySelectorAll('#news-list .news-skeleton').forEach(el => el.remove());
       $('search-status').textContent = '';
       $('search-results').setAttribute('aria-busy', 'false');
-      $('load-more').disabled = !cursor; $('load-previous').disabled = !pageStack.length;
-    } else if (shownQuery || busy) { category = ''; $('query').value = ''; load(); }
+      $('load-more').disabled = !cursor;
+    } else if (shownQuery || busy) { globalSearch = false; searchAllArticles = false; language = 'ko'; selectedInterest = ''; sidebarTopic = ''; category = ''; $('query').value = ''; load(); }
   });
-  $('search-form').addEventListener('submit', event => { event.preventDefault(); load(); });
+  $('search-form').addEventListener('submit', event => {
+    event.preventDefault();
+    globalSearch = !!$('query').value.trim();
+    searchAllArticles = globalSearch;
+    language = globalSearch ? '' : 'ko';
+    category = ''; selectedInterest = ''; sidebarTopic = '';
+    load();
+  });
   document.querySelector('.clear-search').addEventListener('click', event => {
     event.preventDefault();
     $('query').value = '';
     category = '';
+    globalSearch = false; searchAllArticles = false; selectedInterest = ''; language = 'ko'; sidebarTopic = '';
     load();
   });
   $('categories').addEventListener('click', event => {
@@ -325,42 +357,37 @@
     if (toggle) {
       const expanded = toggle.getAttribute('aria-expanded') !== 'true';
       toggle.setAttribute('aria-expanded', String(expanded));
-      const buttons = [...$('categories').querySelectorAll('[data-interest-chip]')];
-      buttons.forEach((el, index) => { el.hidden = index >= 5 && !expanded; });
-      toggle.textContent = expanded ? '접기' : `더 보기 (${buttons.length - 5})`;
+      const buttons = [...toggle.closest('.region-chip-row').querySelectorAll('[data-interest-chip]')];
+      buttons.forEach((el,index) => { el.hidden = index >= 5 && !expanded; });
+      toggle.textContent = expanded ? '접기' : '더 보기 (' + (buttons.length - 5) + ')';
+      toggle.setAttribute('aria-label', (toggle.dataset.interestExpand === 'ko' ? '국내' : '해외') + ' 관심사 ' + (expanded ? '접기' : '펼치기'));
       return;
     }
-    const topic = event.target.closest('[data-interest-chip]');
-    if (topic) {
-      category = topic.dataset.interestCategory; $('query').value = topic.dataset.interestQuery;
-      interestSelection = true; load(); return;
-    }
-    const el = event.target.closest('[data-category]');
-    if (el) {
-      category = el.dataset.category;
-      const topicSelected = [...$('categories').querySelectorAll('[data-interest-chip]')].some(
-        chip => chip.dataset.interestQuery === shownQuery && chip.dataset.interestCategory === shownCategory
-      );
-      if (personalizedChips && (interestSelection || topicSelected)) { $('query').value = ''; interestSelection = false; load(); return; }
-      load('', true);
-    }
+    const el = event.target.closest('[data-chip-language]');
+    if (!el) return;
+    globalSearch = false; searchAllArticles = false; language = el.dataset.chipLanguage; sidebarTopic = '';
+    selectedInterest = el.dataset.interestChip || '';
+    category = el.dataset.category || '';
+    $('query').value = '';
+    load();
   });
   $('load-more').addEventListener('click', () => load('next'));
   $('load-previous').addEventListener('click', () => load('prev'));
   $('news-list').addEventListener('click', event => {
     const el = event.target.closest('[data-detail]');
-    if (el) openDetail(el.dataset.detail);
+    if (el) return;
+    const copy = event.target.closest('[data-copy-url]');
+    if (copy) {
+      const url = safeUrl(copy.dataset.copyUrl);
+      if (!url) return;
+      navigator.clipboard.writeText(url).then(() => {
+        copy.textContent = '복사 완료';
+        setTimeout(() => { copy.textContent = '링크 복사'; }, 1500);
+      }).catch(() => { $('search-status').textContent = '링크를 복사하지 못했습니다.'; });
+    }
     const original = event.target.closest('a[target=_blank]');
     if (original) markRead(original.closest('[data-article-id]').dataset.articleId);
     if (event.target.closest('#retry-news')) load();
-  });
-  $('detail-close').addEventListener('click', () => $('detail').close());
-  $('detail').addEventListener('close', () => { detailRequest?.abort(); originalUrl = ''; updateScrollControls(); });
-  $('detail-copy').addEventListener('click', async () => {
-    const url = originalUrl;
-    if (!url) return;
-    try { await navigator.clipboard.writeText(url); if (url === originalUrl) $('detail-copy-status').textContent = '원문 링크를 복사했습니다.'; }
-    catch { if (url === originalUrl) $('detail-copy-status').textContent = '복사하지 못했습니다. 원문 링크를 이용해 주세요.'; }
   });
   let scrollAnchor = 0;
   function updateScrollControls() {
@@ -380,8 +407,38 @@
   window.addEventListener('scroll', updateScrollControls, { passive: true });
   window.addEventListener('resize', () => { scrollAnchor = 0; updateScrollControls(); });
   new MutationObserver(updateScrollControls).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
+
+  function buildEnglishSidebar() {
+    const groups = [
+      ['AI', 'AI & Technology', 'ai', [['models','Models & Research'],['agents','AI Agents'],['devtools','Developer Tools'],['opensource','Open Source & Local Models'],['infra','AI Infrastructure']]],
+      ['ECONOMY', 'Economy & Business', 'economy', [['industry','Industry Trends'],['business','Corporate & Management'],['startups','Startups & Ventures'],['markets','Finance & Markets'],['jobs','Jobs & Employment']]],
+      ['POLITICS', 'Society & Culture', 'society', [['policy','Policy & Administration'],['education','Education'],['health','Health & Medicine'],['climate','Environment & Climate'],['culture','Culture & Content']]]
+    ];
+    const host = $('sidebar-categories');
+    const label = document.createElement('span'); label.className = 'nav-label'; label.textContent = 'English News'; host.append(label);
+    for (const [categoryCode, name, prefix, values] of groups) {
+      const group = document.createElement('div'); group.className = 'topic-group';
+      const row = document.createElement('div'); row.className = 'topic-heading-row';
+      const heading = document.createElement('button'); heading.type = 'button'; heading.className = 'nav-item topic-heading'; heading.textContent = name; heading.dataset.englishGroup = categoryCode;
+      const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'topic-toggle'; toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'; toggle.setAttribute('aria-label', name + ' topics');
+      const list = document.createElement('ul'); list.className = 'topic-list'; list.hidden = true; list.id = 'english-' + prefix;
+      toggle.setAttribute('aria-controls', list.id); toggle.setAttribute('aria-expanded','false');
+      toggle.addEventListener('click', () => { list.hidden = !list.hidden; toggle.setAttribute('aria-expanded', String(!list.hidden)); });
+      const select = topic => { globalSearch = false; searchAllArticles = false; language = 'en'; sidebarTopic = topic; selectedInterest = ''; category = categoryCode; $('query').value = ''; load(); };
+      heading.addEventListener('click', () => select(''));
+      row.append(heading, toggle);
+      for (const [id, text] of values) {
+        const li = document.createElement('li'); const button = document.createElement('button'); button.type = 'button'; button.className = 'topic-button'; button.textContent = text; button.dataset.englishTopic = prefix + '.' + id;
+        button.addEventListener('click', () => select(prefix + '.' + id)); li.append(button); list.append(li);
+      }
+      group.append(row, list); host.append(group);
+    }
+  }
+
   buildSidebar();
+  buildEnglishSidebar();
   function applySession(user) {
+    responseCache.clear(); readIds.clear();
     guest = !user;
     configureInterestChips(user);
     if (guest) { try { const ids = JSON.parse(localStorage.getItem('dait_guest_reads') || '[]'); if (Array.isArray(ids)) ids.filter(id => typeof id === 'string').slice(-2000).forEach(id => readIds.add(id)); } catch {} }

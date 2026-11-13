@@ -16,7 +16,7 @@ from dait.core.config import Settings, get_settings
 from dait.schemas.auth import ResultResponse, SessionResponse, WithdrawRequest
 from dait.schemas.nickname import NicknameResult, NicknameUpdate
 from dait.schemas.user import UserRecord
-from dait.services import account_service, interest_service
+from dait.services import account_service, feed_index_service, interest_service
 from dait.services.login_throttle import LoginThrottles
 
 router = APIRouter(prefix="/v1/me", tags=["me"])
@@ -40,6 +40,7 @@ def session(
     status = account_service.session_status(user)
     if user is None:
         return status
+    feed_index_service.request_classify(settings)
     items = interest_service.list_interests(settings, user.id).interests
     return status.model_copy(update={"interests": items})
 

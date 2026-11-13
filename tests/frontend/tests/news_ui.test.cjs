@@ -101,15 +101,11 @@ test('local UI: cards, safe content, popup, paging, search, error and mobile lay
     await page.locator('[data-category=""]').click();
     await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
     assert.equal(requests.at(-1).searchParams.has('category'), false);
-    assert.equal(requests.at(-1).searchParams.get('q'), 'AI');
-    assert.equal(await page.locator('#query').inputValue(), 'AI');
-    await page.locator('#query').fill('');
-    await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
-    assert.equal(requests.at(-1).searchParams.get('q'), 'AI');
+    assert.equal(requests.at(-1).searchParams.has('q'), false);
     assert.equal(await page.locator('#query').inputValue(), '');
     await page.locator('[data-category=ECONOMY]').click();
     await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
-    assert.equal(requests.at(-1).searchParams.get('q'), 'AI');
+    assert.equal(requests.at(-1).searchParams.has('q'), false);
     assert.equal(requests.at(-1).searchParams.get('category'), 'ECONOMY');
     await page.locator('[data-category=""]').click();
     await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
@@ -385,7 +381,8 @@ test('sidebar topics and optional nickname signup with login handoff', async () 
     assert.equal(searches.at(-1).searchParams.get('category'), 'ECONOMY');
     await page.getByRole('button', { name: '산업 동향', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
-    assert.equal(searches.at(-1).searchParams.get('q'), '산업 동향');
+    assert.equal(searches.at(-1).searchParams.get('topic'), 'economy.industry');
+    assert.equal(searches.at(-1).searchParams.has('q'), false);
     assert.equal(await page.locator('[data-topic="산업 동향"]').getAttribute('aria-pressed'), 'true');
     const countBeforeCollapse = searches.length;
     const urlBeforeCollapse = page.url();
@@ -406,7 +403,8 @@ test('sidebar topics and optional nickname signup with login handoff', async () 
     await page.locator('#topic-select').selectOption('POLITICS:교육');
     await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
     assert.equal(searches.at(-1).searchParams.get('category'), 'POLITICS');
-    assert.equal(searches.at(-1).searchParams.get('q'), '교육');
+    assert.equal(searches.at(-1).searchParams.get('topic'), 'society.education');
+    assert.equal(searches.at(-1).searchParams.has('q'), false);
     await page.evaluate(() => localStorage.removeItem('dait_access_token'));
     await page.reload();
     await page.locator('#signup-open').click();
@@ -630,11 +628,13 @@ test('first login invitation is optional and saved interests become expandable c
     assert.equal(await page.locator('[data-interest-chip]:visible').count(), 7);
     await page.locator('[data-interest-chip="economy.industry"]').click();
     await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
-    assert.equal(lastQuery.searchParams.get('q'), '산업 동향');
-    assert.equal(lastQuery.searchParams.get('category'), 'ECONOMY');
+    assert.equal(lastQuery.searchParams.get('personalized'), 'true');
+    assert.equal(lastQuery.searchParams.get('interest'), 'economy.industry');
+    assert.equal(lastQuery.searchParams.has('q'), false);
     await page.locator('[data-category=""]').click();
     await page.waitForFunction(() => document.querySelector('#search-results').getAttribute('aria-busy') === 'false');
     assert.equal(lastQuery.searchParams.has('q'), false);
+    assert.equal(lastQuery.searchParams.has('interest'), false);
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto('http://dait.test/settings.html');

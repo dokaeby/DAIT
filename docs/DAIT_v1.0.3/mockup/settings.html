@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DAIT 목업 · 설정</title>
+    <link rel="stylesheet" href="mockup.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="index.html" aria-label="DAIT 메인 목업">
+          <span class="brand-mark">DAIT</span>
+          <span class="brand-divider" aria-hidden="true"></span>
+          <span class="brand-copy">AI 뉴스 큐레이션 서비스</span>
+        </a>
+        <div class="header-actions">
+          <button class="icon-button" type="button" aria-label="알림 목업">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></svg>
+          </button>
+          <span class="text-button">
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
+            설정
+          </span>
+        </div>
+      </header>
+
+      <div class="app-body">
+        <aside class="sidebar" aria-label="주요 탐색 목업">
+          <nav class="nav-group">
+            <span class="nav-label">Discover</span>
+            <a class="nav-item" href="index.html">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8" /><path d="M5 10v10h5v-6h4v6h5V10" /></svg>
+              오늘의 AI 뉴스
+            </a>
+            <a class="nav-item" href="detail.html">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
+              뉴스 상세
+            </a>
+          </nav>
+          <nav class="nav-group">
+            <span class="nav-label">Account</span>
+            <span class="nav-item active">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
+              설정
+            </span>
+          </nav>
+          <p class="nav-note">단계 2 예상 화면 목업입니다. 입력·토글·저장 버튼은 실제 값을 변경하지 않습니다.</p>
+        </aside>
+
+        <main class="main">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">Personal Workspace</p>
+              <h1 class="page-title">설정</h1>
+              <p class="page-description">뉴스 수집 조건, 표시 방식과 알림 채널을 관리합니다.</p>
+            </div>
+            <span class="phase-tag">단계 2 예상 화면</span>
+          </div>
+
+          <div class="mockup-note">
+            <strong>목업</strong>
+            <span>이 화면은 상세기획서의 예약·관심 설정·알림 정책을 시각화한 정적 화면입니다.</span>
+          </div>
+
+          <div class="settings-layout">
+            <nav class="settings-menu" aria-label="설정 구역 목업">
+              <a class="active" href="#schedule">예약 수집</a>
+              <a href="#interests">관심 설정</a>
+              <a href="#display">노출·알림</a>
+              <a href="#account">계정·정책</a>
+            </nav>
+
+            <div class="settings-sections">
+              <section class="settings-card" id="schedule">
+                <div class="settings-card-head">
+                  <div>
+                    <h2>예약 수집</h2>
+                    <p>선택한 시간대에 저장된 조건으로 AI 뉴스를 수집합니다.</p>
+                  </div>
+                  <span class="status-tag ready">활성</span>
+                </div>
+                <div class="form-grid">
+                  <label class="form-field">
+                    <span class="field-label">예약 시각</span>
+                    <input class="field-control" type="time" value="08:30" />
+                    <span class="field-help">다음 실행: 2026.11.05 08:30 KST</span>
+                  </label>
+                  <label class="form-field">
+                    <span class="field-label">시간대</span>
+                    <select class="field-control">
+                      <option>Asia/Seoul (KST)</option>
+                    </select>
+                    <span class="field-help">일광절약시간 변경도 시간대 기준으로 계산합니다.</span>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-card" id="interests">
+                <div class="settings-card-head">
+                  <div>
+                    <h2>검색·관심 설정</h2>
+                    <p>승인된 출처와 관심 키워드를 예약 수집에 적용합니다.</p>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <div class="form-field full">
+                    <span class="field-label">관심 키워드</span>
+                    <div class="tag-input" aria-label="관심 키워드 목업">
+                      <span class="input-tag">멀티모달</span>
+                      <span class="input-tag">AI 에이전트</span>
+                      <span class="input-tag">오픈소스 LLM</span>
+                    </div>
+                    <span class="field-help">키워드는 제목과 검증된 요약에 적용됩니다.</span>
+                  </div>
+                  <label class="form-field">
+                    <span class="field-label">수집 출처</span>
+                    <select class="field-control">
+                      <option>승인 출처 전체</option>
+                      <option>공식 기업 블로그</option>
+                      <option>연구·개발 플랫폼</option>
+                    </select>
+                  </label>
+                  <label class="form-field">
+                    <span class="field-label">카테고리</span>
+                    <select class="field-control">
+                      <option>AI·기술</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-card" id="display">
+                <div class="settings-card-head">
+                  <div>
+                    <h2>노출·알림</h2>
+                    <p>목록의 기본 개수와 결과를 받을 채널을 선택합니다.</p>
+                  </div>
+                </div>
+                <div class="form-grid">
+                  <label class="form-field">
+                    <span class="field-label">기본 노출 수</span>
+                    <select class="field-control">
+                      <option>10개</option>
+                      <option>5개</option>
+                    </select>
+                  </label>
+                  <div class="form-field">
+                    <span class="field-label">알림 채널</span>
+                    <span class="field-help">활성화한 채널에만 한 번 전달됩니다.</span>
+                  </div>
+                </div>
+                <div style="margin-top: 10px">
+                  <div class="toggle-row">
+                    <div class="toggle-copy"><strong>인앱 알림</strong><span>처리 완료 결과를 DAIT 안에서 알려줍니다.</span></div>
+                    <span class="switch on" role="img" aria-label="인앱 알림 켜짐 목업"></span>
+                  </div>
+                  <div class="toggle-row">
+                    <div class="toggle-copy"><strong>메일 알림</strong><span>가입 이메일로 요약 결과를 보냅니다.</span></div>
+                    <span class="switch" role="img" aria-label="메일 알림 꺼짐 목업"></span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-card" id="account">
+                <div class="settings-card-head">
+                  <div>
+                    <h2>계정·정책</h2>
+                    <p>개인정보 처리 내용을 확인하거나 계정 탈퇴 흐름으로 이동합니다.</p>
+                  </div>
+                </div>
+                <div class="toggle-row">
+                  <div class="toggle-copy"><strong>개인정보 처리 안내</strong><span>수집 목적, 보관 기간과 삭제 절차</span></div>
+                  <button class="secondary-button" type="button">내용 보기</button>
+                </div>
+                <div class="toggle-row danger-zone">
+                  <div class="toggle-copy"><strong>회원탈퇴</strong><span>탈퇴 전 영향과 데이터 처리 내용을 다시 확인합니다.</span></div>
+                  <button class="secondary-button" type="button">탈퇴 안내</button>
+                </div>
+              </section>
+
+              <div style="display: flex; justify-content: flex-end; gap: 9px">
+                <button class="secondary-button" type="button">변경 취소</button>
+                <button class="primary-button" type="button">설정 저장</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <nav class="mobile-tabs" aria-label="모바일 탐색 목업">
+      <a class="mobile-tab" href="index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8" /><path d="M5 10v10h5v-6h4v6h5V10" /></svg>
+        오늘의 뉴스
+      </a>
+      <a class="mobile-tab" href="detail.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
+        상세 목업
+      </a>
+      <a class="mobile-tab active" href="settings.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
+        설정
+      </a>
+    </nav>
+  </body>
+</html>

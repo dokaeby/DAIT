@@ -185,8 +185,7 @@ def login(
           성공하면 계정 실패 기록을 지운다.
     """
     email = str(request.email).lower()
-    ip_key = client_ip or "unknown"
-    if throttles.account.is_locked(email, now) or throttles.ip.is_locked(ip_key, now):
+    if throttles.is_locked(email, client_ip, now):
         audit("login", "locked", client_ip=client_ip)
         raise TooManyAttemptsError
     with transaction(settings.database_url) as conn:
@@ -195,13 +194,12 @@ def login(
         request.password.get_secret_value(), user.password_hash if user else None
     )
     if user is None or not password_ok or user.status is not UserStatus.ACTIVE:
-        throttles.account.register_failure(email, now)
-        throttles.ip.register_failure(ip_key, now)
+        throttles.register_failure(email, client_ip, now)
         audit(
             "login", "invalid_credentials", user_id=user.id if user else None, client_ip=client_ip
         )
         raise InvalidCredentialsError
-    throttles.account.clear(email)
+    throttles.clear(email, client_ip)
     response = open_session(settings, user, now)
     audit("login", "success", user_id=user.id, client_ip=client_ip)
     return response

@@ -45,6 +45,8 @@ from src.backend.app.workers.cloud_llm import (
     PROMPT_VERSION,
     CloudLLMContentProcessor,
     CloudLLMSettings,
+    GrokClient,
+    llm_translate_title,
 )
 from src.backend.app.workers.collector_worker import CollectorWorker, NewsCollector, WorkerPolicy
 
@@ -202,11 +204,23 @@ class _ManagedRuntime(NewsApiService):
             timeout_seconds=8.0,
             max_items_per_feed=self.settings.max_items_per_feed,
         )
+        self._cloud_settings = CloudLLMSettings.from_env() if enable_network_translation else None
+        self._title_llm_client: GrokClient | None = None
+        title_translator = None
+        if self._cloud_settings is not None:
+            title_client = GrokClient.from_settings(self._cloud_settings)
+            if title_client is not None:
+                self._title_llm_client = title_client
+
+                async def _translate_title(title: str, raw_text: str | None) -> str | None:
+                    return await llm_translate_title(title_client, title, raw_text)
+
+                title_translator = _translate_title
         self._collector: NewsCollector = TranslatingNewsCollector(
             base_collector,
             enable_network=enable_network_translation,
+            title_translator=title_translator,
         )
-        self._cloud_settings = CloudLLMSettings.from_env() if enable_network_translation else None
         if self._cloud_settings is not None:
             self._processor: GoogleTranslateContentProcessor | CloudLLMContentProcessor = (
                 CloudLLMContentProcessor(self._cloud_settings)
@@ -245,9 +259,7 @@ class _ManagedRuntime(NewsApiService):
         """레거시 더미 요약 또는 미번역 해외 기사를 판별한다."""
         content = item.record.content
         if any(
-            pattern in line
-            for line in content.summary_lines
-            for pattern in _LEGACY_DUMMY_PATTERNS
+            pattern in line for line in content.summary_lines for pattern in _LEGACY_DUMMY_PATTERNS
         ):
             return True
         if not self._enable_network_translation:
@@ -282,9 +294,7 @@ class _ManagedRuntime(NewsApiService):
                 logger.warning("Removed %d invalid stored news records", removed)
                 dropped = set(bad_urls)
                 stored = tuple(
-                    item
-                    for item in stored
-                    if str(item.record.article.canonical_url) not in dropped
+                    item for item in stored if str(item.record.article.canonical_url) not in dropped
                 )
 
         newest = (
@@ -296,8 +306,7 @@ class _ManagedRuntime(NewsApiService):
             len(stored) == 0
             or self.settings.crawl_on_startup
             or newest is None
-            or (datetime.now(UTC) - newest).total_seconds()
-            > self.settings.news_stale_hours * 3600
+            or (datetime.now(UTC) - newest).total_seconds() > self.settings.news_stale_hours * 3600
         )
         if needs_crawl and self.settings.enable_live_rss:
             self._schedule_crawl()
@@ -308,9 +317,11 @@ class _ManagedRuntime(NewsApiService):
             return
         self._crawl_task = asyncio.create_task(self._crawl_and_invalidate())
         self._crawl_task.add_done_callback(
-            lambda t: logger.warning("news crawl failed", exc_info=t.exception())
-            if not t.cancelled() and t.exception() is not None
-            else None
+            lambda t: (
+                logger.warning("news crawl failed", exc_info=t.exception())
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
         )
 
     async def _reprocess_fallbacks(self, limit: int = 10) -> None:
@@ -392,10 +403,7 @@ class _ManagedRuntime(NewsApiService):
                 await self.repository.initialize()
                 await self._bootstrap_if_empty()
                 self._initialized = True
-                if (
-                    self.settings.collect_interval_seconds > 0
-                    and self._collect_task is None
-                ):
+                if self.settings.collect_interval_seconds > 0 and self._collect_task is None:
                     self._collect_task = asyncio.create_task(self._collect_loop())
 
     async def shutdown(self) -> None:
@@ -410,6 +418,8 @@ class _ManagedRuntime(NewsApiService):
                 await self.redis_client.aclose()
             if isinstance(self._processor, CloudLLMContentProcessor):
                 await self._processor.aclose()
+            if self._title_llm_client is not None:
+                await self._title_llm_client.aclose()
             await self.repository.close()
             self._initialized = False
 
@@ -467,10 +477,7 @@ def create_application(
 
     @application.get("/app.js", include_in_schema=False)
     async def app_js() -> FileResponse:
-        return FileResponse(
-            path=str(MOCKUP_DIR / "app.js"), media_type="text/javascript"
-        )
-
+        return FileResponse(path=str(MOCKUP_DIR / "app.js"), media_type="text/javascript")
 
     @application.get("/healthz", response_model=HealthResponse, tags=["health"])
     async def healthz() -> HealthResponse:

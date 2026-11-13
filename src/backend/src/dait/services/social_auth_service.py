@@ -356,13 +356,11 @@ def link_account(
     if ticket is None or user is None or user.status is not UserStatus.ACTIVE:
         audit("google_link", "invalid_ticket", client_ip=client_ip)
         raise InvalidTokenError
-    ip_key = client_ip or "unknown"
-    if throttles.account.is_locked(user.email, now) or throttles.ip.is_locked(ip_key, now):
+    if throttles.is_locked(user.email, client_ip, now):
         audit("google_link", "locked", user_id=user.id, client_ip=client_ip)
         raise TooManyAttemptsError
     if not verify_password(request.password.get_secret_value(), user.password_hash):
-        throttles.account.register_failure(user.email, now)
-        throttles.ip.register_failure(ip_key, now)
+        throttles.register_failure(user.email, client_ip, now)
         audit("google_link", "invalid_credentials", user_id=user.id, client_ip=client_ip)
         raise InvalidCredentialsError
     try:
@@ -381,7 +379,7 @@ def link_account(
         audit("google_link", "already_linked", user_id=user.id, client_ip=client_ip)
         raise InvalidTokenError from exc
     store.pop(_LINK, ticket_raw, now)
-    throttles.account.clear(user.email)
+    throttles.clear(user.email, client_ip)
     response = auth_service.open_session(settings, user, now)
     audit("google_link", "success", user_id=user.id, client_ip=client_ip)
     return response

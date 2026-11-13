@@ -5,8 +5,11 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import ClassVar
 
+import pytest
+
 from dait.core.config import Settings
 from dait.main import create_app
+from dait.services import feed_index_service
 from support import HttpClient, as_client
 
 PASSWORD = "Str0ng!Passw0rd-xyz"  # noqa: S105 - 테스트 전용 가짜 비밀번호
@@ -122,6 +125,34 @@ class TestNewsList:
         assert len(by_title.json()["items"]) == 1
         assert none.json()["items"] == []
         assert none.json()["meta"]["total_visible"] == 0
+
+    def test_rank_sort_is_recency_first(self, settings: Settings, db_url: str) -> None:
+        """rank 정렬도 최신→과거 순이다. 오래된 READY가 더 새 INSUFFICIENT보다 위에 오지 않는다."""
+        seed_news(db_url)
+        conn = sqlite3.connect(_db_path(db_url))
+        try:
+            conn.execute(
+                "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+                "collected_at, category, original_language, created_at) "
+                "VALUES ('newer01', 'src1', '최신 정보부족 기사', "
+                "'https://example.com/newer', '2026-03-01T00:00:00+00:00', ?, 'AI', 'ko', ?)",
+                (NOW, NOW),
+            )
+            conn.execute(
+                "INSERT INTO content_results (news_id, summary_lines, status, updated_at) "
+                "VALUES ('newer01', ?, 'INSUFFICIENT', ?)",
+                (SUMMARY_JSON, NOW),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        client = client_for(settings)
+        for sort in ("rank", "latest"):
+            response = client.request("GET", "/v1/news", params={"sort": sort})
+            assert response.status_code == 200
+            titles = [item["title"] for item in response.json()["items"]]
+            assert titles[0] == "최신 정보부족 기사"
+            assert titles[1:] == ["기사 2 제목", "기사 1 제목", "기사 0 제목"]
 
     def test_query_over_100_chars_is_422(self, settings: Settings) -> None:
         """검색어는 100자까지 허용한다(계약 상한)."""
@@ -416,3 +447,41 @@ class TestSchedules:
             ).status_code
             == 422
         )
+
+
+class TestFeedIndexClassification:
+    """카테고리·주제 조회는 저장된 분류만 읽고 분류 작업을 예약하지 않는다."""
+
+    def test_category_and_topic_reads_do_not_classify(
+        self, settings: Settings, db_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seed_news(db_url)
+        client = client_for(settings)
+        token = sign_up(client)
+        headers = bearer(token)
+
+        calls: list[Settings] = []
+        monkeypatch.setattr(feed_index_service, "request_classify", calls.append)
+        for params in (
+            {"category": "AI"},
+            {"category": "ECONOMY", "topic": "economy.industry"},
+            {"language": "en", "topic": "en.ai.models"},
+        ):
+            response = client.request("GET", "/v1/news", headers=headers, params=params)
+            assert response.status_code == 200, params
+        activity = client.request(
+            "GET", "/v1/news/activity", headers=headers, params={"language": "ko"}
+        )
+        assert activity.status_code == 200
+        assert calls == []
+
+    def test_session_schedules_classification(
+        self, settings: Settings, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[Settings] = []
+        monkeypatch.setattr(feed_index_service, "request_classify", calls.append)
+        client = client_for(settings)
+        token = sign_up(client)
+        response = client.request("GET", "/v1/me/session", headers=bearer(token))
+        assert response.status_code == 200
+        assert calls == [settings]

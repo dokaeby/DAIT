@@ -326,7 +326,7 @@
         location.assign('/settings.html?welcome=1#interests');
         return;
       }
-      location.reload();
+      location.assign('/?language=ko');
     } catch (_e) {
       feedback.textContent = "서버에 연결하지 못했습니다.";
     } finally {

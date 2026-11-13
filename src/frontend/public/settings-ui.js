@@ -59,8 +59,7 @@
   });
   const welcoming = new URLSearchParams(location.search).get('welcome') === '1';
   if (welcoming) { $('welcome-interests').hidden = false; $('interests').prepend($('welcome-interests')); }
-  function markSettingsSection() {
-    const section = location.hash || '#schedule';
+  function markSettingsSection(section = location.hash || '#schedule') {
     document.querySelectorAll('.settings-menu a').forEach(link => {
       const active = link.getAttribute('href') === section;
       link.classList.toggle('active', active);
@@ -72,31 +71,62 @@
       link.classList.toggle('active', link.getAttribute('href') === target);
     });
   }
+  if (location.hash === '#display') history.replaceState(null, '', '#schedule');
   markSettingsSection();
-  window.addEventListener('hashchange', markSettingsSection);
+  window.addEventListener('hashchange', () => markSettingsSection());
+  let sectionScrollPending = false;
+  function updateSettingsSectionFromScroll() {
+    sectionScrollPending = false;
+    const sections = [...document.querySelectorAll('.settings-menu a')]
+      .map(link => document.getElementById(link.hash.slice(1)))
+      .filter(Boolean);
+    if (!sections.length) return;
+    const head = document.querySelector('[data-sticky-controls]');
+    const menu = document.querySelector('.settings-menu');
+    const marker = Math.max(head.getBoundingClientRect().bottom, window.innerWidth <= 1100 ? menu.getBoundingClientRect().bottom : 0) + 24;
+    let current = sections[0];
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= marker) current = section;
+    }
+    if (window.scrollY > 0 && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) {
+      current = sections[sections.length - 1];
+    }
+    markSettingsSection('#' + current.id);
+  }
+  window.addEventListener('scroll', () => {
+    if (!sectionScrollPending) {
+      sectionScrollPending = true;
+      requestAnimationFrame(updateSettingsSectionFromScroll);
+    }
+  }, { passive: true });
 
   function renderSidebar(catalog) {
     const host = $('settings-sidebar-categories'); host.replaceChildren();
-    const codes = { ai: 'AI', economy: 'ECONOMY', society: 'POLITICS' };
+    const codes = { ai: 'AI', economy: 'ECONOMY', society: 'POLITICS', en_ai: 'AI', en_economy: 'ECONOMY', en_society: 'POLITICS' };
     const labels = { ai: 'AI•인공지능', economy: '경제·비즈니스', society: '사회·문화' };
     for (const group of catalog.groups) {
       if (!codes[group.group]) continue;
+      const english = group.group.startsWith('en_');
+      const englishNames = {en_ai: 'AI & Technology', en_economy: 'Economy & Business', en_society: 'Society & Culture'};
+      if (group.group === 'en_ai') {
+        const label = document.createElement('span'); label.className = 'nav-label'; label.textContent = 'English News'; host.append(label);
+      }
       const container = document.createElement('div'); container.className = 'topic-group';
       const row = document.createElement('div'); row.className = 'topic-heading-row';
       const heading = document.createElement('a'); heading.className = 'nav-item topic-heading';
-      heading.textContent = '✦ ' + labels[group.group];
-      heading.href = '/?ui=20261112-search&category=' + codes[group.group];
+      heading.textContent = english ? englishNames[group.group] : '✦ ' + labels[group.group];
+      heading.href = '/?' + new URLSearchParams({ui: '20261112-search', category: codes[group.group], ...(english ? {language: 'en'} : {})});
       const list = document.createElement('ul'); list.className = 'topic-list'; list.hidden = true;
       list.id = 'settings-topics-' + group.group;
       const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'topic-toggle';
-      toggle.setAttribute('aria-label', labels[group.group] + ' 소주제 펼치기/접기');
+      toggle.setAttribute('aria-label', (labels[group.group] || group.group_name) + ' 소주제 펼치기/접기');
       toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', list.id);
       toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
       toggle.addEventListener('click', () => { list.hidden = !list.hidden; toggle.setAttribute('aria-expanded', String(!list.hidden)); });
       for (const item of group.interests) {
         const li = document.createElement('li'); const link = document.createElement('a');
         link.className = 'topic-button'; link.textContent = item.name;
-        link.href = '/?' + new URLSearchParams({ ui: '20261112-search', category: codes[group.group], q: item.name });
+        link.href = '/?' + new URLSearchParams({ ui: '20261112-search', category: codes[group.group], topic: item.code, ...(group.group.startsWith('en_') ? {language:'en'} : {}) });
         li.append(link); list.append(li);
       }
       row.append(heading, toggle); container.append(row, list); host.append(container);
@@ -137,24 +167,44 @@
       $('interest-options').replaceChildren(fragment);
       applyInterests(mine);
       $('interest-fields').disabled = false;
-      show('interests-feedback', '선택 후 관심사 저장을 눌러 주세요.');
+      show('interests-feedback', '선택하거나 해제하면 자동으로 저장됩니다.');
       if (location.hash === '#interests') $('interests').scrollIntoView();
     } catch (error) {
       show('interests-feedback', '관심사를 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.', false);
       $('interests-retry').hidden = false;
     } finally { interestLoading = false; }
   }
-  $('interest-options').addEventListener('change', interestCount);
-  for (const [id, checked] of [['interests-all', true], ['interests-clear', false]]) $(id).addEventListener('click', () => { interestInputs().forEach(el => { el.checked = checked; }); interestCount(); });
-  $('interests-retry').addEventListener('click', loadInterests);
-  $('interests-form').addEventListener('submit', event => {
-    event.preventDefault();
+  const autosave = window.createInterestAutosave({
+    read: () => interestInputs().filter(el => el.checked).map(el => el.value),
+    write: interests => request('/v1/me/interests', { method: 'PUT', body: JSON.stringify({ interests }) }),
+    status: state => {
+      $('interests-save-retry').hidden = state !== 'error';
+      show('interests-feedback', state === 'saving' ? '저장 중…' : state === 'saved' ? '저장되었습니다.' : '저장하지 못했습니다. 다시 시도해 주세요.', state !== 'error');
+    }
+  });
+  function interestsChanged() {
     if ($('interest-fields').disabled) return;
-    const interests = interestInputs().filter(el => el.checked).map(el => el.value);
-    action(event.currentTarget, 'interests-feedback', async () => {
-      const result = await request('/v1/me/interests', { method: 'PUT', body: JSON.stringify({ interests }) });
-      applyInterests(result); show('interests-feedback', '관심사를 저장했습니다.');
-    });
+    interestCount(); autosave.change();
+  }
+  $('interest-options').addEventListener('change', interestsChanged);
+  for (const [id, checked] of [['interests-all', true], ['interests-clear', false]]) $(id).addEventListener('click', () => {
+    interestInputs().forEach(el => { el.checked = checked; }); interestsChanged();
+  });
+  $('interests-retry').addEventListener('click', loadInterests);
+  $('interests-save-retry').addEventListener('click', () => autosave.flush().catch(() => {}));
+  $('interests-form').addEventListener('submit', event => event.preventDefault());
+  // Finish pending writes before leaving for the main page or a sidebar topic.
+  document.addEventListener('click', async event => {
+    const link = event.target.closest('a[href]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || link.target || link.hasAttribute('download')) return;
+    const target = new URL(link.href, location.href);
+    if (target.origin !== location.origin || (target.pathname === location.pathname && target.search === location.search) || !autosave.dirty()) return;
+    event.preventDefault();
+    try { await autosave.flush(); location.assign(target.href); }
+    catch { $('interests-feedback').scrollIntoView({ block: 'center' }); }
+  });
+  window.addEventListener('beforeunload', event => {
+    if (autosave.dirty()) { event.preventDefault(); event.returnValue = ''; }
   });
 
   function applySettings(data) {
@@ -229,7 +279,6 @@
   });
   await Promise.all([
     loadInterests(),
-    action($('settings-form'), 'settings-feedback', async () => { applySettings(await request('/v1/me/settings')); }),
     action($('schedule-form'), 'schedule-feedback', loadSchedules),
   ]);
 })();

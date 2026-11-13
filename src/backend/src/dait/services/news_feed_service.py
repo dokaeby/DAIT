@@ -3,12 +3,15 @@
 화면 요청 경로에서 크롤링·LLM을 호출하지 않고 DB의 저장 결과만 읽는다.
 """
 
+import re
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 
 from dait.core.config import Settings
 from dait.core.errors import ValidationFailedError
 from dait.repositories import news_repository
 from dait.repositories.db import transaction
+from dait.repositories.interest_matching import MATCHING_VERSION
 from dait.schemas.news import (
     ContentStatus,
     NewsCategory,
@@ -21,11 +24,12 @@ from dait.schemas.news import (
     decode_cursor,
     encode_cursor,
 )
-from dait.services import cache_retry_service, news_search_service
+from dait.services import cache_retry_service, news_search_service, pipeline_sync_service
 
 _PARTIAL_WINDOW = timedelta(hours=24)
 _PARTIAL_MESSAGE = "일부 출처의 수집이 지연되고 있습니다."
-_RANK_BASIS = ["quality", "published_at", "source_priority", "id"]
+# rank도 최신→과거가 최우선이다. 품질·출처 우선순위는 동률 보조 정렬이다.
+_RANK_BASIS = ["published_at", "quality", "source_priority", "id"]
 _LATEST_BASIS = ["published_at", "id"]
 
 
@@ -58,9 +62,11 @@ def _to_item(row: news_repository.NewsListRow, rank: int) -> NewsListItem | None
         return None
     status = _processing_status(row.status)
     return NewsListItem(
+        original_language=row.original_language,
+        author_name=_author_name(row.author_text),
         id=row.id,
         rank=rank,
-        title=row.title,
+        title=row.title.split("|||", 1)[0].strip() if row.original_language != "ko" else row.title,
         source_name=row.source_name,
         published_at=row.published_at,
         category=NewsCategory(row.category),
@@ -79,6 +85,8 @@ def list_news(
     page_size: int,
     cursor: str | None,
     now: datetime | None = None,
+    interests: tuple[str, ...] | None = None,
+    language: str | None = None,
 ) -> NewsListResponse:
     """뉴스 목록을 조회한다(캐시 우선).
 
@@ -89,9 +97,17 @@ def list_news(
           목록·상세 조회는 저장 결과만 읽고 AI 작업을 만들지 않는다.
           Redis(또는 메모리 fallback) 캐시 5분+jitter, 락으로 stampede를 막는다.
     """
+    pipeline_sync_service.request_sync(settings)
     normalized = news_search_service.normalize_query(query)
+    scope_key = sha256(
+        repr((MATCHING_VERSION, settings.database_url, language, interests)).encode()
+    ).hexdigest()[:24]
     cache_key = cache_retry_service.list_cache_key(
-        category.value if category is not None else "ALL", normalized, sort, page_size, cursor
+        scope_key + ":" + (category.value if category is not None else "ALL"),
+        normalized,
+        sort,
+        page_size,
+        cursor,
     )
     hit = cache_retry_service.load_cached(settings, cache_key, NewsListResponse)
     if hit is not None:
@@ -101,7 +117,9 @@ def list_news(
             hit = cache_retry_service.load_cached(settings, cache_key, NewsListResponse)
             if hit is not None:
                 return hit
-        response = _list_news_uncached(settings, category, normalized, sort, page_size, cursor, now)
+        response = _list_news_uncached(
+            settings, category, normalized, sort, page_size, cursor, now, interests, language
+        )
         cache_retry_service.cache_set(
             settings, cache_key, response.model_dump_json(), cache_retry_service.list_ttl()
         )
@@ -116,6 +134,8 @@ def _list_news_uncached(
     page_size: int,
     cursor: str | None,
     now: datetime | None,
+    interests: tuple[str, ...] | None = None,
+    language: str | None = None,
 ) -> NewsListResponse:
     """캐시를 거치지 않는 실제 목록 조회 본체."""
     try:
@@ -133,9 +153,11 @@ def _list_news_uncached(
             sort,
             page_size + 1,
             offset,
+            interests,
+            language,
         )
         total = news_repository.count_public_news(
-            conn, category.value if category is not None else None, normalized
+            conn, category.value if category is not None else None, normalized, interests, language
         )
         partial = news_repository.has_recent_job_failures(conn, since_iso)
 
@@ -160,3 +182,14 @@ def _list_news_uncached(
             rank_basis=list(_RANK_BASIS if sort == "rank" else _LATEST_BASIS),
         ),
     )
+
+
+def _author_name(text: str | None) -> str | None:
+    """Display only an explicit byline; never infer a reporter from article entities."""
+    if not text:
+        return None
+    match = re.search(r"(?:^|[\n\r\[(])\s*([가-힣]{2,5})\s*기자(?:[\s\]):]|$)", text[:2000])
+    if match:
+        return match.group(1) + " 기자"
+    match = re.search(r"(?im)^by\s+([A-Z][a-z]+(?:[ -][A-Z][a-z]+){1,3})\b", text[:2000])
+    return match.group(1) if match else None

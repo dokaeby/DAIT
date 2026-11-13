@@ -49,7 +49,7 @@ def insert_result(conn: DbConnection, item: LegacyNews) -> None:
         return
     conn.execute(
         "INSERT INTO news (id,source_id,title,canonical_url,published_at,collected_at,"
-        "category,original_language,created_at) VALUES (?,?,?,?,?,?,?,'und',?) "
+        "category,original_language,created_at) VALUES (?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT DO NOTHING",
         (
             item.id,
@@ -59,6 +59,7 @@ def insert_result(conn: DbConnection, item: LegacyNews) -> None:
             item.published_at.isoformat(),
             now,
             "POLITICS" if item.category == "SOCIETY" else item.category,
+            "en" if item.source_name in {"TechCrunch", "The Verge", "MIT Tech Review"} else "und",
             now,
         ),
     )

@@ -37,7 +37,7 @@ button:disabled { opacity: .55; cursor: wait; }
 @media(max-width:820px) { .settings-page { padding:24px 18px 100px; } .settings-layout { gap:16px; } }
 
 .settings-body-layout { display:flex; }
-#settings-sidebar { flex:0 0 224px; width:224px; }
+#settings-sidebar { flex:0 0 240px; width:240px; }
 
 .schedule-time-inputs { display:flex; gap:8px; }
 .schedule-time-inputs select { min-width:0; flex:1; }
@@ -76,8 +76,10 @@ button:disabled { opacity: .55; cursor: wait; }
 
 /* 상위 컨테이너가 스크롤 컨테이너가 되지 않아야 목차가 따라온다. */
 .settings-shell { overflow:visible; }
-.settings-menu { position:sticky; top:16px; z-index:5; }
-@media(max-width:1100px) { .settings-menu { position:sticky; top:8px; background:#f8fafc; } }
+.settings-menu { position:sticky; top:88px; z-index:5; max-height:calc(100vh - 104px); overflow-y:auto; }
+@media(max-width:1100px) { .settings-menu { position:sticky; top:88px; background:#f8fafc; } }
+@media(max-width:820px) { .settings-menu { top:78px; max-height:calc(100vh - 94px); } }
+.settings-card { scroll-margin-top: 88px; }
 @media(max-width:1100px) { .settings-card { scroll-margin-top:115px; } }
 
 #withdraw-form .danger-button { justify-self:center; }
@@ -85,3 +87,16 @@ button:disabled { opacity: .55; cursor: wait; }
 .nickname-settings-row input { flex:1; min-width:0; }
 .nickname-settings-row button { flex-shrink:0; }
 @media(max-width:420px) { .nickname-settings-row { flex-wrap:wrap; } .nickname-settings-row input { flex-basis:100%; } }
+
+.settings-page-head { padding:12px 0; }
+.settings-page-head.is-compact { padding:8px 0; }
+.settings-menu { top:calc(var(--app-header-height) + var(--page-controls-height) + 12px); max-height:calc(100dvh - var(--app-header-height) - var(--page-controls-height) - 24px); }
+.settings-card { scroll-margin-top:var(--section-offset); }
+@media(max-width:1100px) {
+  .settings-menu { top:calc(var(--app-header-height) + var(--page-controls-height)); z-index:15; max-height:22vh; }
+  .settings-card { scroll-margin-top:var(--section-offset); }
+}
+@media(max-height:650px) {
+  .settings-page-head .eyebrow, .settings-page-head .page-description { display:none; }
+  .settings-page-head .page-title { font-size:22px; }
+}

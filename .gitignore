@@ -259,6 +259,9 @@ node_modules/
 playwright-report/
 test-results/
 
+# Local UI audit scripts and generated results
+/work/ui_audit/
+
 # Local model caches
 .huggingface/
 .hf_cache/

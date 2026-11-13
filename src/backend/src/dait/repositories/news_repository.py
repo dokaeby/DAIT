@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import NamedTuple, cast
 
 from dait.repositories.db import DbConnection
+from dait.repositories.interest_matching import interest_clause
+from dait.repositories.news_language import NEWS_LANGUAGE_SQL
 from dait.schemas.news import ACTIVE_CATEGORIES, PUBLIC_STATUSES
 
 _STATUS_VALUES = tuple(status.value for status in PUBLIC_STATUSES)
@@ -24,6 +26,8 @@ class NewsListRow(NamedTuple):
     status: str
     canonical_url: str
     source_priority: int
+    original_language: str = "und"
+    author_text: str | None = None
 
 
 class NewsDetailRow(NamedTuple):
@@ -86,17 +90,28 @@ def list_public_news(
     sort: str,
     limit: int,
     offset: int,
+    interests: tuple[str, ...] | None = None,
+    language: str | None = None,
 ) -> list[NewsListRow]:
     """공개 가능한 뉴스 목록을 규칙 순서로 조회한다.
 
     입력: conn (연결), category (카테고리), query (정규화된 검색어, 빈 문자열이면 전체),
           sort ("rank" 또는 "latest"), limit·offset (페이지)
     출력: NewsListRow 목록
-    기능: rank는 품질(READY 우선)→발행 시각→출처 우선순위→ID 순,
+    기능: 두 정렬 모두 최신→과거 순이 원칙이다. 최신 수집 기사와 DB의 기존 기사를
+          가리지 않고 published_at DESC로 함께 나열한다.
+          rank는 발행 시각 다음으로 품질(READY 우선)→출처 우선순위→ID 순,
           latest는 발행 시각→ID 순. FAILED·PENDING은 제외한다.
     """
     clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
     params: list[str | int] = list(_CATEGORY_VALUES)
+    if language:
+        clauses.append(f"({NEWS_LANGUAGE_SQL}) = ?")
+        params.append(language)
+    if interests is not None:
+        clause, values = interest_clause(interests)
+        clauses.append(clause)
+        params.extend(values)
     if category is not None:
         clauses.append("n.category = ?")
         params.append(category)
@@ -109,12 +124,14 @@ def list_public_news(
         order = "n.published_at DESC, n.id ASC"
     else:
         order = (
+            "n.published_at DESC, "
             "CASE c.status WHEN 'READY' THEN 0 ELSE 1 END, "
-            "n.published_at DESC, s.priority ASC, n.id ASC"
+            "s.priority ASC, n.id ASC"
         )
     sql = (
         "SELECT n.id, n.title, s.name, n.published_at, n.category, "  # noqa: S608 - 상수 절만 결합
-        "c.summary_lines, c.status, n.canonical_url, s.priority "
+        f"c.summary_lines, c.status, n.canonical_url, s.priority, ({NEWS_LANGUAGE_SQL}), "
+        "(COALESCE(c.extracted_text, '') || '\n' || COALESCE(c.translated_text, '')) "
         "FROM news n "
         "JOIN sources s ON s.id = n.source_id "
         "JOIN content_results c ON c.news_id = n.id "
@@ -134,12 +151,20 @@ def list_public_news(
             status=row[6],
             canonical_url=row[7],
             source_priority=row[8],
+            original_language=row[9],
+            author_text=row[10],
         )
         for row in rows
     ]
 
 
-def count_public_news(conn: DbConnection, category: str | None, query: str) -> int:
+def count_public_news(
+    conn: DbConnection,
+    category: str | None,
+    query: str,
+    interests: tuple[str, ...] | None = None,
+    language: str | None = None,
+) -> int:
     """현재 조건에서 화면에 표시 가능한 전체 건수를 센다.
 
     입력: conn (연결), category, query (정규화된 검색어)
@@ -148,6 +173,13 @@ def count_public_news(conn: DbConnection, category: str | None, query: str) -> i
     """
     clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
     params: list[str | int] = list(_CATEGORY_VALUES)
+    if language:
+        clauses.append(f"({NEWS_LANGUAGE_SQL}) = ?")
+        params.append(language)
+    if interests is not None:
+        clause, values = interest_clause(interests)
+        clauses.append(clause)
+        params.extend(values)
     if category is not None:
         clauses.append("n.category = ?")
         params.append(category)
@@ -223,11 +255,12 @@ def get_public_news(conn: DbConnection, news_id: str) -> NewsDetailRow | None:
 
 
 def list_related_news(conn: DbConnection, news_id: str, limit: int) -> list[RelatedRow]:
-    """상세 화면의 관련 뉴스를 점수 순으로 조회한다.
+    """상세 화면의 관련 뉴스를 최신→과거 순으로 조회한다.
 
     입력: conn (연결), news_id (기준 뉴스), limit (최대 건수)
     출력: RelatedRow 목록
-    기능: 자기 자신·비공개(FAILED/PENDING) 기사는 제외한다.
+    기능: 목록과 동일하게 발행 시각 DESC가 우선이고 관련도 점수는 동률 보조 지표다.
+          자기 자신·비공개(FAILED/PENDING) 기사는 제외한다.
     """
     rows = conn.execute(
         "SELECT r.related_news_id, rn.title, rs.name, rn.published_at, r.reason, r.score "  # noqa: S608 - 상수 절만 결합
@@ -236,7 +269,7 @@ def list_related_news(conn: DbConnection, news_id: str, limit: int) -> list[Rela
         "JOIN sources rs ON rs.id = rn.source_id "
         "JOIN content_results rc ON rc.news_id = rn.id "
         f"WHERE r.news_id = ? AND rn.id != ? AND {_public_status_clause('rc')} "
-        "ORDER BY r.score DESC, rn.published_at DESC LIMIT ?",
+        "ORDER BY rn.published_at DESC, r.score DESC LIMIT ?",
         (news_id, news_id, limit),
     ).fetchall()
     return [

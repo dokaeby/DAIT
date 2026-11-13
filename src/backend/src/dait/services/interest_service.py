@@ -25,7 +25,15 @@ def _item(code: InterestCode) -> InterestItem:
     출력: InterestItem (코드, 한글 이름, 대주제)
     기능: 대주제는 코드 앞부분(`ai.models`의 `ai`)에서 얻는다.
     """
-    return InterestItem(code=code, name=INTEREST_NAMES[code], group=code.value.split(".")[0])
+    return InterestItem(
+        code=code,
+        name=INTEREST_NAMES[code],
+        group=(
+            "_".join(code.value.split(".")[:2])
+            if code.value.startswith("en.")
+            else code.value.split(".")[0]
+        ),
+    )
 
 
 # 입력: 없음.
