@@ -1,6 +1,6 @@
 """FR-DETAIL-01 뉴스 상세: 저장된 기사·콘텐츠·관계 결과를 계약으로 조립한다."""
 
-from dait.core.article_language import needs_translation
+from dait.core.article_language import is_korean_text, needs_translation
 from dait.core.config import Settings
 from dait.core.errors import NewsNotFoundError
 from dait.repositories import news_repository
@@ -97,7 +97,21 @@ def _detail_uncached(settings: Settings, news_id: str) -> NewsDetailResponse:
         related = ranking_relation_service.list_related(conn, news_id)
 
     translation_required = needs_translation(row.original_language, row.source_name)
-    processing = _processing_info(row.status)
+    status = row.status
+    summary_lines = news_repository.parse_summary_lines(row.summary_lines)
+    translated_text = row.translated_text
+    if status == "READY" and not (
+        len(summary_lines) == 3 and all(is_korean_text(line) for line in summary_lines)
+    ):
+        status = "INSUFFICIENT"
+        summary_lines = []
+        translated_text = None
+    elif status == "INSUFFICIENT":
+        summary_lines = [line for line in summary_lines if is_korean_text(line)]
+        translated_text = None
+    if translated_text is not None and not is_korean_text(translated_text):
+        translated_text = None
+    processing = _processing_info(status)
     if not translation_required:
         processing = processing.model_copy(update={"translation_status": "SKIPPED"})
     return NewsDetailResponse(
@@ -112,10 +126,10 @@ def _detail_uncached(settings: Settings, news_id: str) -> NewsDetailResponse:
             estimated_read_minutes=_estimate_read_minutes(row.extracted_text),
         ),
         content=ContentInfo(
-            summary_lines=news_repository.parse_summary_lines(row.summary_lines),
-            translated_text=row.translated_text if translation_required else None,
+            summary_lines=summary_lines,
+            translated_text=translated_text if translation_required else None,
             processed_at=row.processed_at,
-            content_status=_content_status(row.status),
+            content_status=_content_status(status),
             summary_model_version=row.prompt_version or row.model_id,
         ),
         source=SourceInfo(

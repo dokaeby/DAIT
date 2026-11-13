@@ -54,6 +54,8 @@ from src.backend.app.schemas.content import (
 from src.backend.app.workers.ai_processor import (
     ProcessingError,
     ensure_terminal_punctuation,
+    is_korean_text,
+    looks_foreign_text,
     translate_to_korean,
 )
 
@@ -1122,7 +1124,7 @@ class CloudLLMContentProcessor:
             if len(remote_body) > len(body):
                 body = remote_body
         title = article.title.split(" ||| ", 1)[0].strip()
-        is_foreign = article.source_name in GLOBAL_SOURCE_NAMES or not _HANGUL.search(
+        is_foreign = article.source_name in GLOBAL_SOURCE_NAMES or looks_foreign_text(
             f"{title} {body}"
         )
         inferred_category = match_category(article.title, body, default=article.category)
@@ -1143,21 +1145,26 @@ class CloudLLMContentProcessor:
         lines = tuple(ensure_terminal_punctuation(line) for line in result.summary_lines[:3])
         while len(lines) < 3:
             lines += ("자세한 내용은 원문 기사에서 확인할 수 있습니다.",)
+        # 외국어 판정과 무관하게 저장되는 3줄 요약은 한국어여야 한다.
+        # 비한국어 줄은 번역하고, 번역 실패 시 영어 원문을 SUCCESS로 남기지 않는다.
+        translated_lines: list[str] = []
+        for line in lines:
+            if is_korean_text(line):
+                translated_lines.append(line)
+                continue
+            ko_line = ensure_terminal_punctuation(await translate_to_korean(line))
+            if not is_korean_text(ko_line):
+                raise ProcessingError(_ERR_SUMMARY_NOT_KOREAN)
+            translated_lines.append(ko_line)
+        lines = tuple(translated_lines)
         if is_foreign:
-            # 외국어 기사의 3줄 요약은 반드시 한국어여야 한다. Grok가 영어 문장을
-            # 반환하거나 폴백 번역이 실패해 원문이 남은 경우 한국어로 다시 번역하고,
-            # 그래도 한국어가 아니면 저장하지 않고 실패로 재시도하게 한다.
-            translated_lines: list[str] = []
-            for line in lines:
-                if _HANGUL.search(line):
-                    translated_lines.append(line)
-                    continue
-                ko_line = ensure_terminal_punctuation(await translate_to_korean(line))
-                if not _HANGUL.search(ko_line):
-                    raise ProcessingError(_ERR_SUMMARY_NOT_KOREAN)
-                translated_lines.append(ko_line)
-            lines = tuple(translated_lines)
-        translated_text = result.translated_body or result.translated_title or " ".join(lines)
+            candidates = (result.translated_body, result.translated_title, " ".join(lines))
+            translated_text = next(
+                (candidate for candidate in candidates if candidate and is_korean_text(candidate)),
+                " ".join(lines),
+            )
+        else:
+            translated_text = " ".join(lines)
         try:
             return SuccessContent(
                 category=inferred_category,

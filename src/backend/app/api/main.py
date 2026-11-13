@@ -40,6 +40,8 @@ from src.backend.app.services.news_service import (
 from src.backend.app.workers.ai_processor import (
     GoogleTranslateContentProcessor,
     TranslatingNewsCollector,
+    is_korean_text,
+    looks_foreign_text,
 )
 from src.backend.app.workers.cloud_llm import (
     PROMPT_VERSION,
@@ -269,10 +271,19 @@ class _ManagedRuntime(NewsApiService):
             # 삭제하면 본문 추출이 계속 실패하는 기사가 시작 때마다 재수집된다.
             return False
         article = item.record.article
-        return article.source_name in GLOBAL_SOURCE_NAMES and (
-            " ||| " not in article.title
-            or not bool(_HANGUL_CHECK.search(article.title))
-            or not all(_HANGUL_CHECK.search(line) for line in content.summary_lines)
+        foreign = article.source_name in GLOBAL_SOURCE_NAMES or looks_foreign_text(
+            f"{article.title} {article.raw_text or ''}"
+        )
+        if not foreign:
+            return False
+        original_title = article.title.split(" ||| ", 1)[0].strip()
+        title_needs_translation = looks_foreign_text(original_title) and not _HANGUL_CHECK.search(
+            original_title
+        )
+        return (
+            (title_needs_translation and " ||| " not in article.title)
+            or not _HANGUL_CHECK.search(article.title)
+            or not all(is_korean_text(line) for line in content.summary_lines)
         )
 
     async def _bootstrap_if_empty(self) -> None:
@@ -351,6 +362,8 @@ class _ManagedRuntime(NewsApiService):
                     item.record.article.source_name in GLOBAL_SOURCE_NAMES
                     and item.record.content.prompt_version != PROMPT_VERSION
                 )
+                # 국내 매체 영문 기사 등 외국어 본문인데 한국어 요약이 아닌 결과를 복구한다.
+                or self._is_invalid_record(item)
             )
         ][:limit]
         if not targets:

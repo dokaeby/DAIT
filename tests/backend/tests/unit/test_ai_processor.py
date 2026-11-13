@@ -656,9 +656,7 @@ def test_google_translate_processor_fails_when_summary_stays_english(
     async def untranslated(text: str, *, enable_network: bool = True) -> str:
         return text
 
-    monkeypatch.setattr(
-        "src.backend.app.workers.ai_processor.translate_to_korean", untranslated
-    )
+    monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", untranslated)
     techcrunch_article = CollectedArticle(
         source_name="TechCrunch",
         title="Acme unveils a new AI chip",
@@ -674,6 +672,59 @@ def test_google_translate_processor_fails_when_summary_stays_english(
     processor = GoogleTranslateContentProcessor(enable_network_translation=False)
     with pytest.raises(ProcessingError):
         asyncio.run(processor.process(techcrunch_article))
+
+
+def test_domestic_source_english_body_is_translated_before_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IT조선 같은 국내 매체의 영문 본문도 외국어로 판정해 한국어 요약을 저장한다."""
+
+    async def korean(text: str, *, enable_network: bool = True) -> str:
+        return "한국어로 번역된 문장입니다."
+
+    monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", korean)
+    article = CollectedArticle(
+        source_name="IT조선",
+        title="Chip stocks rally on AI demand",
+        canonical_url=HttpUrl("https://it.chosun.com/example/article/1"),
+        category="AI",
+        published_at=datetime(2026, 11, 12, 12, 0, tzinfo=UTC),
+        raw_text=(
+            "Global chip demand pushed semiconductor stocks higher on Tuesday. "
+            "Analysts said orders from AI data centers drove the rally. "
+            "The trend is expected to continue through next quarter. 로그인 구독 공유"
+        ),
+    )
+    processor = GoogleTranslateContentProcessor(enable_network_translation=False)
+    result = asyncio.run(processor.process(article))
+    assert isinstance(result, SuccessContent)
+    assert all(any("가" <= ch <= "힣" for ch in line) for line in result.summary_lines)
+
+
+def test_domestic_source_english_body_fails_when_translation_stays_english(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """국내 매체 영문 기사의 번역 실패도 영어 요약을 SUCCESS로 남기지 않는다."""
+
+    async def unchanged(text: str, *, enable_network: bool = True) -> str:
+        return text
+
+    monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", unchanged)
+    article = CollectedArticle(
+        source_name="IT조선",
+        title="Chip stocks rally on AI demand",
+        canonical_url=HttpUrl("https://it.chosun.com/example/article/2"),
+        category="AI",
+        published_at=datetime(2026, 11, 12, 12, 0, tzinfo=UTC),
+        raw_text=(
+            "Global chip demand pushed semiconductor stocks higher on Tuesday. "
+            "Analysts said orders from AI data centers drove the rally. "
+            "The trend is expected to continue through next quarter."
+        ),
+    )
+    processor = GoogleTranslateContentProcessor(enable_network_translation=False)
+    with pytest.raises(ProcessingError):
+        asyncio.run(processor.process(article))
 
 
 def test_translate_to_korean_logs_error_and_retries_on_translator_failure(
@@ -817,7 +868,7 @@ def _patch_guarded_fetch(
     monkeypatch.setattr(httpx.AsyncClient, "get", fail_client_get)
 
     def fake_translate(_self: object, text: str) -> str:
-        return f"번역: {text}"
+        return "번역된 한국어 문장입니다."
 
     monkeypatch.setattr(
         "src.backend.app.workers.ai_processor.GoogleTranslator.translate", fake_translate
@@ -868,7 +919,8 @@ def test_google_translate_processor_paragraph_fallback_reuses_guarded_html(
 
     assert len(requests) == 1
     assert isinstance(result, SuccessContent)
-    assert "doubles inference throughput" in result.translated_text
+    assert "번역된 한국어 문장" in result.translated_text
+    assert all(any("가" <= ch <= "힣" for ch in line) for line in result.summary_lines)
 
 
 def test_fetch_article_body_returns_empty_when_trafilatura_raises(

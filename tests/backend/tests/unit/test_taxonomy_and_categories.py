@@ -145,7 +145,7 @@ async def test_google_translate_processor_and_collector_monkeypatched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def _fake_translate(text: str) -> str:
-        return f"[한국어번역] {text}"
+        return "[한국어번역] 한국어 번역 문장"
 
     monkeypatch.setattr(
         "src.backend.app.workers.ai_processor._translate_sync_with_deep_translator",
@@ -187,10 +187,7 @@ async def test_google_translate_processor_and_collector_monkeypatched(
 
     translating_collector = TranslatingNewsCollector(base, enable_network=True)
     translated_collection = await translating_collector.collect(src)
-    expected_title = (
-        "OpenAI launches autonomous coding agent"
-        " ||| [한국어번역] OpenAI launches autonomous coding agent"
-    )
+    expected_title = "OpenAI launches autonomous coding agent ||| [한국어번역] 한국어 번역 문장"
     assert translated_collection.articles[0].title == expected_title
 
 

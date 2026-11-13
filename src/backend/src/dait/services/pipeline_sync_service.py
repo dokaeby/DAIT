@@ -14,9 +14,10 @@ import threading
 import time
 from datetime import UTC, datetime
 from hashlib import sha256
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
+from dait.core.article_language import is_korean_text, looks_foreign_text
 from dait.core.config import Settings
 from dait.repositories import db as db_module
 from dait.repositories.db import DbConnection, transaction
@@ -60,9 +61,21 @@ def sync_if_needed(settings: Settings) -> None:
             logger.warning("pipeline 뉴스 동기화 실패", exc_info=True)
 
 
-def _source_language(source_name: str) -> str:
-    """출처 이름으로 원문 언어를 추정한다."""
-    return "en" if source_name in _EN_SOURCE_NAMES else "ko"
+def _source_language(source_name: str, raw_title: str | None) -> str:
+    """출처가 아니라 원문 제목의 문자 구성으로 원문 언어를 추정한다."""
+    if source_name in _EN_SOURCE_NAMES:
+        return "en"
+    original = (raw_title or "").split(" ||| ", 1)[0].strip()
+    if is_korean_text(original):
+        return "ko"
+    if looks_foreign_text(original):
+        return "en"
+    return "und"
+
+
+def _korean_lines(lines: list[str]) -> list[str]:
+    """한국어가 아닌 요약 줄을 제거한다."""
+    return [line for line in lines if is_korean_text(line)]
 
 
 def _category_for(raw: str) -> str | None:
@@ -80,18 +93,138 @@ def _lines(row: tuple[Any, ...]) -> list[str]:
     return [line for line in row[5:8] if isinstance(line, str) and line.strip()]
 
 
+def _parse_lines(raw: str | None) -> list[str]:
+    """공개 summary_lines JSON을 문자열 목록으로 되돌린다."""
+    if not raw:
+        return []
+    try:
+        value: object = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(value, list):
+        return []
+    return [item for item in cast("list[object]", value) if isinstance(item, str)]
+
+
+def _pipeline_row(conn: DbConnection, canonical_url: str) -> tuple[Any, ...] | None:
+    """canonical_url의 최신 SUCCESS pipeline 행을 읽는다."""
+    return conn.execute(
+        "SELECT n.source_name, n.title, n.canonical_url, n.published_at, "
+        "n.category, c.line_1, c.line_2, c.line_3, c.translated_text, "
+        "c.model_id, c.prompt_version "
+        "FROM pipeline.news n "
+        "JOIN pipeline.content_results c ON c.news_id = n.id "
+        "WHERE c.status = 'SUCCESS' AND n.canonical_url = ? "
+        "ORDER BY n.published_at DESC LIMIT 1",
+        (canonical_url,),
+    ).fetchone()
+
+
+def _repair_public_rows(conn: DbConnection, now: datetime) -> int:
+    """이미 공개된 비한국어 READY 요약을 숨기거나 pipeline의 한국어 결과로 복구한다."""
+    rows = conn.execute(
+        "SELECT n.id, n.canonical_url, n.original_language, c.status, "
+        "c.summary_lines, c.translated_text "
+        "FROM news n "
+        "JOIN content_results c ON c.news_id = n.id "
+        "WHERE c.status IN ('READY', 'INSUFFICIENT', 'PENDING') "
+        "AND n.canonical_url LIKE 'https://%' "
+        "AND EXISTS ("
+        "SELECT 1 FROM pipeline.news pn "
+        "JOIN pipeline.content_results pc ON pc.news_id = pn.id "
+        "WHERE pn.canonical_url = n.canonical_url AND pc.status = 'SUCCESS'"
+        ")"
+    ).fetchall()
+    changed = 0
+    now_iso = now.isoformat()
+    for public_id, canonical_url, original_language, status, summary_raw, translated_raw in rows:
+        stored_lines = _parse_lines(summary_raw)
+        stored_valid = (
+            status == "READY"
+            and len(stored_lines) == 3
+            and all(is_korean_text(line) for line in stored_lines)
+        )
+        translated_ok = not translated_raw or is_korean_text(translated_raw)
+        needs_check = (
+            status != "READY"
+            or not stored_valid
+            or (original_language not in ("ko", "und") and not translated_ok)
+        )
+        if not needs_check:
+            continue
+        pipeline_row = _pipeline_row(conn, canonical_url)
+        if pipeline_row is None:
+            continue
+        source_name, raw_title = pipeline_row[0], pipeline_row[1]
+        lines = _lines(pipeline_row)
+        korean_lines = _korean_lines(lines)
+        valid_ready = len(lines) == 3 and len(korean_lines) == 3
+        language = _source_language(source_name, raw_title)
+        title = raw_title.split(" ||| ", 1)[0].strip() if raw_title else raw_title
+        translated = pipeline_row[8] if isinstance(pipeline_row[8], str) else ""
+        safe_translated = (
+            translated if translated and is_korean_text(translated) else " ".join(korean_lines)
+        )
+        conn.execute(
+            "UPDATE news SET title = ?, original_language = ? WHERE id = ?",
+            (title, language, public_id),
+        )
+        if valid_ready:
+            conn.execute(
+                "UPDATE content_results SET status = 'READY', summary_lines = ?, "
+                "translated_text = ?, model_id = ?, prompt_version = ?, "
+                "processed_at = ?, updated_at = ? WHERE news_id = ?",
+                (
+                    json.dumps(korean_lines[:3], ensure_ascii=False),
+                    safe_translated,
+                    pipeline_row[9],
+                    pipeline_row[10],
+                    now_iso,
+                    now_iso,
+                    public_id,
+                ),
+            )
+            changed += 1
+            continue
+        if korean_lines:
+            new_summary = json.dumps(korean_lines[:3], ensure_ascii=False)
+            already_insufficient = (
+                status == "INSUFFICIENT" and summary_raw == new_summary and not translated_raw
+            )
+            if not already_insufficient:
+                conn.execute(
+                    "UPDATE content_results SET status = 'INSUFFICIENT', summary_lines = ?, "
+                    "translated_text = NULL, model_id = ?, prompt_version = ?, "
+                    "processed_at = ?, updated_at = ? WHERE news_id = ?",
+                    (new_summary, pipeline_row[9], pipeline_row[10], now_iso, now_iso, public_id),
+                )
+                changed += 1
+            continue
+        already_hidden = status == "PENDING" and summary_raw in (None, "[]") and not translated_raw
+        if not already_hidden:
+            conn.execute(
+                "UPDATE content_results SET status = 'PENDING', summary_lines = '[]', "
+                "translated_text = NULL, model_id = NULL, prompt_version = NULL, "
+                "processed_at = ?, updated_at = ? WHERE news_id = ?",
+                (now_iso, now_iso, public_id),
+            )
+            changed += 1
+    return changed
+
+
 def sync_pipeline_news(conn: DbConnection) -> int:
     """처리 완료된 pipeline 기사를 public news/content_results에 복사한다.
 
     입력: conn (호출자가 연 트랜잭션 연결)
-    출력: 새로 삽입한 기사 수
+    출력: 새로 삽입하고 복구한 행 수
     기능: canonical_url 중복은 삽입하지 않는다. SUCCESS가 아닌 기사는
-          다음 동기화에서 다시 시도한다. 요약 3줄이 모두 있으면 READY,
-          부족하면 INSUFFICIENT로 기록한다.
+          다음 동기화에서 다시 시도한다. 공개 READY는 한국어 3줄 요약만
+          허용하고, 기존 비한국어 행은 숨기거나 pipeline 결과로 복구한다.
     """
     source_rows = conn.execute("SELECT id, name FROM sources").fetchall()
     source_id_by_name = {row[1]: row[0] for row in source_rows}
     now = datetime.now(UTC)
+    repaired = _repair_public_rows(conn, now)
     rows = conn.execute(
         "SELECT n.source_name, n.title, n.canonical_url, n.published_at, "
         "n.category, c.line_1, c.line_2, c.line_3, c.translated_text, "
@@ -114,7 +247,17 @@ def sync_pipeline_news(conn: DbConnection) -> int:
         if source_id is None or category is None:
             continue
         lines = _lines(row)
-        status = "READY" if len(lines) == 3 else "INSUFFICIENT"
+        korean_lines = _korean_lines(lines)
+        status = "READY" if len(korean_lines) == 3 else "INSUFFICIENT"
+        language = _source_language(source_name, raw_title)
+        translated_raw = row[8] if isinstance(row[8], str) else ""
+        translated_text = (
+            translated_raw
+            if translated_raw and is_korean_text(translated_raw)
+            else " ".join(korean_lines)
+        )
+        if status == "INSUFFICIENT" and not korean_lines:
+            continue
         news_id = uuid4().hex
         if isinstance(published_at, datetime):
             published = published_at
@@ -140,7 +283,7 @@ def sync_pipeline_news(conn: DbConnection) -> int:
                 published.isoformat(),
                 now_iso,
                 category,
-                _source_language(source_name),
+                language,
                 sha256(canonical_url.encode()).hexdigest(),
                 now_iso,
             ),
@@ -152,8 +295,8 @@ def sync_pipeline_news(conn: DbConnection) -> int:
             (
                 news_id,
                 status,
-                json.dumps(lines[:3], ensure_ascii=False),
-                row[8] or "",
+                json.dumps(korean_lines[:3], ensure_ascii=False),
+                translated_text,
                 row[9],
                 row[10],
                 now_iso,
@@ -161,7 +304,7 @@ def sync_pipeline_news(conn: DbConnection) -> int:
             ),
         )
         inserted += 1
-    return inserted
+    return inserted + repaired
 
 
 _dispatch_lock = threading.Lock()
