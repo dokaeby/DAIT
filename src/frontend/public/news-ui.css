@@ -42,7 +42,7 @@
 
 .news-card.is-read { background: #f5f7fa; }
 .news-card.is-read .news-title { color: #687386; }
-.read-badge { color: #526079; background: #e5eaf1; border-radius: 6px; padding: 2px 7px; font-size: 12px; }
+.read-badge { color: #526079; background: #e5eaf1; border-radius: 6px; padding: 2px 7px; font-size: 12px; pointer-events: none; }
 #load-previous { margin: 24px 8px 24px 0; }
 
 #pagination { display:flex; justify-content:center; align-items:center; gap:12px; margin:24px 0; }

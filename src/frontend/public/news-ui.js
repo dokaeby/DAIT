@@ -434,6 +434,7 @@
   $('load-more').addEventListener('click', () => load('next'));
   $('load-previous').addEventListener('click', () => load('prev'));
   $('news-list').addEventListener('click', event => {
+    if (event.target.closest('.read-badge')) return;
     const el = event.target.closest('[data-detail]');
     if (el) return;
     const copy = event.target.closest('[data-copy-url]');
