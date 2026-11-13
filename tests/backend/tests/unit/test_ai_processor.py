@@ -183,8 +183,6 @@ def test_insufficient_does_not_call_llm_or_scanner(body: str | None) -> None:
     "lines",
     [
         (),
-        ("One.",),
-        ("One.", "Two."),
         ("One.", "Two.", "Three.", "Four."),
         (" ", "Two.", "Three."),
         ("One. Two.", "Two.", "Three."),
@@ -202,6 +200,14 @@ def test_invalid_sentence_contract(lines: tuple[str, ...]) -> None:
         GeneratedContent.model_validate_json(
             '{"summary_lines":' + json.dumps(lines) + ',"translated_text":"text"}'
         )
+
+
+def test_summary_line_count_contract_allows_one_to_three() -> None:
+    for lines in (("One.",), ("One.", "Two."), ("One.", "Two.", "Three.")):
+        result = GeneratedContent.model_validate_json(
+            '{"summary_lines":' + json.dumps(lines) + ',"translated_text":"text"}'
+        )
+        assert result.summary_lines == lines
 
 
 def test_decimal_and_abbreviation_and_whitespace() -> None:

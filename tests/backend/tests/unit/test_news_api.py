@@ -112,6 +112,50 @@ class TestNewsList:
         assert body["meta"]["total_visible"] == 3
         assert body["page"]["has_more"] is False
 
+    def test_ready_accepts_one_to_three_korean_or_english_lines(
+        self, settings: Settings, db_url: str
+    ) -> None:
+        """READY는 한국어/영어 1~3줄만 있으면 되고, 유효 줄이 없으면 INSUFFICIENT다."""
+        seed_news(db_url)
+        conn = sqlite3.connect(_db_path(db_url))
+        try:
+            conn.execute(
+                "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+                "collected_at, category, original_language, content_hash, created_at) VALUES "
+                "('edge01', 'src1', 'English one-line article', "
+                "'https://example.com/edge01', ?, ?, 'AI', 'en', 'h-edge01', ?)",
+                (NOW, NOW, NOW),
+            )
+            conn.execute(
+                "INSERT INTO content_results (news_id, summary_lines, status, updated_at) "
+                "VALUES ('edge01', ?, 'READY', ?)",
+                ('["Only one English line."]', NOW),
+            )
+            conn.execute(
+                "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+                "collected_at, category, original_language, content_hash, created_at) VALUES "
+                "('edge02', 'src1', '일본어 요약 기사', 'https://example.com/edge02', "
+                "?, ?, 'AI', 'ko', 'h-edge02', ?)",
+                (NOW, NOW, NOW),
+            )
+            conn.execute(
+                "INSERT INTO content_results (news_id, summary_lines, status, updated_at) "
+                "VALUES ('edge02', ?, 'READY', ?)",
+                ('["日文です。"]', NOW),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        client = client_for(settings)
+        token = sign_up(client)
+        response = client.request("GET", "/v1/news", headers=bearer(token))
+        assert response.status_code == 200
+        items = {item["id"]: item for item in response.json()["items"]}
+        assert items["edge01"]["processing_status"] == "READY"
+        assert items["edge01"]["summary_lines"] == ["Only one English line."]
+        assert items["edge02"]["processing_status"] == "INSUFFICIENT"
+        assert items["edge02"]["summary_lines"] == []
+
     def test_search_matches_summary_and_title(self, settings: Settings, db_url: str) -> None:
         """제목 또는 저장된 요약에 검색어가 있는 기사만 반환된다."""
         seed_news(db_url)
@@ -170,7 +214,7 @@ class TestNewsList:
     def test_all_categories_guest_limit_and_member_filters(
         self, settings: Settings, db_url: str
     ) -> None:
-        """Guests see the global latest ten; members can filter and paginate all categories."""
+        """Guests get the latest ten within the requested filters; members paginate all."""
         seed_news(db_url)
         with sqlite3.connect(_db_path(db_url)) as conn:
             for index in range(15):
@@ -205,11 +249,22 @@ class TestNewsList:
         )
         assert guest.status_code == 200
         body = guest.json()
+        # 게스트도 지정 카테고리·언어 필터를 따르되 최신순·10건·커서 불가 제한은 유지한다.
         assert [item["id"] for item in body["items"]] == [
-            f"mixed{index:02d}" for index in range(14, 4, -1)
+            "mixed12",
+            "mixed09",
+            "mixed06",
+            "mixed03",
+            "mixed00",
+            "news02",
+            "news01",
         ]
         assert body["page"] == {"has_more": False, "next_cursor": None}
-        assert body["meta"]["total_visible"] == 10
+        assert body["meta"]["total_visible"] == 7
+        # 게스트의 language=en 요청도 적용된다(영문 기사가 없으면 0건).
+        english = client.request("GET", "/v1/news", params={"language": "en"})
+        assert english.status_code == 200
+        assert english.json()["items"] == []
         headers = bearer(sign_up(client))
         member = client.request("GET", "/v1/news", headers=headers, params={"sort": "latest"})
         assert member.status_code == 200
@@ -230,6 +285,39 @@ class TestNewsList:
             assert detail.status_code == 200
             assert detail.json()["article"]["id"] == news_id
         assert client.request("GET", "/v1/news/news00").status_code == 404
+
+    def test_list_cache_refreshes_when_public_data_changes(
+        self, settings: Settings, db_url: str
+    ) -> None:
+        """새 공개 기사가 DB에 저장되면 다음 요청이 오래된 캐시를 쓰지 않는다."""
+        seed_news(db_url)
+        client = client_for(settings)
+        first = client.request("GET", "/v1/news", params={"language": "ko"})
+        assert first.status_code == 200
+        assert [item["id"] for item in first.json()["items"]] == [
+            "news02",
+            "news01",
+            "news00",
+        ]
+        # 같은 요청은 캐시를 재사용한다.
+        cached = client.request("GET", "/v1/news", params={"language": "ko"})
+        assert cached.json() == first.json()
+        with sqlite3.connect(_db_path(db_url)) as conn:
+            conn.execute(
+                "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+                "collected_at, category, original_language, created_at) "
+                "VALUES ('new01', 'src1', '최신 기사', 'https://example.com/new01', "
+                "'2026-02-01T00:00:00+00:00', ?, 'AI', 'ko', ?)",
+                (NOW, NOW),
+            )
+            conn.execute(
+                "INSERT INTO content_results (news_id, summary_lines, status, updated_at) "
+                "VALUES ('new01', ?, 'READY', ?)",
+                (SUMMARY_JSON, NOW),
+            )
+        fresh = client.request("GET", "/v1/news", params={"language": "ko"})
+        assert fresh.status_code == 200
+        assert fresh.json()["items"][0]["id"] == "new01"
 
 
 class TestNewsDetail:

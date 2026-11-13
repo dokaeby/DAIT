@@ -60,7 +60,14 @@ def list_news(
         if cursor is not None:
             raise ValidationFailedError
         response = news_feed_service.list_news(
-            settings, None, q, "latest", min(page_size, 10), None, refresh=refresh
+            settings,
+            category,
+            q,
+            "latest",
+            min(page_size, 10),
+            None,
+            language=language,
+            refresh=refresh,
         )
         return response.model_copy(
             update={
@@ -143,7 +150,7 @@ def mark_news_read(
 
 @router.get("/{news_id}", response_model=NewsDetailResponse, summary="뉴스 상세")
 def news_detail(news_id: str, settings: SettingsDep) -> NewsDetailResponse:
-    """기사 헤더·3줄 요약·번역·처리 정보·원본 정보·관련 뉴스를 반환한다.
+    """기사 헤더·AI 요약·번역·처리 정보·원본 정보·관련 뉴스를 반환한다.
 
     입력: news_id (불투명 뉴스 ID, 경로)
     출력: NewsDetailResponse

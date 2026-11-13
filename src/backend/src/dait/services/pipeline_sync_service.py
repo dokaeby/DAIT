@@ -17,7 +17,12 @@ from hashlib import sha256
 from typing import Any, cast
 from uuid import uuid4
 
-from dait.core.article_language import is_korean_text, looks_foreign_text
+from dait.core.article_language import (
+    allowed_summary_lines,
+    is_korean_or_english_text,
+    is_korean_text,
+    looks_foreign_text,
+)
 from dait.core.config import Settings
 from dait.repositories import db as db_module
 from dait.repositories.db import DbConnection, transaction
@@ -73,9 +78,9 @@ def _source_language(source_name: str, raw_title: str | None) -> str:
     return "und"
 
 
-def _korean_lines(lines: list[str]) -> list[str]:
-    """한국어가 아닌 요약 줄을 제거한다."""
-    return [line for line in lines if is_korean_text(line)]
+def _publishable_lines(lines: list[str]) -> list[str]:
+    """공개 가능한 한국어/영어 요약 줄만 최대 3줄 남긴다."""
+    return allowed_summary_lines(lines)
 
 
 def _category_for(raw: str) -> str | None:
@@ -121,9 +126,9 @@ def _pipeline_row(conn: DbConnection, canonical_url: str) -> tuple[Any, ...] | N
 
 
 def _repair_public_rows(conn: DbConnection, now: datetime) -> int:
-    """이미 공개된 비한국어 READY 요약을 숨기거나 pipeline의 한국어 결과로 복구한다."""
+    """이미 공개된 요약을 한국어/영어 1~3줄 규칙에 맞게 복구한다."""
     rows = conn.execute(
-        "SELECT n.id, n.canonical_url, n.original_language, c.status, "
+        "SELECT n.id, n.title, n.canonical_url, n.original_language, c.status, "
         "c.summary_lines, c.translated_text "
         "FROM news n "
         "JOIN content_results c ON c.news_id = n.id "
@@ -137,17 +142,29 @@ def _repair_public_rows(conn: DbConnection, now: datetime) -> int:
     ).fetchall()
     changed = 0
     now_iso = now.isoformat()
-    for public_id, canonical_url, original_language, status, summary_raw, translated_raw in rows:
-        stored_lines = _parse_lines(summary_raw)
-        stored_valid = (
+    for (
+        public_id,
+        current_title,
+        canonical_url,
+        original_language,
+        status,
+        summary_raw,
+        translated_raw,
+    ) in rows:
+        stored_lines = allowed_summary_lines(_parse_lines(summary_raw))
+        stored_valid = status == "READY" and bool(stored_lines)
+        stored_has_korean = any(is_korean_text(line) for line in stored_lines)
+        stored_needs_language = (
             status == "READY"
-            and len(stored_lines) == 3
-            and all(is_korean_text(line) for line in stored_lines)
+            and original_language in ("ko", "und")
+            and bool(stored_lines)
+            and not stored_has_korean
         )
-        translated_ok = not translated_raw or is_korean_text(translated_raw)
+        translated_ok = not translated_raw or is_korean_or_english_text(translated_raw)
         needs_check = (
             status != "READY"
             or not stored_valid
+            or stored_needs_language
             or (original_language not in ("ko", "und") and not translated_ok)
         )
         if not needs_check:
@@ -156,26 +173,35 @@ def _repair_public_rows(conn: DbConnection, now: datetime) -> int:
         if pipeline_row is None:
             continue
         source_name, raw_title = pipeline_row[0], pipeline_row[1]
-        lines = _lines(pipeline_row)
-        korean_lines = _korean_lines(lines)
-        valid_ready = len(lines) == 3 and len(korean_lines) == 3
+        lines = _publishable_lines(_lines(pipeline_row))
+        valid_ready = bool(lines)
         language = _source_language(source_name, raw_title)
         title = raw_title.split(" ||| ", 1)[0].strip() if raw_title else raw_title
         translated = pipeline_row[8] if isinstance(pipeline_row[8], str) else ""
         safe_translated = (
-            translated if translated and is_korean_text(translated) else " ".join(korean_lines)
-        )
-        conn.execute(
-            "UPDATE news SET title = ?, original_language = ? WHERE id = ?",
-            (title, language, public_id),
+            translated if translated and is_korean_text(translated) else " ".join(lines)
         )
         if valid_ready:
+            new_summary = json.dumps(lines, ensure_ascii=False)
+            unchanged = (
+                status == "READY"
+                and summary_raw == new_summary
+                and translated_raw == safe_translated
+                and original_language == language
+                and current_title == title
+            )
+            if unchanged:
+                continue
+            conn.execute(
+                "UPDATE news SET title = ?, original_language = ? WHERE id = ?",
+                (title, language, public_id),
+            )
             conn.execute(
                 "UPDATE content_results SET status = 'READY', summary_lines = ?, "
                 "translated_text = ?, model_id = ?, prompt_version = ?, "
                 "processed_at = ?, updated_at = ? WHERE news_id = ?",
                 (
-                    json.dumps(korean_lines[:3], ensure_ascii=False),
+                    new_summary,
                     safe_translated,
                     pipeline_row[9],
                     pipeline_row[10],
@@ -185,20 +211,6 @@ def _repair_public_rows(conn: DbConnection, now: datetime) -> int:
                 ),
             )
             changed += 1
-            continue
-        if korean_lines:
-            new_summary = json.dumps(korean_lines[:3], ensure_ascii=False)
-            already_insufficient = (
-                status == "INSUFFICIENT" and summary_raw == new_summary and not translated_raw
-            )
-            if not already_insufficient:
-                conn.execute(
-                    "UPDATE content_results SET status = 'INSUFFICIENT', summary_lines = ?, "
-                    "translated_text = NULL, model_id = ?, prompt_version = ?, "
-                    "processed_at = ?, updated_at = ? WHERE news_id = ?",
-                    (new_summary, pipeline_row[9], pipeline_row[10], now_iso, now_iso, public_id),
-                )
-                changed += 1
             continue
         already_hidden = status == "PENDING" and summary_raw in (None, "[]") and not translated_raw
         if not already_hidden:
@@ -217,9 +229,8 @@ def sync_pipeline_news(conn: DbConnection) -> int:
 
     입력: conn (호출자가 연 트랜잭션 연결)
     출력: 새로 삽입하고 복구한 행 수
-    기능: canonical_url 중복은 삽입하지 않는다. SUCCESS가 아닌 기사는
-          다음 동기화에서 다시 시도한다. 공개 READY는 한국어 3줄 요약만
-          허용하고, 기존 비한국어 행은 숨기거나 pipeline 결과로 복구한다.
+    기능: canonical_url 중복은 삽입하지 않는다. SUCCESS가 아니거나 공개 가능한
+          한국어/영어 요약이 없으면 다음 동기화에서 다시 시도한다.
     """
     source_rows = conn.execute("SELECT id, name FROM sources").fetchall()
     source_id_by_name = {row[1]: row[0] for row in source_rows}
@@ -246,18 +257,15 @@ def sync_pipeline_news(conn: DbConnection) -> int:
         category = _category_for(raw_category)
         if source_id is None or category is None:
             continue
-        lines = _lines(row)
-        korean_lines = _korean_lines(lines)
-        status = "READY" if len(korean_lines) == 3 else "INSUFFICIENT"
+        lines = _publishable_lines(_lines(row))
+        if not lines:
+            continue
+        status = "READY"
         language = _source_language(source_name, raw_title)
         translated_raw = row[8] if isinstance(row[8], str) else ""
         translated_text = (
-            translated_raw
-            if translated_raw and is_korean_text(translated_raw)
-            else " ".join(korean_lines)
+            translated_raw if translated_raw and is_korean_text(translated_raw) else " ".join(lines)
         )
-        if status == "INSUFFICIENT" and not korean_lines:
-            continue
         news_id = uuid4().hex
         if isinstance(published_at, datetime):
             published = published_at
@@ -295,7 +303,7 @@ def sync_pipeline_news(conn: DbConnection) -> int:
             (
                 news_id,
                 status,
-                json.dumps(korean_lines[:3], ensure_ascii=False),
+                json.dumps(lines, ensure_ascii=False),
                 translated_text,
                 row[9],
                 row[10],

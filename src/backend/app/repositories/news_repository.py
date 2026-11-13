@@ -172,8 +172,8 @@ class ContentResultRow(Base):
     __tablename__ = "content_results"
     __table_args__ = (
         CheckConstraint(
-            "(status = 'SUCCESS' AND line_1 IS NOT NULL AND line_2 IS NOT NULL "
-            "AND line_3 IS NOT NULL AND translated_text IS NOT NULL) OR "
+            "(status = 'SUCCESS' AND translated_text IS NOT NULL AND "
+            "(line_1 IS NOT NULL OR line_2 IS NOT NULL OR line_3 IS NOT NULL)) OR "
             "(status = 'INSUFFICIENT' AND line_1 IS NULL AND line_2 IS NULL "
             "AND line_3 IS NULL AND translated_text IS NULL)",
             name="ck_content_status",
@@ -289,25 +289,36 @@ def _require_owner(row: ProcessingClaimRow, claim: ProcessingClaim, now: datetim
 
 def _ensure_content_columns(connection: Connection) -> None:
     """Add engine/model_id columns to pre-existing content_results tables."""
-    existing = {
-        column["name"] for column in inspect(connection).get_columns("content_results")
-    }
+    existing = {column["name"] for column in inspect(connection).get_columns("content_results")}
     for name, ddl in (
         ("engine", "VARCHAR(50) NOT NULL DEFAULT ''"),
         ("model_id", "VARCHAR(200) NOT NULL DEFAULT ''"),
         ("prompt_version", "VARCHAR(50) NOT NULL DEFAULT ''"),
     ):
         if name not in existing:
-            connection.exec_driver_sql(
-                f"ALTER TABLE content_results ADD COLUMN {name} {ddl}"
-            )
+            connection.exec_driver_sql(f"ALTER TABLE content_results ADD COLUMN {name} {ddl}")
+
+
+def _ensure_content_constraints(connection: Connection) -> None:
+    """PostgreSQL의 기존 content_results CHECK를 1~3줄 요약 규칙으로 맞춘다."""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.exec_driver_sql(
+        "ALTER TABLE content_results DROP CONSTRAINT IF EXISTS ck_content_status"
+    )
+    connection.exec_driver_sql(
+        "ALTER TABLE content_results ADD CONSTRAINT ck_content_status CHECK ("
+        "(status = 'SUCCESS' AND translated_text IS NOT NULL AND "
+        "(line_1 IS NOT NULL OR line_2 IS NOT NULL OR line_3 IS NOT NULL)) OR "
+        "(status = 'INSUFFICIENT' AND line_1 IS NULL AND line_2 IS NULL "
+        "AND line_3 IS NULL AND translated_text IS NULL))"
+    )
 
 
 def _ensure_indexes(connection: Connection) -> None:
     """Create query indexes on pre-existing tables (IF NOT EXISTS is dialect-safe)."""
     connection.exec_driver_sql(
-        "CREATE INDEX IF NOT EXISTS ix_news_category_published "
-        "ON news (category, published_at)"
+        "CREATE INDEX IF NOT EXISTS ix_news_category_published ON news (category, published_at)"
     )
     connection.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_news_published_at ON news (published_at)"
@@ -359,6 +370,7 @@ class NewsRepository:
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
             await connection.run_sync(_ensure_content_columns)
+            await connection.run_sync(_ensure_content_constraints)
             await connection.run_sync(_ensure_indexes)
 
     @_safe_operation
@@ -436,9 +448,9 @@ class NewsRepository:
                     news_id=news.id,
                     status=content.status,
                     content_hash=content.content_hash,
-                    line_1=lines[0] if lines is not None else None,
-                    line_2=lines[1] if lines is not None else None,
-                    line_3=lines[2] if lines is not None else None,
+                    line_1=lines[0] if lines else None,
+                    line_2=lines[1] if lines and len(lines) > 1 else None,
+                    line_3=lines[2] if lines and len(lines) > 2 else None,
                     translated_text=content.translated_text,
                     engine=content.engine,
                     model_id=content.model_id,
@@ -532,12 +544,7 @@ class NewsRepository:
                 ),
             }[search_scope]
             conditions.append(
-                or_(
-                    *(
-                        func.lower(column).like(pattern, escape="\\")
-                        for column in scope_columns
-                    )
-                )
+                or_(*(func.lower(column).like(pattern, escape="\\") for column in scope_columns))
             )
         async with self._session() as session:
             rows = await session.execute(
@@ -551,9 +558,7 @@ class NewsRepository:
     async def count_news(self) -> int:
         """저장된 뉴스 총건수 — 상태 폴링처럼 건수만 필요한 경로용."""
         async with self._session() as session:
-            return int(
-                await session.scalar(select(func.count()).select_from(NewsRow)) or 0
-            )
+            return int(await session.scalar(select(func.count()).select_from(NewsRow)) or 0)
 
     @_safe_operation
     async def list_news(self) -> tuple[StoredNews, ...]:
@@ -572,9 +577,7 @@ class NewsRepository:
         key = NewsKey(canonical_url=HttpUrl(canonical_url)).canonical_url
         async with self._session() as session:
             news = (
-                await session.scalars(
-                    select(NewsRow).where(NewsRow.canonical_url == str(key))
-                )
+                await session.scalars(select(NewsRow).where(NewsRow.canonical_url == str(key)))
             ).one_or_none()
             if news is None:
                 return False
@@ -584,9 +587,9 @@ class NewsRepository:
             lines = content.summary_lines if isinstance(content, SuccessContent) else None
             row.status = content.status
             row.content_hash = content.content_hash
-            row.line_1 = lines[0] if lines is not None else None
-            row.line_2 = lines[1] if lines is not None else None
-            row.line_3 = lines[2] if lines is not None else None
+            row.line_1 = lines[0] if lines else None
+            row.line_2 = lines[1] if lines and len(lines) > 1 else None
+            row.line_3 = lines[2] if lines and len(lines) > 2 else None
             row.translated_text = content.translated_text
             row.engine = content.engine
             row.model_id = content.model_id

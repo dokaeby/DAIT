@@ -1,5 +1,6 @@
 """로그인한 사용자의 계정 작업(인증 확인, 로그인 상태, 탈퇴)을 처리한다."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi.security import HTTPAuthorizationCredentials
@@ -14,6 +15,7 @@ from dait.core.errors import (
 )
 from dait.core.logging import audit
 from dait.core.security import decode_access_token, verify_password
+from dait.repositories import schedule_repository
 from dait.repositories.db import transaction
 from dait.repositories.user_repository import (
     DuplicateNicknameError,
@@ -24,7 +26,10 @@ from dait.repositories.user_repository import (
 from dait.schemas.auth import SessionResponse
 from dait.schemas.nickname import NicknameResult
 from dait.schemas.user import UserPublic, UserRecord, UserStatus
+from dait.services import schedule_cron_service
 from dait.services.login_throttle import LoginThrottles
+
+logger = logging.getLogger(__name__)
 
 _RECENT_LOGIN = timedelta(minutes=5)
 _CONFIRM_TEXT = "탈퇴"
@@ -86,6 +91,25 @@ def change_nickname(settings: Settings, user: UserRecord, nickname: str | None) 
     return NicknameResult(nickname=nickname)
 
 
+def _schedule_rows(settings: Settings, user_id: str) -> list[schedule_repository.ScheduleRow]:
+    """탈퇴 전에 지울 cron job을 찾기 위해 예약 행을 읽는다."""
+    with transaction(settings.database_url) as conn:
+        return schedule_repository.list_by_user(conn, user_id)
+
+
+def _delete_schedule_cron_jobs(
+    settings: Settings, rows: list[schedule_repository.ScheduleRow]
+) -> None:
+    """계정 삭제 후 남은 cron-job.org job을 최선 노력으로 지운다."""
+    for row in rows:
+        if not row.cron_job_id:
+            continue
+        try:
+            schedule_cron_service.delete_schedule_job(settings, row)
+        except Exception:
+            logger.exception("cron-job.org cleanup failed", extra={"schedule_id": row.id})
+
+
 # 입력: 앱 설정, 인증된 사용자, 재입력 비밀번호, 실패 제한 장치, IP, 현재 시각.
 # 출력: 반환값 없음.
 # 동작: 잠금과 비밀번호를 확인한 뒤 사용자 계정을 삭제한다.
@@ -113,8 +137,10 @@ def withdraw(
         throttles.register_failure(user.email, client_ip, now)
         audit("withdraw", "invalid_credentials", user_id=user.id, client_ip=client_ip)
         raise InvalidCredentialsError
+    schedule_rows = _schedule_rows(settings, user.id)
     with transaction(settings.database_url) as conn:
         delete_user(conn, user.id)
+    _delete_schedule_cron_jobs(settings, schedule_rows)
     throttles.clear(user.email, client_ip)
     audit("withdraw", "success", user_id=user.id, client_ip=client_ip)
 
@@ -142,8 +168,10 @@ def withdraw_without_password(
     if user.password_hash is not None or not recent or confirm_text != _CONFIRM_TEXT:
         audit("withdraw", "recent_login_required", user_id=user.id, client_ip=client_ip)
         raise RecentLoginRequiredError
+    schedule_rows = _schedule_rows(settings, user.id)
     with transaction(settings.database_url) as conn:
         delete_user(conn, user.id)
+    _delete_schedule_cron_jobs(settings, schedule_rows)
     audit("withdraw", "success", user_id=user.id, client_ip=client_ip)
 
 

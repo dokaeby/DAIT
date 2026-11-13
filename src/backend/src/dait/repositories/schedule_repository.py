@@ -18,15 +18,17 @@ class ScheduleRow(NamedTuple):
     next_run_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    cron_job_id: str | None = None
 
 
 _COLUMNS = (
-    "id, user_id, local_time, timezone, enabled, criteria_json, next_run_at, created_at, updated_at"
+    "id, user_id, local_time, timezone, enabled, criteria_json, next_run_at, "
+    "created_at, updated_at, cron_job_id"
 )
 
 
 def _to_row(
-    row: tuple[str, str, str, str, int, str, str | None, str, str],
+    row: tuple[str, str, str, str, int, str, str | None, str, str, str | None],
 ) -> ScheduleRow:
     """DB 행을 ScheduleRow로 바꾼다.
 
@@ -44,6 +46,7 @@ def _to_row(
         next_run_at=datetime.fromisoformat(row[6]) if row[6] else None,
         created_at=datetime.fromisoformat(row[7]),
         updated_at=datetime.fromisoformat(row[8]),
+        cron_job_id=row[9],
     )
 
 
@@ -84,8 +87,8 @@ def insert_schedule(conn: DbConnection, row: ScheduleRow) -> None:
     """
     conn.execute(
         "INSERT INTO schedules (id, user_id, local_time, timezone, enabled, "
-        "criteria_json, next_run_at, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "criteria_json, next_run_at, created_at, updated_at, cron_job_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             row.id,
             row.user_id,
@@ -96,6 +99,7 @@ def insert_schedule(conn: DbConnection, row: ScheduleRow) -> None:
             row.next_run_at.isoformat() if row.next_run_at else None,
             row.created_at.isoformat(),
             row.updated_at.isoformat(),
+            row.cron_job_id,
         ),
     )
 
@@ -109,7 +113,7 @@ def update_schedule(conn: DbConnection, row: ScheduleRow) -> bool:
     """
     cursor = conn.execute(
         "UPDATE schedules SET local_time = ?, timezone = ?, enabled = ?, "
-        "criteria_json = ?, next_run_at = ?, updated_at = ? "
+        "criteria_json = ?, next_run_at = ?, updated_at = ?, cron_job_id = ? "
         "WHERE id = ? AND user_id = ?",
         (
             row.local_time,
@@ -118,9 +122,39 @@ def update_schedule(conn: DbConnection, row: ScheduleRow) -> bool:
             row.criteria_json,
             row.next_run_at.isoformat() if row.next_run_at else None,
             row.updated_at.isoformat(),
+            row.cron_job_id,
             row.id,
             row.user_id,
         ),
+    )
+    return cursor.rowcount == 1
+
+
+def list_all(conn: DbConnection) -> list[ScheduleRow]:
+    """cron-job.org 동기화용으로 전체 예약을 읽는다.
+
+    입력: conn (연결)
+    출력: ScheduleRow 목록 (생성 순)
+    기능: 사용자 조건 없이 읽지만 외부 job id 채우기/비교에만 쓴다.
+    """
+    rows = conn.execute(
+        f"SELECT {_COLUMNS} FROM schedules ORDER BY created_at, id"  # noqa: S608 - _COLUMNS는 모듈 상수
+    ).fetchall()
+    return [_to_row(row) for row in rows]
+
+
+def set_cron_job_id(
+    conn: DbConnection, user_id: str, schedule_id: str, cron_job_id: str | None
+) -> bool:
+    """예약에 연결된 cron-job.org job id만 갱신한다.
+
+    입력: conn (연결), user_id (소유자), schedule_id, cron_job_id
+    출력: bool (갱신된 행이 있었으면 True)
+    기능: 외부 등록 결과만 반영하고 사용자에게 보이는 updated_at은 바꾸지 않는다.
+    """
+    cursor = conn.execute(
+        "UPDATE schedules SET cron_job_id = ? WHERE id = ? AND user_id = ?",
+        (cron_job_id, schedule_id, user_id),
     )
     return cursor.rowcount == 1
 

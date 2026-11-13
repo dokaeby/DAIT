@@ -1,6 +1,7 @@
 """FR-SET-01 예약 수집: 생성·변경·삭제와 다음 실행 시각 계산을 조정한다."""
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -10,6 +11,7 @@ from dait.core.errors import ScheduleNotFoundError, ValidationFailedError
 from dait.repositories import news_repository, schedule_repository
 from dait.repositories.audit_repository import insert_audit
 from dait.repositories.db import DbConnection, transaction
+from dait.repositories.schedule_repository import ScheduleRow
 from dait.schemas.settings import (
     ScheduleCreateRequest,
     ScheduleCriteria,
@@ -19,6 +21,9 @@ from dait.schemas.settings import (
     normalize_keywords,
 )
 from dait.schemas.user import UserRecord
+from dait.services import schedule_cron_service
+
+logger = logging.getLogger(__name__)
 
 MAX_SCHEDULES = 5
 
@@ -68,6 +73,17 @@ def _validate_criteria_sources(conn: DbConnection, criteria: ScheduleCriteria) -
         raise ValidationFailedError
 
 
+def _ensure_schedule_capacity(conn: DbConnection, user_id: str) -> None:
+    """예약 상한(5개)을 확인한다.
+
+    입력: conn (연결), user_id (본인 id)
+    출력: 없음
+    기능: 상한을 넘으면 ValidationFailedError(422). 생성 트랜잭션 안에서도 다시 부른다.
+    """
+    if len(schedule_repository.list_by_user(conn, user_id)) >= MAX_SCHEDULES:
+        raise ValidationFailedError
+
+
 def _normalized_criteria(criteria: ScheduleCriteria) -> ScheduleCriteria:
     """예약 조건을 정규화한다(키워드 정리·중복 제거).
 
@@ -83,6 +99,11 @@ def _normalized_criteria(criteria: ScheduleCriteria) -> ScheduleCriteria:
         keywords=keywords,
         source_ids=list(dict.fromkeys(criteria.source_ids)),
         categories=list(dict.fromkeys(criteria.categories)),
+        interests=(
+            None
+            if criteria.interests is None
+            else list(dict.fromkeys(criteria.interests))
+        ),
     )
 
 
@@ -93,6 +114,11 @@ def _criteria_json(criteria: ScheduleCriteria) -> str:
             "keywords": criteria.keywords,
             "source_ids": criteria.source_ids,
             "categories": [c.value for c in criteria.categories],
+            "interests": (
+                None
+                if criteria.interests is None
+                else [c.value for c in criteria.interests]
+            ),
         },
         ensure_ascii=False,
     )
@@ -131,6 +157,48 @@ def _next_run_or_none(
     return compute_next_run(local_time, timezone_name, now)
 
 
+def _cron_sync_needed(old_row: ScheduleRow, new_row: ScheduleRow) -> bool:
+    """외부 cron job을 다시 맞춰야 하는지 판단한다.
+
+    입력: old_row (DB의 기존 예약), new_row (저장할 새 값)
+    출력: bool
+    기능: 시간·시간대·활성 변경, 또는 활성인데 jobId가 없는 경우에만 True.
+          조건(criteria)만 바뀐 경우 외부 cron은 그대로 둔다.
+    """
+    timing_changed = (
+        old_row.local_time != new_row.local_time
+        or old_row.timezone != new_row.timezone
+        or old_row.enabled != new_row.enabled
+    )
+    if new_row.enabled:
+        return timing_changed or old_row.cron_job_id is None
+    return timing_changed and old_row.cron_job_id is not None
+
+
+def _revert_cron_sync(
+    settings: Settings,
+    old_row: ScheduleRow,
+    job_id: str | None,
+) -> None:
+    """DB 저장 실패 시 외부 cron 상태를 이전 값으로 되돌리기를 시도한다.
+
+    입력: settings, old_row (이전 예약), job_id (방금 맞춘 jobId)
+    출력: 없음
+    기능: 최선 노력(best-effort)만 하고 실패는 로그로 남겨 원래 DB 오류를 가리지 않는다.
+    """
+    if not job_id:
+        return
+    try:
+        if job_id == old_row.cron_job_id:
+            schedule_cron_service.upsert_schedule_job(settings, old_row)
+        else:
+            schedule_cron_service.delete_schedule_job(
+                settings, old_row._replace(cron_job_id=job_id)
+            )
+    except Exception:
+        logger.exception("cron-job.org revert failed", extra={"schedule_id": old_row.id})
+
+
 def list_schedules(settings: Settings, user: UserRecord) -> ScheduleListResponse:
     """본인의 예약 목록을 조회한다.
 
@@ -162,23 +230,33 @@ def create_schedule(
     criteria = _normalized_criteria(request.criteria)
     with transaction(settings.database_url) as conn:
         _validate_criteria_sources(conn, criteria)
-        existing = schedule_repository.list_by_user(conn, user.id)
-        if len(existing) >= MAX_SCHEDULES:
-            raise ValidationFailedError
-        next_run = _next_run_or_none(request.enabled, request.local_time, request.timezone, now)
-        row = schedule_repository.ScheduleRow(
-            id=uuid.uuid4().hex,
-            user_id=user.id,
-            local_time=request.local_time,
-            timezone=request.timezone,
-            enabled=request.enabled,
-            criteria_json=_criteria_json(criteria),
-            next_run_at=next_run,
-            created_at=now,
-            updated_at=now,
-        )
-        schedule_repository.insert_schedule(conn, row)
-        insert_audit(conn, user.id, "SCHEDULE_CREATED", "SCHEDULE", row.id, request_id, now)
+        _ensure_schedule_capacity(conn, user.id)
+    next_run = _next_run_or_none(request.enabled, request.local_time, request.timezone, now)
+    pending_row = ScheduleRow(
+        id=uuid.uuid4().hex,
+        user_id=user.id,
+        local_time=request.local_time,
+        timezone=request.timezone,
+        enabled=request.enabled,
+        criteria_json=_criteria_json(criteria),
+        next_run_at=next_run,
+        created_at=now,
+        updated_at=now,
+    )
+    job_id = schedule_cron_service.upsert_schedule_job(settings, pending_row)
+    row = pending_row._replace(cron_job_id=job_id)
+    try:
+        with transaction(settings.database_url) as conn:
+            _ensure_schedule_capacity(conn, user.id)
+            schedule_repository.insert_schedule(conn, row)
+            insert_audit(conn, user.id, "SCHEDULE_CREATED", "SCHEDULE", row.id, request_id, now)
+    except Exception:
+        if job_id:
+            try:
+                schedule_cron_service.delete_schedule_job(settings, row)
+            except Exception:
+                logger.exception("cron-job.org cleanup failed", extra={"schedule_id": row.id})
+        raise
     return _to_response(row)
 
 
@@ -223,19 +301,31 @@ def update_schedule(
             if schedule_changed
             else row.next_run_at
         )
-        new_row = schedule_repository.ScheduleRow(
-            id=row.id,
-            user_id=user.id,
-            local_time=local_time,
-            timezone=timezone_name,
-            enabled=enabled,
-            criteria_json=_criteria_json(criteria),
-            next_run_at=next_run,
-            created_at=row.created_at,
-            updated_at=now,
-        )
-        schedule_repository.update_schedule(conn, new_row)
-        insert_audit(conn, user.id, "SCHEDULE_UPDATED", "SCHEDULE", row.id, request_id, now)
+    new_row = ScheduleRow(
+        id=row.id,
+        user_id=user.id,
+        local_time=local_time,
+        timezone=timezone_name,
+        enabled=enabled,
+        criteria_json=_criteria_json(criteria),
+        next_run_at=next_run,
+        created_at=row.created_at,
+        updated_at=now,
+        cron_job_id=row.cron_job_id,
+    )
+    job_id: str | None = None
+    synced = _cron_sync_needed(row, new_row)
+    if synced:
+        job_id = schedule_cron_service.upsert_schedule_job(settings, new_row)
+        new_row = new_row._replace(cron_job_id=job_id)
+    try:
+        with transaction(settings.database_url) as conn:
+            schedule_repository.update_schedule(conn, new_row)
+            insert_audit(conn, user.id, "SCHEDULE_UPDATED", "SCHEDULE", row.id, request_id, now)
+    except Exception:
+        if synced:
+            _revert_cron_sync(settings, row, job_id)
+        raise
     return _to_response(new_row)
 
 
@@ -256,5 +346,15 @@ def delete_schedule(
         row = schedule_repository.get_by_id_and_user(conn, user.id, schedule_id)
         if row is None:
             raise ScheduleNotFoundError
-        schedule_repository.delete_schedule(conn, user.id, schedule_id)
-        insert_audit(conn, user.id, "SCHEDULE_DELETED", "SCHEDULE", row.id, request_id, now)
+    schedule_cron_service.delete_schedule_job(settings, row)
+    try:
+        with transaction(settings.database_url) as conn:
+            schedule_repository.delete_schedule(conn, user.id, schedule_id)
+            insert_audit(conn, user.id, "SCHEDULE_DELETED", "SCHEDULE", row.id, request_id, now)
+    except Exception:
+        if row.cron_job_id:
+            try:
+                schedule_cron_service.upsert_schedule_job(settings, row)
+            except Exception:
+                logger.exception("cron-job.org restore failed", extra={"schedule_id": row.id})
+        raise

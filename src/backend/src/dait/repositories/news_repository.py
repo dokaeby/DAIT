@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from hashlib import sha256
 from typing import NamedTuple, cast
 
 from dait.repositories.db import DbConnection
@@ -158,6 +159,22 @@ def list_public_news(
     ]
 
 
+def public_data_version(conn: DbConnection) -> str:
+    """공개 목록 결과에 영향을 주는 데이터 변경 토큰을 만든다.
+
+    입력: conn (연결)
+    출력: str (짧은 해시)
+    기능: 기사 삽입·공개 상태 전환·요약 갱신이 일어나면 값이 바뀐다.
+          목록 캐시 키에 넣어 DB 변경 시 캐시가 자동으로 무효화되게 한다.
+    """
+    row = conn.execute(
+        "SELECT (SELECT COUNT(*) FROM news), "
+        "(SELECT MAX(collected_at) FROM news), "
+        "(SELECT MAX(updated_at) FROM content_results)"
+    ).fetchone()
+    return sha256(repr(tuple(row) if row else None).encode()).hexdigest()[:16]
+
+
 def count_public_news(
     conn: DbConnection,
     category: str | None,
@@ -234,6 +251,8 @@ def public_news_counts(
         f"WHERE {' AND '.join(clauses)}"
     )
     row = conn.execute(sql, params).fetchone()
+    if row is None:
+        return {}, {}
     size = len(_CATEGORY_VALUES)
     return (
         {category: int(row[i]) for i, category in enumerate(_CATEGORY_VALUES)},
@@ -427,4 +446,4 @@ def parse_summary_lines(raw: str | None) -> list[str]:
     if not isinstance(value, list):
         return []
     items = cast("list[object]", value)
-    return [item[:500] for item in items if isinstance(item, str)][:3]
+    return [item.strip()[:500] for item in items if isinstance(item, str) and item.strip()][:3]

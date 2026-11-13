@@ -29,6 +29,7 @@ from dait.core.migrations import run_migrations
 from dait.repositories.one_time_store import OneTimeStore
 from dait.services.legacy_news_service import import_saved_news
 from dait.services.login_throttle import create_throttles
+from dait.services.schedule_cron_service import reconcile_all_safe as reconcile_schedule_cron_jobs
 
 
 # 입력: 선택적 앱 설정.
@@ -51,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 무료 플랜 Render는 preDeploy를 실행하지 않으므로 시작 시 스키마를 맞춘다.
         await run_in_threadpool(run_migrations, config.database_url)
         await run_in_threadpool(import_saved_news, config)
+        await run_in_threadpool(reconcile_schedule_cron_jobs, config)
         yield
 
     app = FastAPI(
@@ -99,6 +101,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for route_path, filename in (
             ("/", "index.html"),
             ("/settings.html", "settings.html"),
+            ("/privacy.html", "privacy.html"),
+            ("/terms.html", "terms.html"),
             ("/app.js", "app.js"),
         ):
 
