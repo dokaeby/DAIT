@@ -41,7 +41,7 @@
 
 | 계층 | 대상 | 실행 방식 | 판정 |
 |---|---|---|---|
-| Static UI | `mockup/index.html`, `detail.html`, `settings.html` | 정적 서버 + Playwright | 레이아웃, 반응형, DOM, 접근성 계약 |
+| Static UI | `mockup/index.html`, `settings.html` | 정적 서버 + Playwright | 메인·설정 레이아웃, 반응형, DOM, 접근성 계약 |
 | Dynamic UI | 실제 DAIT Web + FastAPI | 격리 DB·Redis + Playwright | 조작, API, 저장, 재진입, 오류 복구 |
 
 정적 목업의 버튼은 기능 PASS 근거로 사용하지 않는다. 검색, 저장, Clipboard, API 오류 시나리오는 Dynamic UI에서만 판정한다.
@@ -212,7 +212,7 @@ uv run pytest tests/ui/test_common_ui.py -m static -q
 확인:
 
 - 1440×900과 390×844에서 가로 넘침 없음
-- 메인·상세·설정 핵심 heading·navigation·button 이름 존재
+- 메인·설정 heading·navigation·button 이름과 메인 내 상세 패널 이름 존재
 - Desktop sidebar와 Mobile bottom navigation 전환
 
 ### 10.2 Dynamic UI P0 smoke
@@ -319,8 +319,8 @@ axe 기반 검사를 추가하더라도 키보드 실제 조작과 상태 메시
 | 브라우저·뷰포트 | Chromium 1440×900 |
 | 실행 명령 | `uv run pytest ... -vv` |
 | seed | ui-seed-2026-11-06 |
-| 기대 | 5건·알림 값 저장 후 복원 |
-| 실제 | 새로고침 후 10건·기본 알림으로 복귀 |
+| 기대 | 예약·관심·목록 표시·계정 설정값을 저장 후 복원한다. 설정 화면에 알림 항목은 없다. |
+| 실제 | 새로고침 후 목록 표시 기본값으로 복귀 |
 | 증거 | screenshot, trace, request body |
 | 심각도 | P0/P1/P2 |
 | 관련 FR·API | FR-SET-03, PATCH `/v1/me/settings` |

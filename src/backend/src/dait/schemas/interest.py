@@ -76,7 +76,11 @@ INTEREST_NAMES: dict[InterestCode, str] = {
     InterestCode.SOCIETY_CLIMATE: "환경·기후",
     InterestCode.SOCIETY_CULTURE: "문화·콘텐츠",
 }
-GROUP_NAMES: dict[str, str] = {"ai": "AI•인공지능", "economy": "경제·비즈니스", "society": "사회·문화"}
+GROUP_NAMES: dict[str, str] = {
+    "ai": "AI•인공지능",
+    "economy": "경제·비즈니스",
+    "society": "사회·문화",
+}
 
 GROUP_NAMES.update(
     {

@@ -6,7 +6,7 @@
 |---|---|
 | English Title | DAIT Entity-Relationship Diagram (Implemented Schema) |
 | Search Keywords | DAIT, ERD, entity relationship diagram, database schema, Alembic, PostgreSQL, SQLite, users, refresh_tokens, news, content_results, schedules, schedule_runs, pipeline schema |
-| English Summary | ERD document for the DAIT database as actually implemented on the develop branch. Generated from Alembic migrations 0001~0007 (head `0007_merge_schedule_onboarding`), covering 17 tables in the `public` contract schema with keys, foreign keys, constraints, and indexes, plus notes on the separate `pipeline` schema used by the collection/AI backend. |
+| English Summary | ERD document for the DAIT database as actually implemented on the develop branch. Generated from Alembic migrations 0001~0008 (head `0008_news_topics`), covering 19 tables in the `public` contract schema with keys, foreign keys, constraints, and indexes, plus notes on the separate `pipeline` schema used by the collection/AI backend. |
 
 | 항목 | 값 |
 |---|---|
@@ -14,8 +14,8 @@
 | 기준일 | 2026-11-13 |
 | 작성자 | seonghoon.yang |
 | 생성일 | 2026-11-13 |
-| 대상 | `src/backend/migrations/versions/` Alembic 마이그레이션 0001~0007 (head: `0007_merge_schedule_onboarding`) |
-| 스키마 | `public`(계약 스키마, 17개 테이블) + `pipeline`(수집·AI 파이프라인 전용, 별도 스키마) |
+| 대상 | `src/backend/migrations/versions/` Alembic 마이그레이션 0001~0008 (head: `0008_news_topics`) |
+| 스키마 | `public`(계약 스키마, 19개 테이블) + `pipeline`(수집·AI 파이프라인 전용, 별도 스키마) |
 | 관련 문서 | 07_DB_설계서_v1.0.4.md (3A절 구현 스키마), 15_PostgreSQL_SQLite_전환_가이드.md |
 
 ## 문서 이력
@@ -23,6 +23,7 @@
 | 버전 | 작성자 | 기준일 | 수정 내용 |
 |---|---|---|---|
 | 1.0.4 | seonghoon.yang | 2026-11-13 | 최초 작성 — develop 브랜치 Alembic 마이그레이션 기준 구현 ERD |
+| 1.0.4 | seonghoon.yang | 2026-11-13 | `0008_news_topics` 반영 — news_topics·news_classified 추가(기사 주제 분류 저장소), head를 0008로 갱신 |
 
 ## 1. 목적
 
@@ -59,6 +60,8 @@ erDiagram
     news ||--o{ news_relations : "related_news_id CASCADE"
     news |o--o{ notification_deliveries : "news_id SET NULL"
     news ||--o{ news_reads : "news_id CASCADE"
+    news ||--o{ news_topics : "news_id CASCADE"
+    news ||--o| news_classified : "news_id CASCADE"
 
     users {
         varchar_36 id PK
@@ -188,6 +191,15 @@ erDiagram
         float score
         timestamp created_at
     }
+    news_topics {
+        varchar_36 news_id PK,FK
+        varchar_32 topic_code PK
+    }
+    news_classified {
+        varchar_36 news_id PK,FK
+        varchar_64 content_updated_at
+        varchar_64 classified_at
+    }
     jobs {
         varchar_36 id PK
         varchar_36 schedule_id FK
@@ -240,7 +252,7 @@ erDiagram
 | `user_interests` | 저장 관심사 코드(국문·`en.*` 영문 카탈로그). 복합 PK `(user_id, interest_code)` | 값 검증은 Pydantic Enum이 담당 |
 | `pending_interest_onboarding` | 신규 가입자 1회 관심사 온보딩 대기 표시 | user_id PK, CASCADE |
 | `news_reads` | 계정별 기사 읽음 기록(페이지 이동 후에도 유지) | 복합 PK `(user_id, news_id)`, CASCADE |
-| `user_settings` | 사용자 설정 1:1 — 기본 노출 수(5/10 CHECK), 카테고리·키워드·출처(JSON TEXT), 알림 채널 | user_id PK |
+| `user_settings` | 사용자 설정 1:1 — 기본 노출 수(5/10 CHECK), 카테고리·키워드·출처(JSON TEXT). 알림 전달 값은 내부 정책용이며 설정 UI에서 변경할 수 없음 | user_id PK |
 
 ### 3.2 뉴스·콘텐츠 (sources → news → content_results)
 
@@ -250,6 +262,8 @@ erDiagram
 | `news` | 수집된 기사 원문 메타. `original_language`(ko/en 등), `canonical_url` 유니크로 중복 수집 방지 | `content_hash` 인덱스, category+published_at 인덱스 |
 | `content_results` | 기사별 AI 처리 결과 — 추출 본문, 번역, 3줄 요약(JSON TEXT), 상태(READY/INSUFFICIENT/FAILED), 모델·프롬프트 버전 | news_id PK로 news와 1:1 |
 | `news_relations` | 관련 뉴스 점수·사유 | `(news_id, related_news_id)` 유니크, 자기 참조 CHECK 금지 |
+| `news_topics` | 기사-주제 분류 결과. `feed_index_service`가 기사 1회 분류 시 계산해 저장하고, 관심사·주제 조회는 요청마다 키워드 LIKE 대신 이 결과를 읽는다 | 복합 PK `(news_id, topic_code)`, `topic_code` 인덱스 |
+| `news_classified` | 기사별 마지막 분류 기준 `content_updated_at`·분류 시각. 콘텐츠 갱신 감지와 재분류 대상 선정에 사용 | news_id PK, CASCADE |
 
 ### 3.3 예약 수집·스케줄러
 
@@ -282,6 +296,9 @@ erDiagram
   최대 1건이다.
 - **news_relations 자기 참조**: `news_id <> related_news_id` CHECK로 자기 관련 기사를
   차단하고 `(news_id, related_news_id)` 유니크로 중복을 막는다.
+- **news_topics/news_classified**: `news` 삭제 시 CASCADE로 분류 결과도 함께 제거된다.
+  `topic_code`는 `ai.*`/`economy.*`/`society.*` 기본 코드만 저장하고, `en.*` 영문
+  코드는 조회 시점에 `original_language`/출처 기반 언어 판정과 조합해 해석한다.
 
 ## 5. `pipeline` 스키마 (별도)
 
@@ -303,7 +320,8 @@ erDiagram
 | `0004_schedule_runs` | schedule_runs, schedule_run_items 생성 (0003과 병렬 브랜치) |
 | `0005_news_reads` | news_reads 생성 |
 | `0006_interest_onboarding` | pending_interest_onboarding 생성 (0004_schedule_runs와 병렬 브랜치) |
-| `0007_merge_schedule_onboarding` | 두 브랜치 병합 (head) |
+| `0007_merge_schedule_onboarding` | 두 브랜치 병합 |
+| `0008_news_topics` | news_topics, news_classified 생성 (head) — 기사 주제 분류 저장소 |
 
 ## 7. 검증 방법
 

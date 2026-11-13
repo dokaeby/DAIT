@@ -28,7 +28,7 @@
 
 ## 1. 문서 목적
 
-이 문서는 DAIT 단계 1(MVP)의 메인, 상세보기, 설정 화면과 연결되는 API 계약을 상세히 정의한다.
+이 문서는 DAIT 단계 1(MVP)의 메인, 메인 내 상세 조회, 설정 화면과 연결되는 API 계약을 상세히 정의한다.
 기존 문서에서 확정된 기능 ID와 엔드포인트를 기준으로 하며, v1.0.3부터는 **develop 브랜치에 구현된
 실제 계약**(Bearer 토큰 인증, 관심사/세션/닉네임/뉴스 읽음/예약 실행 이력 API 포함)을 기준으로 갱신한다.
 v1.0.4에서는 뉴스 탐색 필터(language/topic/personalized/interest), 관심사 집계
@@ -662,8 +662,6 @@ GET /v1/news/news_01JXYZ001
   "keywords": ["멀티모달", "AI 에이전트", "오픈소스 LLM"],
   "source_ids": ["src_openai", "src_anthropic"],
   "categories": ["AI"],
-  "in_app_notice": true,
-  "email_notice": false,
   "updated_at": "2026-11-06T00:40:00Z"
 }
 ```
@@ -674,8 +672,6 @@ GET /v1/news/news_01JXYZ001
 | `keywords` | array<string> | 중복 제거, 항목 길이 제한 |
 | `source_ids` | array<string> | 승인된 출처 ID만 허용 |
 | `categories` | array<string enum> | `AI`/`ECONOMY`/`POLITICS` (WEATHER 미활성) |
-| `in_app_notice` | boolean | 인앱 알림 |
-| `email_notice` | boolean | 메일 알림 |
 | `updated_at` | datetime | 마지막 변경 시각 |
 
 ## 6.2 PATCH `/v1/me/settings`
@@ -689,8 +685,6 @@ GET /v1/news/news_01JXYZ001
   "keywords": ["멀티모달", "AI 에이전트", "오픈소스 LLM"],
   "source_ids": ["src_openai", "src_anthropic"],
   "categories": ["AI"],
-  "in_app_notice": true,
-  "email_notice": false
 }
 ```
 
@@ -702,8 +696,6 @@ GET /v1/news/news_01JXYZ001
 | `keywords` | array<string> | N | 빈 배열 허용, 중복/제어문자 제거 |
 | `source_ids` | array<string> | N | 활성 승인 출처만 |
 | `categories` | array<string> | N | `AI`/`ECONOMY`/`POLITICS` |
-| `in_app_notice` | boolean | N |  |
-| `email_notice` | boolean | N |  |
 
 ### Response 200
 서버가 정규화해 실제 저장한 값을 그대로 반환한다.
@@ -714,8 +706,6 @@ GET /v1/news/news_01JXYZ001
   "keywords": ["멀티모달", "AI 에이전트", "오픈소스 LLM"],
   "source_ids": ["src_openai", "src_anthropic"],
   "categories": ["AI"],
-  "in_app_notice": true,
-  "email_notice": false,
   "updated_at": "2026-11-06T00:42:30Z"
 }
 ```
@@ -1087,4 +1077,4 @@ sequenceDiagram
 - [ ] 설정 `default_count`는 5 또는 10만 허용한다.
 - [ ] 예약 timezone은 IANA 이름만 허용한다.
 - [ ] 오류 응답에 스택트레이스·SQL·비밀값을 포함하지 않는다.
-- [ ] 메인·상세·설정 화면의 모든 주요 동작이 본 API 문서와 추적 가능하다.
+- [ ] 메인·상세 조회·설정의 모든 주요 동작이 본 API 문서와 추적 가능하다.

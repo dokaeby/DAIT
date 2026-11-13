@@ -6,6 +6,7 @@ from dait.repositories import interest_repository, news_repository
 from dait.repositories.db import transaction
 from dait.repositories.interest_matching import KEYWORDS
 from dait.schemas.news import ACTIVE_CATEGORIES, NewsActivity
+from dait.services import feed_index_service
 from dait.services.news_search_service import normalize_query
 
 
@@ -19,6 +20,7 @@ def activity(
 ) -> NewsActivity:
     """Count visible articles and return read IDs only for the requested page."""
     normalized = normalize_query(query)
+    feed_index_service.request_classify(settings)
     with transaction(settings.database_url) as conn:
         all_saved = tuple(c for c in interest_repository.list_codes(conn, user_id) if c in KEYWORDS)
         saved = tuple(
