@@ -302,7 +302,7 @@
     if (!globalSearch && language) query.set('language', language);
     if (searchAllArticles && selectedInterest) query.set('topic', selectedInterest);
     if (sidebarTopic) query.set('topic', sidebarTopic);
-    if (personalizedChips && !guest && !sidebarTopic && !searchAllArticles) {
+    if (personalizedChips && !guest && !sidebarTopic && !searchAllArticles && !category) {
       query.set('personalized', 'true');
       if (selectedInterest) query.set('interest', selectedInterest);
     }
