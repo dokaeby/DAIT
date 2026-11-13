@@ -130,7 +130,7 @@
     const codes = { ai: 'AI', economy: 'ECONOMY', society: 'POLITICS', en_ai: 'AI', en_economy: 'ECONOMY', en_society: 'POLITICS' };
     const labels = { ai: 'AI•인공지능', economy: '경제·비즈니스', society: '사회·문화' };
     for (const group of catalog.groups) {
-      if (!codes[group.group]) continue;
+      if (!codes[group.group] || group.group.startsWith('en_')) continue;
       const english = group.group.startsWith('en_');
       const englishNames = {en_ai: 'AI & Technology', en_economy: 'Economy & Business', en_society: 'Society & Culture'};
       if (group.group === 'en_ai') {
@@ -178,6 +178,7 @@
       renderSidebar(catalog);
       const fragment = document.createDocumentFragment();
       for (const group of catalog.groups) {
+        if (group.group.startsWith('en_')) continue;
         const section = document.createElement('section'); section.className = 'interest-group';
         const title = document.createElement('h3'); title.textContent = group.group_name; section.append(title);
         const pills = document.createElement('div'); pills.className = 'interest-pills';
