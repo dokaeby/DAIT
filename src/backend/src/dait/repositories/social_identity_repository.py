@@ -51,3 +51,20 @@ def find_user_id(conn: DbConnection, provider: SocialProvider, subject: str) -> 
         (provider.value, subject),
     ).fetchone()
     return None if row is None else str(row[0])
+
+
+# 입력: 열린 DB 연결, 사용자 ID, 공급자.
+# 출력: 이미 그 공급자 계정이 연결돼 있는지 여부.
+# 동작: (user_id, provider)로 연결 존재를 조회한다.
+def has_identity(conn: DbConnection, user_id: str, provider: SocialProvider) -> bool:
+    """사용자에게 해당 공급자 계정이 이미 연결돼 있는지 확인한다.
+
+    입력: conn (열려 있는 연결), user_id (사용자 id), provider (공급자)
+    출력: bool (연결돼 있으면 True)
+    기능: 다른 구글 계정이 이미 붙은 사용자에게 새 연결 표를 주지 않기 위해 쓴다.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM social_identities WHERE user_id = ? AND provider = ?",
+        (user_id, provider.value),
+    ).fetchone()
+    return row is not None

@@ -62,3 +62,21 @@ class ExchangeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     code: SecretStr = Field(min_length=20, max_length=128)
+
+
+class LinkTicket(BaseModel):
+    """같은 이메일의 기존 계정과 연결할지 고르는 동안 보관하는 값(5분, 비밀번호 확인 전까지)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    user_id: str = Field(min_length=1, max_length=36)
+    subject: str = Field(min_length=1, max_length=255)
+
+
+class LinkRequest(BaseModel):
+    """연결 요청: 연결 표와 기존 계정의 비밀번호."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    ticket: SecretStr = Field(min_length=20, max_length=128)
+    password: SecretStr = Field(min_length=1, max_length=128)

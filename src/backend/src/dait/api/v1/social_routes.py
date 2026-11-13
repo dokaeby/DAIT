@@ -6,15 +6,22 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, Query, Request
 from fastapi.responses import RedirectResponse
 
-from dait.api.deps import client_ip, get_google_client, get_one_time_store, get_optional_user
+from dait.api.deps import (
+    client_ip,
+    get_google_client,
+    get_one_time_store,
+    get_optional_user,
+    get_throttles,
+)
 from dait.core.config import AppEnv, Settings, get_settings
 from dait.core.errors import AlreadyLoggedInError
 from dait.repositories.one_time_store import OneTimeStore
 from dait.schemas.auth import AuthResponse
-from dait.schemas.social import ExchangeRequest
+from dait.schemas.social import ExchangeRequest, LinkRequest
 from dait.schemas.user import UserRecord
 from dait.services import interest_service, social_auth_service
 from dait.services.google_client import GoogleClient
+from dait.services.login_throttle import LoginThrottles
 from dait.services.social_auth_service import SocialLoginError
 
 router = APIRouter(prefix="/v1/auth/google", tags=["auth"])
@@ -92,7 +99,7 @@ def callback(
         response = _redirect(f"{_AFTER_LOGIN}#google_error={reason}")
     else:
         try:
-            exchange_code = social_auth_service.finish_login(
+            kind, value = social_auth_service.finish_login(
                 settings,
                 store,
                 google,
@@ -102,7 +109,7 @@ def callback(
                 client_ip(request),
                 datetime.now(UTC),
             )
-            response = _redirect(f"{_AFTER_LOGIN}#google={exchange_code}")
+            response = _redirect(f"{_AFTER_LOGIN}#{kind}={value}")
         except SocialLoginError as exc:
             response = _redirect(f"{_AFTER_LOGIN}#google_error={exc.reason}")
     response.delete_cookie(_COOKIE, path=_COOKIE_PATH)
@@ -124,6 +131,30 @@ def exchange(
     """
     response = social_auth_service.exchange(
         settings, store, body, client_ip(request), datetime.now(UTC)
+    )
+    items = interest_service.list_interests(settings, response.user.id).interests
+    return response.model_copy(update={"interests": items})
+
+
+# 입력: 연결 요청(표·비밀번호), HTTP 요청, 앱 설정, 저장소, 로그인 잠금 장치.
+# 출력: 이메일 로그인과 같은 모양의 인증 응답.
+# 동작: 사용자가 연결을 선택하고 기존 비밀번호를 맞게 입력했을 때 구글 계정을 연결한다.
+@router.post("/link", response_model=AuthResponse)
+def link(
+    body: LinkRequest,
+    request: Request,
+    settings: SettingsDep,
+    store: StoreDep,
+    throttles: Annotated[LoginThrottles, Depends(get_throttles)],
+) -> AuthResponse:
+    """같은 이메일의 기존 계정에 구글 계정을 연결하고 로그인한다.
+
+    입력: body (연결 표, 기존 계정 비밀번호), request, settings, store, throttles
+    출력: AuthResponse (사용자·토큰·관심사)
+    기능: 표가 없거나 만료면 401, 비밀번호가 틀리면 401(다시 입력 가능), 실패가 쌓이면 429.
+    """
+    response = social_auth_service.link_account(
+        settings, store, throttles, body, client_ip(request), datetime.now(UTC)
     )
     items = interest_service.list_interests(settings, response.user.id).interests
     return response.model_copy(update={"interests": items})

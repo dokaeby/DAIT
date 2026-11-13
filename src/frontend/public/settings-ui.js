@@ -173,17 +173,22 @@
   for (let hour = 0; hour < 24; hour++) { const option = document.createElement('option'); option.value = String(hour).padStart(2, '0'); option.textContent = option.value + '시'; $('sched-hour').append(option); }
   const getTime = () => $('sched-hour').value + ':' + $('sched-minute').value;
   let scheduleCount = 0;
-  // 구글 전용 계정은 비밀번호가 없어 '탈퇴'를 입력해 확인한다(비밀번호는 8자 이상이라 겹치지 않는다).
-  const withdrawBody = value => value === '탈퇴' ? { confirm_text: '탈퇴' } : { password: value };
+  // 비밀번호 칸은 한글 조합이 안 돼서, 구글 전용 계정은 일반 글자칸에 '탈퇴'를 입력해 확인한다.
+  const withdrawBody = () => {
+    const password = $('withdraw-password').value;
+    if (password) return { password };
+    if ($('withdraw-confirm').value.trim() === '탈퇴') return { confirm_text: '탈퇴' };
+    throw new Error('비밀번호를 입력하거나, 구글로 가입한 계정은 아래 칸에 "탈퇴"를 입력해 주세요.');
+  };
   $('withdraw-open').addEventListener('click', () => { $('withdraw-form').reset(); $('withdraw-feedback').textContent = ''; $('withdraw-dialog').showModal(); });
   $('withdraw-cancel').addEventListener('click', () => $('withdraw-dialog').close());
-  $('withdraw-dialog').addEventListener('close', () => { $('withdraw-password').value = ''; });
+  $('withdraw-dialog').addEventListener('close', () => { $('withdraw-password').value = ''; $('withdraw-confirm').value = ''; });
   $('withdraw-form').addEventListener('submit', event => {
     event.preventDefault();
     action(event.currentTarget, 'withdraw-feedback', async () => {
-      const res = await fetch('/v1/me', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + DAIT.getToken('dait_access_token') }, body: JSON.stringify(withdrawBody($('withdraw-password').value)) });
-      if (!res.ok) throw new Error(res.status === 403 ? '구글 계정은 로그인한 지 5분 이내여야 탈퇴할 수 있습니다. 다시 로그인한 뒤 시도해 주세요.' : res.status === 429 ? '시도 횟수가 초과됐습니다. 나중에 다시 시도해 주세요.' : '탈퇴하지 못했습니다. 비밀번호와 로그인 상태를 확인해 주세요.');
-      $('withdraw-password').value = ''; DAIT.clearTokens();
+      const res = await fetch('/v1/me', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + DAIT.getToken('dait_access_token') }, body: JSON.stringify(withdrawBody()) });
+      if (!res.ok) throw new Error(res.status === 403 ? '구글 계정은 "탈퇴" 칸에 두 글자만 정확히 입력하고, 로그인한 지 5분 이내여야 탈퇴할 수 있습니다.' : res.status === 429 ? '시도 횟수가 초과됐습니다. 나중에 다시 시도해 주세요.' : '탈퇴하지 못했습니다. 비밀번호와 로그인 상태를 확인해 주세요.');
+      $('withdraw-password').value = ''; $('withdraw-confirm').value = ''; DAIT.clearTokens();
       try { localStorage.removeItem('dait_remembered_email'); } catch { /* 저장소를 쓸 수 없어도 탈퇴는 완료된다. */ }
       location.assign('/?ui=20261112-search');
     });

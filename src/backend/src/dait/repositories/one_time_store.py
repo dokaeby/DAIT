@@ -84,3 +84,28 @@ class OneTimeStore:
         if entry is None or entry[1] <= now.timestamp():
             return None
         return entry[0]
+
+    # 입력: 값 종류, 원문 키, 현재 시각.
+    # 출력: 저장된 값 또는 없음.
+    # 동작: 값을 지우지 않고 읽는다(비밀번호를 틀려도 표를 다시 쓰게 하려는 용도).
+    def peek(self, kind: str, raw: str, now: datetime) -> str | None:
+        """값을 지우지 않고 읽는다.
+
+        입력: kind, raw (원문 키), now (만료 판단용 UTC 시각)
+        출력: str 또는 None (없음·만료)
+        기능: 지우는 것은 pop만 한다. 호출하는 쪽이 시도 횟수를 따로 제한해야 한다.
+        """
+        key = self._key(kind, raw)
+        client = redis_repository.shared_client(self._redis_url)
+        if client is not None:
+            try:
+                found = redis_repository.cache_get(client, key)
+            except (RedisError, OSError):
+                found = None
+            if found is not None:
+                return found
+        with self._lock:
+            entry = self._memory.get(key)
+        if entry is None or entry[1] <= now.timestamp():
+            return None
+        return entry[0]

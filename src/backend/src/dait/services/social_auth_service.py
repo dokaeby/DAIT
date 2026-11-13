@@ -1,6 +1,7 @@
 """구글 로그인(OIDC Authorization Code + PKCE) 조정: 시작, 콜백 검증, 계정 연결, 교환 코드.
 
 이메일이 같다는 이유만으로 기존 계정과 합치지 않는다(계정 탈취 방지, docs/decisions.md 참고).
+같은 이메일의 이메일 가입 계정이 있으면, 사용자가 원할 때만 그 계정의 비밀번호를 확인한 뒤 연결한다.
 """
 
 import base64
@@ -15,14 +16,21 @@ import jwt
 from pydantic import ValidationError
 
 from dait.core.config import Settings
-from dait.core.errors import InvalidTokenError, SocialLoginDisabledError
+from dait.core.errors import (
+    InvalidCredentialsError,
+    InvalidTokenError,
+    SocialLoginDisabledError,
+    TooManyAttemptsError,
+)
 from dait.core.logging import audit
+from dait.core.security import verify_password
 from dait.repositories import onboarding_repository
 from dait.repositories.db import transaction
 from dait.repositories.one_time_store import OneTimeStore
 from dait.repositories.social_identity_repository import (
     DuplicateIdentityError,
     find_user_id,
+    has_identity,
     insert_identity,
 )
 from dait.repositories.user_repository import (
@@ -35,6 +43,8 @@ from dait.schemas.auth import AuthResponse
 from dait.schemas.social import (
     ExchangeRequest,
     GoogleIdClaims,
+    LinkRequest,
+    LinkTicket,
     OAuthPending,
     SocialIdentityRecord,
     SocialProvider,
@@ -42,11 +52,14 @@ from dait.schemas.social import (
 from dait.schemas.user import UserRecord, UserRole, UserStatus
 from dait.services import auth_service
 from dait.services.google_client import GOOGLE_AUTH_URL, GoogleClient, GoogleUnavailableError
+from dait.services.login_throttle import LoginThrottles
 
 _STATE_TTL_SECONDS = 600  # 사용자가 구글 화면에서 로그인하는 데 충분한 시간
 _XCODE_TTL_SECONDS = 60  # 화면이 곧바로 교환하므로 짧게 둔다
 _STATE = "state"
 _XCODE = "xcode"
+_LINK = "link"
+_LINK_TTL_SECONDS = 300  # 비밀번호를 떠올려 입력할 시간
 
 
 class SocialLoginError(Exception):
@@ -64,6 +77,24 @@ class SocialLoginError(Exception):
         """
         super().__init__(reason)
         self.reason = reason
+
+
+class _LinkRequiredError(Exception):
+    """같은 이메일의 비밀번호 계정이 있어 사용자의 연결 선택이 필요할 때(내부 신호)."""
+
+    # 입력: 연결 대상 사용자 ID와 구글 subject.
+    # 출력: 초기화된 예외.
+    # 동작: 연결 표를 만들 때 쓸 두 값만 보관한다.
+    def __init__(self, user_id: str, subject: str) -> None:
+        """예외를 만든다.
+
+        입력: user_id (이메일이 같은 기존 계정의 id), subject (구글 sub)
+        출력: 없음
+        기능: 호출부(finish_login)가 연결 표를 발급하게 한다.
+        """
+        super().__init__("link required")
+        self.user_id = user_id
+        self.subject = subject
 
 
 # 입력: 앱 설정.
@@ -158,9 +189,9 @@ def _find_or_create_user(settings: Settings, claims: GoogleIdClaims, now: dateti
 
     입력: settings (앱 설정), claims (검증된 구글 정보), now (UTC 시각)
     출력: str (사용자 id)
-    기능: 이미 연결돼 있으면 그 계정. 같은 이메일의 기존 계정이 있으면 합치지 않고
-          SocialLoginError("email_in_use"). 동시에 같은 구글 계정이 처음 들어와 유니크 제약에
-          걸리면 다시 조회해 로그인으로 처리한다.
+    기능: 이미 연결돼 있으면 그 계정. 같은 이메일의 비밀번호 계정이 있으면 합치지 않고
+          _LinkRequiredError(사용자가 선택해 연결). 동시에 같은 구글 계정이 처음 들어와
+          유니크 제약에 걸리면 다시 조회해 로그인으로 처리한다.
     """
     email = claims.email.lower()
     try:
@@ -168,8 +199,14 @@ def _find_or_create_user(settings: Settings, claims: GoogleIdClaims, now: dateti
             existing_id = find_user_id(conn, SocialProvider.GOOGLE, claims.sub)
             if existing_id is not None:
                 return existing_id
-            if find_by_email(conn, email) is not None:
-                raise SocialLoginError("email_in_use")
+            same_email = find_by_email(conn, email)
+            if same_email is not None:
+                # 비밀번호가 없거나 이미 구글이 연결된 계정은 연결 대상이 아니다.
+                if same_email.password_hash is None or has_identity(
+                    conn, same_email.id, SocialProvider.GOOGLE
+                ):
+                    raise SocialLoginError("google_account_mismatch")
+                raise _LinkRequiredError(same_email.id, claims.sub)
             user = UserRecord(
                 id=uuid.uuid4().hex,
                 email=email,
@@ -195,7 +232,7 @@ def _find_or_create_user(settings: Settings, claims: GoogleIdClaims, now: dateti
         with transaction(settings.database_url) as conn:
             raced_id = find_user_id(conn, SocialProvider.GOOGLE, claims.sub)
         if raced_id is None:
-            raise SocialLoginError("email_in_use") from exc
+            raise SocialLoginError("google_account_mismatch") from exc
         return raced_id
 
 
@@ -211,12 +248,13 @@ def finish_login(
     code: str,
     client_ip: str | None,
     now: datetime,
-) -> str:
+) -> tuple[str, str]:
     """구글이 돌려보낸 콜백을 처리한다.
 
     입력: state·code (구글이 붙여 준 쿼리 값), cookie_state (시작 때 심은 쿠키),
           그 밖에 설정·저장소·구글 클라이언트·IP·시각
-    출력: str (60초 1회용 교환 코드)
+    출력: tuple (종류 google|google_link, 값). google=60초 1회용 교환 코드,
+          google_link=같은 이메일 계정과 연결할지 고르는 5분짜리 표
     기능: state는 확인 결과와 상관없이 먼저 꺼내서 지운다(재사용 불가). 쿠키 state와 다르면
           다른 사람이 시작한 로그인을 끼워 넣은 것(CSRF)이므로 거부한다.
           실패하면 SocialLoginError(reason).
@@ -240,13 +278,19 @@ def finish_login(
     try:
         claims = _verify_id_token(id_token, settings, pending.nonce, now)
         user_id = _find_or_create_user(settings, claims, now)
+    except _LinkRequiredError as link:
+        ticket = _random_token()
+        value = LinkTicket(user_id=link.user_id, subject=link.subject).model_dump_json()
+        store.put(_LINK, ticket, value, _LINK_TTL_SECONDS, now)
+        audit("google_login", "link_offered", user_id=link.user_id, client_ip=client_ip)
+        return "google_link", ticket
     except SocialLoginError as exc:
         audit("google_login", exc.reason, client_ip=client_ip)
         raise
     exchange_code = _random_token()
     store.put(_XCODE, exchange_code, user_id, _XCODE_TTL_SECONDS, now)
     audit("google_login", "code_issued", user_id=user_id, client_ip=client_ip)
-    return exchange_code
+    return "google", exchange_code
 
 
 # 입력: 앱 설정, 저장소, 화면이 보낸 교환 요청, IP, 현재 시각.
@@ -276,4 +320,68 @@ def exchange(
         raise InvalidTokenError
     response = auth_service.open_session(settings, user, now)
     audit("google_exchange", "success", user_id=user.id, client_ip=client_ip)
+    return response
+
+
+# 입력: 앱 설정, 저장소, 잠금 장치, 연결 요청(표·비밀번호), IP, 현재 시각.
+# 출력: 이메일 로그인과 같은 모양의 인증 응답.
+# 동작: 표가 유효하고 기존 계정의 비밀번호가 맞을 때만 구글 계정을 연결하고 로그인시킨다.
+def link_account(
+    settings: Settings,
+    store: OneTimeStore,
+    throttles: LoginThrottles,
+    request: LinkRequest,
+    client_ip: str | None,
+    now: datetime,
+) -> AuthResponse:
+    """사용자가 연결을 선택했을 때 기존 계정에 구글 계정을 붙인다.
+
+    입력: settings, store, throttles (로그인과 같은 잠금), request (표·비밀번호), client_ip, now
+    출력: AuthResponse (사용자·토큰)
+    기능: 표가 없거나 만료면 InvalidTokenError. 잠겼으면 TooManyAttemptsError.
+          비밀번호가 틀리면 InvalidCredentialsError(실패 횟수 증가, 표는 유지해 다시 입력 가능).
+          성공하면 표를 지운다. 이메일 소유(구글 확인)와 계정 비밀번호를 모두 알아야 연결된다.
+    """
+    require_enabled(settings)
+    ticket_raw = request.ticket.get_secret_value()
+    stored = store.peek(_LINK, ticket_raw, now)
+    try:
+        ticket = None if stored is None else LinkTicket.model_validate_json(stored)
+    except ValidationError:
+        ticket = None
+    user = None
+    if ticket is not None:
+        with transaction(settings.database_url) as conn:
+            user = find_by_id(conn, ticket.user_id)
+    if ticket is None or user is None or user.status is not UserStatus.ACTIVE:
+        audit("google_link", "invalid_ticket", client_ip=client_ip)
+        raise InvalidTokenError
+    ip_key = client_ip or "unknown"
+    if throttles.account.is_locked(user.email, now) or throttles.ip.is_locked(ip_key, now):
+        audit("google_link", "locked", user_id=user.id, client_ip=client_ip)
+        raise TooManyAttemptsError
+    if not verify_password(request.password.get_secret_value(), user.password_hash):
+        throttles.account.register_failure(user.email, now)
+        throttles.ip.register_failure(ip_key, now)
+        audit("google_link", "invalid_credentials", user_id=user.id, client_ip=client_ip)
+        raise InvalidCredentialsError
+    try:
+        with transaction(settings.database_url) as conn:
+            insert_identity(
+                conn,
+                SocialIdentityRecord(
+                    id=uuid.uuid4().hex,
+                    user_id=user.id,
+                    provider=SocialProvider.GOOGLE,
+                    subject=ticket.subject,
+                    created_at=now,
+                ),
+            )
+    except DuplicateIdentityError as exc:
+        audit("google_link", "already_linked", user_id=user.id, client_ip=client_ip)
+        raise InvalidTokenError from exc
+    store.pop(_LINK, ticket_raw, now)
+    throttles.account.clear(user.email)
+    response = auth_service.open_session(settings, user, now)
+    audit("google_link", "success", user_id=user.id, client_ip=client_ip)
     return response

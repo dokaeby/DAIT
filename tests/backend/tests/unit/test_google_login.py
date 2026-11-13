@@ -175,14 +175,122 @@ def test_state_cookie_is_httponly_lax(flow: Flow) -> None:
     assert "samesite=lax" in cookie
 
 
-def test_same_email_password_account_is_not_merged(flow: Flow, tmp_path: Path) -> None:
-    """이메일이 같은 기존 비밀번호 계정과 자동으로 합치지 않는다(계정 탈취 방지)."""
+def signup_same_email(flow: Flow) -> None:
+    """구글 이메일과 같은 주소로 이메일 가입을 해 둔다."""
     signup = {"email": EMAIL, "password": PASSWORD, "password_confirm": PASSWORD}
     assert flow.client.request("POST", "/v1/auth/signup", json=signup).status_code == 201
-    assert flow.full() == "/#google_error=email_in_use"
+
+
+def link_ticket(flow: Flow) -> str:
+    """같은 이메일 계정이 있을 때 callback이 주는 연결 표를 꺼낸다."""
+    location = flow.full()
+    assert location.startswith("/#google_link=")
+    return location.removeprefix("/#google_link=")
+
+
+def post_link(flow: Flow, ticket: str, password: str = PASSWORD) -> tuple[int, str]:
+    """연결 표와 비밀번호로 연결을 요청한다."""
+    response = flow.client.request(
+        "POST", "/v1/auth/google/link", json={"ticket": ticket, "password": password}
+    )
+    return response.status_code, response.text
+
+
+def test_same_email_account_is_not_merged_automatically(flow: Flow, tmp_path: Path) -> None:
+    """같은 이메일 계정이 있어도 자동으로 합치지 않고, 선택용 연결 표만 준다."""
+    signup_same_email(flow)
+    link_ticket(flow)
     db = tmp_path / "test.db"
     assert count(db, "SELECT COUNT(*) FROM users") == 1
     assert count(db, "SELECT COUNT(*) FROM social_identities") == 0
+
+
+def test_user_can_decline_link_and_keep_email_login(flow: Flow, tmp_path: Path) -> None:
+    """연결하지 않으면 아무것도 바뀌지 않고 이메일 로그인이 그대로 된다."""
+    signup_same_email(flow)
+    link_ticket(flow)
+    login = flow.client.request(
+        "POST", "/v1/auth/login", json={"email": EMAIL, "password": PASSWORD}
+    )
+    assert login.status_code == 200
+    assert count(tmp_path / "test.db", "SELECT COUNT(*) FROM social_identities") == 0
+
+
+def test_link_with_correct_password_then_google_login_works(flow: Flow, tmp_path: Path) -> None:
+    """비밀번호를 맞게 입력해 연결하면 로그인되고, 다음부터는 구글로 바로 로그인된다."""
+    signup_same_email(flow)
+    status, text = post_link(flow, link_ticket(flow))
+    assert status == 200
+    first = AuthResponse.model_validate_json(text)
+    assert first.user.email == EMAIL.lower()
+    db = tmp_path / "test.db"
+    assert count(db, "SELECT COUNT(*) FROM social_identities") == 1
+    status, text = post_exchange(flow, exchange_code(flow.full()))
+    assert status == 200
+    assert AuthResponse.model_validate_json(text).user.id == first.user.id
+    assert count(db, "SELECT COUNT(*) FROM users") == 1
+    again = flow.client.request(
+        "POST", "/v1/auth/login", json={"email": EMAIL, "password": PASSWORD}
+    )
+    assert again.status_code == 200  # 기존 비밀번호도 계속 쓸 수 있다
+
+
+def test_wrong_password_does_not_link_but_ticket_survives(flow: Flow, tmp_path: Path) -> None:
+    """비밀번호가 틀리면 연결되지 않고 401이며, 같은 표로 다시 입력할 수 있다."""
+    signup_same_email(flow)
+    ticket = link_ticket(flow)
+    status, text = post_link(flow, ticket, "Wrong!Passw0rd-123")
+    assert status == 401
+    assert ErrorResponse.model_validate_json(text).code == "INVALID_CREDENTIALS"
+    assert count(tmp_path / "test.db", "SELECT COUNT(*) FROM social_identities") == 0
+    assert post_link(flow, ticket)[0] == 200
+
+
+def test_repeated_wrong_passwords_lock_the_link(flow: Flow, tmp_path: Path) -> None:
+    """틀린 비밀번호가 쌓이면 맞는 비밀번호도 429로 막힌다(무차별 대입 방지)."""
+    signup_same_email(flow)
+    ticket = link_ticket(flow)
+    for _ in range(5):
+        assert post_link(flow, ticket, "Wrong!Passw0rd-123")[0] == 401
+    status, text = post_link(flow, ticket)
+    assert status == 429
+    assert ErrorResponse.model_validate_json(text).code == "TOO_MANY_ATTEMPTS"
+    assert count(tmp_path / "test.db", "SELECT COUNT(*) FROM social_identities") == 0
+
+
+def test_link_ticket_is_single_use_and_unknown_is_401(flow: Flow) -> None:
+    """연결에 성공한 표는 다시 쓸 수 없고, 모르는 표는 같은 401이다."""
+    signup_same_email(flow)
+    ticket = link_ticket(flow)
+    assert post_link(flow, ticket)[0] == 200
+    assert post_link(flow, ticket)[0] == 401
+    assert post_link(flow, LONG_CODE)[0] == 401
+
+
+def test_other_google_account_with_same_email_is_refused(flow: Flow) -> None:
+    """이미 구글이 연결된 계정에 다른 구글 계정(sub)이 같은 이메일로 오면 연결을 제안하지 않는다."""
+    signup_same_email(flow)
+    assert post_link(flow, link_ticket(flow))[0] == 200
+    flow.google.overrides = {"sub": "another-google-sub"}
+    assert flow.full() == "/#google_error=google_account_mismatch"
+
+
+def test_passwordless_account_with_same_email_is_refused(flow: Flow) -> None:
+    """비밀번호 없는 구글 전용 계정과 이메일이 같은 다른 구글 계정은 연결 대상이 아니다."""
+    post_exchange(flow, exchange_code(flow.full()))
+    flow.google.overrides = {"sub": "another-google-sub"}
+    assert flow.full() == "/#google_error=google_account_mismatch"
+
+
+def test_one_time_store_peek_keeps_value() -> None:
+    """peek은 값을 지우지 않고 TTL이 지나면 없어진다."""
+    store = OneTimeStore(None)
+    now = datetime.now(UTC)
+    store.put("k", "raw", "value", 60, now)
+    assert store.peek("k", "raw", now) == "value"
+    assert store.peek("k", "raw", now) == "value"
+    assert store.peek("k", "raw", now + timedelta(seconds=61)) is None
+    assert store.pop("k", "raw", now) == "value"
 
 
 def test_unverified_google_email_is_rejected(flow: Flow, tmp_path: Path) -> None:
