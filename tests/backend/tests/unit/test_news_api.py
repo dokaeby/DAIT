@@ -214,7 +214,7 @@ class TestNewsList:
     def test_all_categories_guest_limit_and_member_filters(
         self, settings: Settings, db_url: str
     ) -> None:
-        """Guests see the global latest ten; members can filter and paginate all categories."""
+        """Guests get the latest ten within the requested filters; members paginate all."""
         seed_news(db_url)
         with sqlite3.connect(_db_path(db_url)) as conn:
             for index in range(15):
@@ -249,11 +249,22 @@ class TestNewsList:
         )
         assert guest.status_code == 200
         body = guest.json()
+        # 게스트도 지정 카테고리·언어 필터를 따르되 최신순·10건·커서 불가 제한은 유지한다.
         assert [item["id"] for item in body["items"]] == [
-            f"mixed{index:02d}" for index in range(14, 4, -1)
+            "mixed12",
+            "mixed09",
+            "mixed06",
+            "mixed03",
+            "mixed00",
+            "news02",
+            "news01",
         ]
         assert body["page"] == {"has_more": False, "next_cursor": None}
-        assert body["meta"]["total_visible"] == 10
+        assert body["meta"]["total_visible"] == 7
+        # 게스트의 language=en 요청도 적용된다(영문 기사가 없으면 0건).
+        english = client.request("GET", "/v1/news", params={"language": "en"})
+        assert english.status_code == 200
+        assert english.json()["items"] == []
         headers = bearer(sign_up(client))
         member = client.request("GET", "/v1/news", headers=headers, params={"sort": "latest"})
         assert member.status_code == 200

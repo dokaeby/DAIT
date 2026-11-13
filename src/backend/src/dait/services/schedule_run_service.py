@@ -17,9 +17,11 @@ from enum import StrEnum
 from typing import Protocol
 
 from dait.core.config import Settings
-from dait.repositories import news_repository, schedule_run_repository
+from dait.repositories import interest_repository, news_repository, schedule_run_repository
 from dait.repositories.db import DB_ERRORS, DB_INTEGRITY_ERRORS, DbConnection, transaction
+from dait.repositories.interest_matching import GROUPS
 from dait.repositories.schedule_run_repository import RunItemRow, RunRow
+from dait.schemas.interest import InterestCode
 from dait.schemas.schedule_run import (
     NotifyStatus,
     ScheduleRunItem,
@@ -34,6 +36,8 @@ from dait.services.news_search_service import normalize_query
 from dait.services.schedule_service import compute_next_run
 
 logger = logging.getLogger(__name__)
+
+_INTEREST_VALUES = {code.value for code in InterestCode}
 
 MAX_DUE_PER_TICK = 200  # 한 tick에서 살펴볼 예약 수 상한
 MAX_CATCHUP_PER_SCHEDULE = 20  # 서버가 오래 꺼져 있었을 때 한 예약에서 되살릴 회차 수 상한
@@ -95,32 +99,128 @@ class DbNewsSearcher:
     """이미 수집·요약된 뉴스에서 예약 조건으로 찾는 임시 검색기.
 
     키워드가 여러 개면 하나라도 제목·요약에 들어 있는 기사를 모은다(OR).
-    출처(source_ids) 조건은 현재 뉴스 조회 SQL이 출처 ID를 돌려주지 않아 아직 적용하지 않는다.
+    관심사(interests)가 있으면 관심사별 최신 기사를 번갈아 먼저 채우고
+    남은 자리는 카테고리 스캔으로 채운다. 영문(en.*) 관심사는 언어 조건이
+    붙어 영문 기사만 매칭된다. 출처(source_ids) 조건은 현재 뉴스 조회 SQL이
+    출처 ID를 돌려주지 않아 아직 적용하지 않는다.
     """
 
     def search(self, conn: DbConnection, criteria: ScheduleCriteria, limit: int) -> list[SearchHit]:
         """예약 조건으로 기사를 찾는다."""
         queries = [normalize_query(k) for k in criteria.keywords] or [""]
-        found: dict[str, SearchHit] = {}
-        for category in criteria.categories:
-            for query in queries:
-                rows = news_repository.list_public_news(
-                    conn, str(category), query, "latest", limit, 0
-                )
-                for row in rows:
-                    found.setdefault(
-                        row.id,
-                        SearchHit(
-                            news_id=row.id,
-                            title=row.title,
-                            source_name=row.source_name,
-                            url=row.canonical_url,
-                            published_at=row.published_at,
-                            summary_lines=row.summary_lines,
-                        ),
+        interests = criteria.interests or []
+        hits: list[SearchHit] = []
+        seen: set[str] = set()
+        if interests:
+            buckets = [
+                self._interest_hits(conn, code, queries, limit)
+                for code in _ordered_interest_codes(interests)
+            ]
+            hits = _round_robin(buckets, limit)
+            seen = {hit.news_id for hit in hits}
+        remaining = limit - len(hits)
+        if remaining > 0:
+            found: dict[str, SearchHit] = {}
+            for category in criteria.categories:
+                for query in queries:
+                    rows = news_repository.list_public_news(
+                        conn, str(category), query, "latest", limit, 0
                     )
-        hits = sorted(found.values(), key=lambda h: (h.published_at, h.news_id), reverse=True)
+                    for row in rows:
+                        if row.id in seen:
+                            continue
+                        found.setdefault(
+                            row.id,
+                            SearchHit(
+                                news_id=row.id,
+                                title=row.title,
+                                source_name=row.source_name,
+                                url=row.canonical_url,
+                                published_at=row.published_at,
+                                summary_lines=row.summary_lines,
+                            ),
+                        )
+            extra = sorted(
+                found.values(), key=lambda h: (h.published_at, h.news_id), reverse=True
+            )[:remaining]
+            hits.extend(extra)
+        hits.sort(key=lambda h: (h.published_at, h.news_id), reverse=True)
         return hits[:limit]
+
+    def _interest_hits(
+        self,
+        conn: DbConnection,
+        code: InterestCode,
+        queries: list[str],
+        limit: int,
+    ) -> list[SearchHit]:
+        """관심사 코드 하나에 맞는 기사를 최신순으로 모은다(키워드는 AND 조건)."""
+        base = code.value.removeprefix("en.")
+        category = GROUPS[base.split(".")[0]]
+        found: dict[str, SearchHit] = {}
+        for query in queries:
+            rows = news_repository.list_public_news(
+                conn,
+                category,
+                query,
+                "latest",
+                limit,
+                0,
+                interests=(code.value,),
+            )
+            for row in rows:
+                found.setdefault(
+                    row.id,
+                    SearchHit(
+                        news_id=row.id,
+                        title=row.title,
+                        source_name=row.source_name,
+                        url=row.canonical_url,
+                        published_at=row.published_at,
+                        summary_lines=row.summary_lines,
+                    ),
+                )
+        return sorted(found.values(), key=lambda h: (h.published_at, h.news_id), reverse=True)[:limit]
+
+
+def _ordered_interest_codes(codes: list[InterestCode]) -> list[InterestCode]:
+    """관심사 코드를 en.*와 한국어 코드가 번갈아 오도록 정렬한다.
+
+    영문 기사는 수집량이 적어 최신순 경쟁에서 항상 밀린다. 슬롯을 관심사별로
+    나눌 때 영문 관심사가 한쪽으로 몰리지 않게 두 언어를 교차 배치한다.
+    """
+    english = sorted((c for c in codes if c.value.startswith("en.")), key=lambda c: c.value)
+    korean = sorted((c for c in codes if not c.value.startswith("en.")), key=lambda c: c.value)
+    ordered: list[InterestCode] = []
+    while english or korean:
+        if english:
+            ordered.append(english.pop(0))
+        if korean:
+            ordered.append(korean.pop(0))
+    return ordered
+
+
+def _round_robin(buckets: list[list[SearchHit]], limit: int) -> list[SearchHit]:
+    """관심사별 버킷을 한 건씩 번갈아 뽑아 limit까지 채운다(중복 기사 제외)."""
+    result: list[SearchHit] = []
+    seen: set[str] = set()
+    pointers = [0] * len(buckets)
+    while len(result) < limit:
+        added = False
+        for index, bucket in enumerate(buckets):
+            while pointers[index] < len(bucket) and bucket[pointers[index]].news_id in seen:
+                pointers[index] += 1
+            if pointers[index] < len(bucket):
+                hit = bucket[pointers[index]]
+                pointers[index] += 1
+                result.append(hit)
+                seen.add(hit.news_id)
+                added = True
+                if len(result) >= limit:
+                    break
+        if not added:
+            break
+    return result
 
 
 class NotConfiguredSender:
@@ -278,6 +378,17 @@ def _search_one(settings: Settings, run_id: str, now: datetime, searcher: Schedu
         return False
     try:
         criteria = ScheduleCriteria.model_validate(json.loads(run.criteria_json))
+        if criteria.interests is None:
+            # 관심사를 명시하지 않은 예약은 검색 시점의 저장 관심사(영문 en.* 포함)를 따른다.
+            with transaction(settings.database_url) as conn:
+                saved = interest_repository.list_codes(conn, run.user_id)
+            criteria = criteria.model_copy(
+                update={
+                    "interests": [
+                        InterestCode(code) for code in saved if code in _INTEREST_VALUES
+                    ]
+                }
+            )
         with transaction(settings.database_url) as conn:
             hits = searcher.search(conn, criteria, SEARCH_RESULT_LIMIT)
     except Exception as exc:  # noqa: BLE001 - 검색 실패 원인을 이력에 남기고 다른 회차는 계속한다.

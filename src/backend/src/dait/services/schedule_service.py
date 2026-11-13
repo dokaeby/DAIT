@@ -99,6 +99,11 @@ def _normalized_criteria(criteria: ScheduleCriteria) -> ScheduleCriteria:
         keywords=keywords,
         source_ids=list(dict.fromkeys(criteria.source_ids)),
         categories=list(dict.fromkeys(criteria.categories)),
+        interests=(
+            None
+            if criteria.interests is None
+            else list(dict.fromkeys(criteria.interests))
+        ),
     )
 
 
@@ -109,6 +114,11 @@ def _criteria_json(criteria: ScheduleCriteria) -> str:
             "keywords": criteria.keywords,
             "source_ids": criteria.source_ids,
             "categories": [c.value for c in criteria.categories],
+            "interests": (
+                None
+                if criteria.interests is None
+                else [c.value for c in criteria.interests]
+            ),
         },
         ensure_ascii=False,
     )
