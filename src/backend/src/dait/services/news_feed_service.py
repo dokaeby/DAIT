@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
+from dait.core.article_language import is_korean_text
 from dait.core.config import Settings
 from dait.core.errors import ValidationFailedError
 from dait.repositories import news_repository
@@ -24,12 +25,7 @@ from dait.schemas.news import (
     decode_cursor,
     encode_cursor,
 )
-from dait.services import (
-    cache_retry_service,
-    feed_index_service,
-    news_search_service,
-    pipeline_sync_service,
-)
+from dait.services import cache_retry_service, news_search_service, pipeline_sync_service
 
 _PARTIAL_WINDOW = timedelta(hours=24)
 _PARTIAL_MESSAGE = "일부 출처의 수집이 지연되고 있습니다."
@@ -66,6 +62,13 @@ def _to_item(row: news_repository.NewsListRow, rank: int) -> NewsListItem | None
     if not row.canonical_url.startswith("https://"):
         return None
     status = _processing_status(row.status)
+    summary_lines = news_repository.parse_summary_lines(row.summary_lines)
+    if status == "READY":
+        if not (len(summary_lines) == 3 and all(is_korean_text(line) for line in summary_lines)):
+            status = "INSUFFICIENT"
+            summary_lines = []
+    elif status == "INSUFFICIENT":
+        summary_lines = [line for line in summary_lines if is_korean_text(line)]
     return NewsListItem(
         original_language=row.original_language,
         author_name=_author_name(row.author_text),
@@ -75,7 +78,7 @@ def _to_item(row: news_repository.NewsListRow, rank: int) -> NewsListItem | None
         source_name=row.source_name,
         published_at=row.published_at,
         category=NewsCategory(row.category),
-        summary_lines=news_repository.parse_summary_lines(row.summary_lines),
+        summary_lines=summary_lines,
         processing_status=status,
         original_url=row.canonical_url,
         is_partial=status != "READY",
@@ -104,7 +107,6 @@ def list_news(
           Redis(또는 메모리 fallback) 캐시 5분+jitter, 락으로 stampede를 막는다.
     """
     pipeline_sync_service.request_sync(settings)
-    feed_index_service.request_classify(settings)
     normalized = news_search_service.normalize_query(query)
     scope_key = sha256(
         repr((MATCHING_VERSION, settings.database_url, language, interests)).encode()

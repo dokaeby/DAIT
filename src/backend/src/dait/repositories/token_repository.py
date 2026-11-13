@@ -6,6 +6,9 @@ from dait.repositories.db import DbConnection
 from dait.schemas.token import RefreshTokenRecord, StoredRefreshToken
 
 
+# 입력: 열린 DB 연결과 refresh 토큰 해시 레코드.
+# 출력: 반환값 없음.
+# 동작: 원문 없이 refresh 토큰 해시와 만료 정보를 저장한다.
 def insert_refresh_token(conn: DbConnection, record: RefreshTokenRecord) -> None:
     """refresh 토큰 해시 한 건을 저장한다.
 
@@ -27,6 +30,9 @@ def insert_refresh_token(conn: DbConnection, record: RefreshTokenRecord) -> None
     )
 
 
+# 입력: 열린 DB 연결과 refresh 토큰 해시.
+# 출력: 저장된 refresh 토큰 또는 없음.
+# 동작: 유니크 해시로 refresh 토큰 한 건을 조회한다.
 def find_by_hash(conn: DbConnection, token_hash: str) -> StoredRefreshToken | None:
     """토큰 해시로 저장된 refresh 토큰을 찾는다.
 
@@ -50,6 +56,9 @@ def find_by_hash(conn: DbConnection, token_hash: str) -> StoredRefreshToken | No
     )
 
 
+# 입력: 열린 DB 연결, 토큰 ID, 현재 시각.
+# 출력: 이 호출에서 토큰을 폐기했는지 여부.
+# 동작: 활성 토큰 하나를 조건부 갱신해 동시 요청에서도 한 번만 폐기한다.
 def revoke_if_active(conn: DbConnection, token_id: str, now: datetime) -> bool:
     """아직 폐기되지 않은 토큰 하나를 폐기한다.
 
@@ -64,6 +73,9 @@ def revoke_if_active(conn: DbConnection, token_id: str, now: datetime) -> bool:
     return cursor.rowcount == 1
 
 
+# 입력: 열린 DB 연결, 토큰 계열 ID, 현재 시각.
+# 출력: 새로 폐기한 토큰 수.
+# 동작: 재사용이 감지된 refresh 토큰 계열 전체를 폐기한다.
 def revoke_family(conn: DbConnection, family_id: str, now: datetime) -> int:
     """같은 로그인 계열(family)의 살아 있는 토큰을 모두 폐기한다.
 
@@ -78,6 +90,9 @@ def revoke_family(conn: DbConnection, family_id: str, now: datetime) -> int:
     return cursor.rowcount
 
 
+# 입력: 열린 DB 연결, 사용자 ID, 현재 시각.
+# 출력: 새로 폐기한 토큰 수.
+# 동작: 로그아웃 사용자의 활성 refresh 토큰을 모두 폐기한다.
 def revoke_all_for_user(conn: DbConnection, user_id: str, now: datetime) -> int:
     """한 사용자의 살아 있는 refresh 토큰을 모두 폐기한다.
 

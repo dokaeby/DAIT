@@ -8,8 +8,8 @@ import pytest
 
 from dait.core.config import Settings
 from dait.core.errors import (
+    EmailAlreadyRegisteredError,
     InvalidCredentialsError,
-    SignupFailedError,
     TooManyAttemptsError,
     WeakPasswordError,
 )
@@ -86,15 +86,23 @@ def test_signup_email_is_stored_lowercase(settings: Settings) -> None:
     assert response.user.email == EMAIL
 
 
+# 입력: 격리된 테스트 DB 설정과 대소문자만 다른 동일 이메일.
+# 출력: 반환값 없음.
+# 동작: 중복 이메일을 알리고 사용자·토큰 행을 추가하지 않는지 검증한다.
 def test_duplicate_email_is_rejected_without_new_rows(settings: Settings) -> None:
-    """UT-AUTH-005: 중복 이메일은 일반 오류이고 이메일을 언급하지 않으며 행이 늘지 않는다."""
+    """UT-AUTH-005 중복 이메일 저장 방지를 검증한다.
+
+    입력: settings는 격리된 SQLite 테스트 설정이다.
+    출력: 없음.
+    기능: 중복 이메일 오류를 공개하고 기존 사용자·토큰 행 수를 유지하는지 확인한다.
+    """
     auth_service.signup(settings, signup_request(), None, NOW)
-    with pytest.raises(SignupFailedError) as caught:
+    with pytest.raises(EmailAlreadyRegisteredError) as caught:
         auth_service.signup(
             settings, signup_request("USERA@example.com", "Other!Passw0rd-123"), None, NOW
         )
-    assert "이메일" not in caught.value.message
-    assert EMAIL not in str(caught.value)
+    assert caught.value.code == "EMAIL_ALREADY_REGISTERED"
+    assert caught.value.message == "이미 가입된 이메일입니다."
     assert len(rows(settings, "SELECT id FROM users")) == 1
     assert len(rows(settings, "SELECT id FROM refresh_tokens")) == 1
 

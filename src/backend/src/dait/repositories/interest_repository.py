@@ -3,6 +3,9 @@
 from dait.repositories.db import DbConnection
 
 
+# 입력: 열린 DB 연결과 사용자 ID.
+# 출력: 사용자가 선택한 관심사 코드 목록.
+# 동작: 해당 사용자에게 속한 관심사 코드만 조회한다.
 def list_codes(conn: DbConnection, user_id: str) -> list[str]:
     """한 사용자의 관심사 코드를 읽는다.
 
@@ -16,6 +19,9 @@ def list_codes(conn: DbConnection, user_id: str) -> list[str]:
     return [row[0] for row in rows]
 
 
+# 입력: 열린 DB 연결, 사용자 ID, 새 관심사 코드 목록.
+# 출력: 반환값 없음.
+# 동작: 트랜잭션 안에서 기존 관심사를 새 목록으로 교체한다.
 def replace_codes(conn: DbConnection, user_id: str, codes: list[str]) -> None:
     """한 사용자의 관심사를 주어진 목록으로 통째로 바꾼다.
 

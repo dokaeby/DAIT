@@ -45,3 +45,10 @@
 #auth-dialog .caps-lock-hint { position:absolute; z-index:2; right:8px; bottom:calc(100% + 6px); padding:7px 10px; border-radius:8px; background:#303c53; color:white; font-size:12px; line-height:1.4; box-shadow:0 3px 10px #182e5029; pointer-events:none; }
 #auth-dialog .caps-lock-hint::after { content:''; position:absolute; right:16px; top:100%; border:5px solid transparent; border-top-color:#303c53; }
 #auth-dialog .caps-lock-hint[hidden] { display:none; }
+
+#auth-dialog .google-login { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:48px; border:1px solid #cbd5e1; border-radius:10px; background:white; color:#344054; font-size:14px; font-weight:600; text-decoration:none; margin-top:6px; }
+#auth-dialog .google-login[aria-disabled="true"] { background:#f8fafc; color:#667085; cursor:not-allowed; }
+#auth-dialog .google-symbol { font:bold 21px Arial,sans-serif; background:conic-gradient(#4285f4 0deg 100deg,#34a853 100deg 190deg,#fbbc05 190deg 240deg,#ea4335 240deg 300deg,#4285f4 300deg); background-clip:text; -webkit-background-clip:text; color:transparent; }
+#auth-dialog .google-notice { margin:6px 0; font-size:12px; text-align:center; color:var(--ink-muted); }
+#auth-dialog .google-divider { display:flex; align-items:center; gap:12px; color:var(--ink-muted); font-size:12px; margin:14px 0; }
+#auth-dialog .google-divider::before, #auth-dialog .google-divider::after { content:''; flex:1; height:1px; background:var(--line); }

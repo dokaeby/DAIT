@@ -26,6 +26,9 @@ end
 """
 
 
+# 입력: Redis URL과 연결 제한 시간.
+# 출력: 연결 확인을 마친 Redis 클라이언트 또는 없음.
+# 동작: 라이브러리·연결 장애를 호출부의 메모리 대체 경로로 변환한다.
 def connect(redis_url: str, timeout: float = 2.0) -> RedisLike | None:
     """Redis 클라이언트를 만들고 ping으로 연결을 확인한다.
 
@@ -57,6 +60,9 @@ class _SharedState:
 _shared = _SharedState()
 
 
+# 입력: 선택적 Redis URL과 연결 제한 시간.
+# 출력: 프로세스가 공유하는 Redis 클라이언트 또는 없음.
+# 동작: 최초 사용 때 한 번 연결하고 장애 시 메모리 대체 경로를 유지한다.
 def shared_client(redis_url: str | None, timeout: float = 2.0) -> RedisLike | None:
     """프로セ스에서 공유하는 Redis 클라이언트를 지연 생성한다.
 
@@ -76,6 +82,9 @@ def shared_client(redis_url: str | None, timeout: float = 2.0) -> RedisLike | No
     return _shared.client
 
 
+# 입력: 없음.
+# 출력: 반환값 없음.
+# 동작: 테스트 격리를 위해 공유 Redis 연결과 장애 상태를 초기화한다.
 def reset_shared_client() -> None:
     """테스트용: 공유 클라이언트와 장애 플래그를 초기화한다."""
     _shared.client = None

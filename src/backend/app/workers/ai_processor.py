@@ -70,6 +70,7 @@ _INJECTION = re.compile(
 )
 _NUMBERS = re.compile(r"(?<![\d.])[+-]?\d+(?:[.,]\d+)*(?:%|퍼센트)?")
 _HANGUL = re.compile(r"[가-힣]")
+_LATIN = re.compile(r"[A-Za-z]")
 _BYLINE_PATTERN = re.compile(
     r"^(?:\[[^\]]{1,45}(?:기자|특파원|리포터|연합|뉴시스|투데이|데일리|신문|경제|타임스|조선|코리아|서울|울산|부산)[^\]]*\]"
     r"|\([^)]{1,45}(?:기자|특파원|리포터|연합|뉴시스|투데이|데일리|신문|경제|타임스|조선|코리아|서울|울산|부산)[^)]*\)"
@@ -308,6 +309,18 @@ class AIProcessor:
 
 def _contains_hangul(text: str) -> bool:
     return bool(_HANGUL.search(text))
+
+
+def looks_foreign_text(text: str) -> bool:
+    """Latin 문자가 한글보다 지배적인지 판별한다(국내 매체의 영문 기사용)."""
+    hangul = len(_HANGUL.findall(text))
+    latin = len(_LATIN.findall(text))
+    return latin > 0 and (hangul == 0 or hangul * 4 < latin)
+
+
+def is_korean_text(text: str) -> bool:
+    """한글을 포함하고 라틴 문자가 지배적이지 않은 텍스트만 한국어로 본다."""
+    return bool(_HANGUL.search(text)) and not looks_foreign_text(text)
 
 
 def ensure_terminal_punctuation(text: str) -> str:
@@ -613,13 +626,15 @@ async def translate_title_to_korean(
                 result = " ".join(result.split())
                 if (
                     len(result) <= 1000
-                    and _contains_hangul(result)
+                    and is_korean_text(result)
                     and result not in (title, clarified)
                     and _TITLE_END not in before
                 ):
                     return result
     translated = await translate_to_korean(clarified, enable_network=enable_network)
-    return title if translated in (title, clarified) else translated
+    if translated in (title, clarified) or not is_korean_text(translated):
+        return title
+    return translated
 
 
 class TranslatingNewsCollector:
@@ -643,14 +658,14 @@ class TranslatingNewsCollector:
         for item in collected.articles:
             orig_title = item.title.split(" ||| ", 1)[0].strip()
             combined_title = orig_title
-            needs_translation = is_global_source or not _contains_hangul(orig_title)
+            needs_translation = is_global_source or not is_korean_text(orig_title)
             if needs_translation:
                 title_ko = await translate_title_to_korean(
                     orig_title,
                     item.raw_text,
                     enable_network=self._enable_network,
                 )
-                if title_ko and title_ko != orig_title:
+                if title_ko and title_ko != orig_title and is_korean_text(title_ko):
                     combined_title = f"{orig_title} ||| {title_ko}"
                 else:
                     # Google Translate rate-limit 대비 LLM 제목 번역 백업 경로.
@@ -660,7 +675,7 @@ class TranslatingNewsCollector:
                             llm_ko = await self._title_translator(orig_title, item.raw_text)
                         except Exception:  # noqa: BLE001 -- 백업 실패는 수집을 막지 않는다
                             llm_ko = None
-                    if llm_ko and llm_ko != orig_title and _contains_hangul(llm_ko):
+                    if llm_ko and llm_ko != orig_title and is_korean_text(llm_ko):
                         combined_title = f"{orig_title} ||| {llm_ko}"
                     elif self._enable_network:
                         # 번역 실패 기사를 그대로 저장하면 영구 미번역 상태가 된다.
@@ -732,7 +747,7 @@ class GoogleTranslateContentProcessor:
                 content_hash=digest,
             )
 
-        is_foreign = article.source_name in GLOBAL_SOURCE_NAMES or not _contains_hangul(
+        is_foreign = article.source_name in GLOBAL_SOURCE_NAMES or looks_foreign_text(
             f"{orig_title} {cleaned_body}"
         )
 
@@ -740,7 +755,7 @@ class GoogleTranslateContentProcessor:
             raw_lines = _build_three_factual_sentences(orig_title, cleaned_body)
             translated_lines: list[str] = []
             for raw_line in raw_lines:
-                if _contains_hangul(raw_line):
+                if is_korean_text(raw_line):
                     translated_lines.append(ensure_terminal_punctuation(raw_line))
                     continue
                 ko_line = ensure_terminal_punctuation(
@@ -749,7 +764,7 @@ class GoogleTranslateContentProcessor:
                         enable_network=self._enable_network_translation,
                     )
                 )
-                if not _contains_hangul(ko_line):
+                if not is_korean_text(ko_line):
                     # 번역 실패 시 영어 원문을 저장하면 영구 미번역 상태가 된다.
                     # 실패로 남겨 다음 수집 주기에 재시도한다.
                     raise ProcessingError(SUMMARY_TRANSLATION_FAILED)
@@ -759,6 +774,8 @@ class GoogleTranslateContentProcessor:
         else:
             line_1, line_2, line_3 = _build_three_factual_sentences(orig_title, cleaned_body)
             translated_text = cleaned_body if cleaned_body else " ".join((line_1, line_2, line_3))
+            if not all(is_korean_text(line) for line in (line_1, line_2, line_3)):
+                raise ProcessingError(SUMMARY_TRANSLATION_FAILED)
 
         raw_for_hash = f"{article.canonical_url}|{article.title}|{article.raw_text or ''}"
         digest = _digest(raw_for_hash)

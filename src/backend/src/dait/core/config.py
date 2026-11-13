@@ -4,7 +4,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,13 @@ _DB_URL_MESSAGE = (
     "DATABASE_URL은 sqlite:/// (로컬), postgresql:// 또는 postgres:// (서버) 형식이어야 합니다."
 )
 _CORS_MESSAGE = "CORS_ORIGINS에는 와일드카드 없이 http(s) 출처만 넣을 수 있습니다."
+_GOOGLE_PARTIAL_MESSAGE = (
+    "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI는 "
+    "함께 설정하거나 모두 비워야 합니다."
+)
+_GOOGLE_URI_MESSAGE = (
+    "GOOGLE_REDIRECT_URI는 https 주소여야 합니다(debug에서만 http://localhost 허용)."
+)
 _RELEASE_CSP = "default-src 'none'; frame-ancestors 'none'"
 # debug에서만 열리는 /docs(Swagger UI)가 CDN 스크립트를 쓰므로 그 범위만 허용한다.
 _DEBUG_CSP = (
@@ -57,7 +64,14 @@ class Settings(BaseSettings):
     )
     # 카톡 메시지에 넣을 사이트 주소(결과가 있을 때는 첫 기사 링크를 쓴다).
     public_base_url: str | None = Field(default=None, max_length=300)
+    # 구글 로그인: 세 값이 모두 비면 기능이 꺼지고(404), 일부만 있으면 시작을 거부한다.
+    google_client_id: str | None = Field(default=None, max_length=255)
+    google_client_secret: SecretStr = Field(default=SecretStr(""), max_length=255)
+    google_redirect_uri: str | None = Field(default=None, max_length=300)
 
+    # 입력: 환경변수에서 읽은 DATABASE_URL.
+    # 출력: 지원 형식 검증을 통과한 같은 URL.
+    # 동작: 로컬 SQLite와 운영 PostgreSQL 스킴만 허용한다.
     @field_validator("database_url")
     @classmethod
     def _check_database_url(cls, value: str) -> str:
@@ -74,6 +88,9 @@ class Settings(BaseSettings):
             raise ValueError(_DB_URL_MESSAGE)
         return value
 
+    # 입력: 환경변수에서 읽은 CORS 허용 출처 목록.
+    # 출력: 안전한 HTTP 출처만 포함한 같은 목록.
+    # 동작: 와일드카드와 HTTP가 아닌 출처를 거부한다.
     @field_validator("cors_origins")
     @classmethod
     def _check_cors_origins(cls, value: list[str]) -> list[str]:
@@ -88,6 +105,50 @@ class Settings(BaseSettings):
                 raise ValueError(_CORS_MESSAGE)
         return value
 
+    # 입력: 검증을 통과한 설정 전체.
+    # 출력: 구글 설정이 모두 있거나 모두 없는 같은 설정.
+    # 동작: 일부만 설정된 반쪽 구성과 release의 비https 리다이렉트 주소를 거부한다.
+    @model_validator(mode="after")
+    def _check_google(self) -> "Settings":
+        """구글 설정 세 값이 한꺼번에 있거나 없는지 확인한다.
+
+        입력: 없음(self)
+        출력: self
+        기능: 일부만 있으면 ValueError로 시작 거부. release에서는 https 주소만 허용하고
+              debug에서만 http://localhost를 허용한다.
+        """
+        given = [
+            bool(self.google_client_id),
+            bool(self.google_client_secret.get_secret_value()),
+            bool(self.google_redirect_uri),
+        ]
+        if any(given) and not all(given):
+            raise ValueError(_GOOGLE_PARTIAL_MESSAGE)
+        uri = self.google_redirect_uri
+        if uri is not None:
+            allowed = uri.startswith("https://") or (
+                self.app_env is AppEnv.DEBUG and uri.startswith("http://localhost")
+            )
+            if not allowed:
+                raise ValueError(_GOOGLE_URI_MESSAGE)
+        return self
+
+    # 입력: 구글 설정 세 값.
+    # 출력: 구글 로그인 사용 가능 여부.
+    # 동작: 세 값이 모두 있을 때만 기능을 켠다(검증기가 반쪽 구성을 이미 거부했다).
+    @property
+    def google_enabled(self) -> bool:
+        """구글 로그인이 켜져 있는지 알려 준다.
+
+        입력: 없음
+        출력: bool (세 값이 모두 있으면 True)
+        기능: 꺼져 있으면 구글 라우트는 404를 돌려준다.
+        """
+        return bool(self.google_client_id)
+
+    # 입력: 현재 앱 실행 모드.
+    # 출력: API 문서 경로 활성화 여부.
+    # 동작: debug 모드에서만 문서 화면을 노출한다.
     @property
     def docs_enabled(self) -> bool:
         """API 문서(/docs, /redoc, /openapi.json)를 열지 여부.
@@ -98,6 +159,9 @@ class Settings(BaseSettings):
         """
         return self.app_env is AppEnv.DEBUG
 
+    # 입력: 현재 앱 실행 모드.
+    # 출력: 응답에 적용할 Content-Security-Policy 값.
+    # 동작: release는 모두 차단하고 debug는 문서에 필요한 출처만 허용한다.
     @property
     def content_security_policy(self) -> str:
         """응답에 붙일 Content-Security-Policy 값.
@@ -109,6 +173,9 @@ class Settings(BaseSettings):
         return _DEBUG_CSP if self.docs_enabled else _RELEASE_CSP
 
 
+# 입력: 프로세스 환경변수와 선택적 .env 설정.
+# 출력: 검증된 불변 앱 설정.
+# 동작: 최초 한 번만 설정을 만들고 이후 같은 객체를 재사용한다.
 @lru_cache
 def get_settings() -> Settings:
     """프로세스 전체에서 쓰는 설정 객체를 한 번만 만들어 돌려준다.

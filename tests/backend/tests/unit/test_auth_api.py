@@ -52,14 +52,23 @@ def test_signup_without_terms_field(settings: Settings) -> None:
     assert response.status_code == 201
 
 
-def test_duplicate_signup_is_409_generic(settings: Settings) -> None:
-    """같은 이메일로 다시 가입하면 409 SIGNUP_FAILED이고 이메일을 언급하지 않는다."""
+# 입력: 격리된 테스트 DB 설정과 같은 이메일의 가입 요청 두 건.
+# 출력: 반환값 없음.
+# 동작: 두 번째 요청이 명확한 중복 이메일 오류를 반환하는지 검증한다.
+def test_duplicate_signup_is_409_email_already_registered(settings: Settings) -> None:
+    """같은 이메일의 두 번째 가입 요청을 검증한다.
+
+    입력: settings는 격리된 SQLite 테스트 설정이다.
+    출력: 없음.
+    기능: 409 응답이 중복 이메일 코드와 사용자 안내 문구를 포함하는지 확인한다.
+    """
     client = client_for(settings)
     client.request("POST", "/v1/auth/signup", json=SIGNUP)
     response = client.request("POST", "/v1/auth/signup", json=SIGNUP)
     assert response.status_code == 409
-    assert ErrorResponse.model_validate_json(response.text).code == "SIGNUP_FAILED"
-    assert "이메일" not in response.text
+    error = ErrorResponse.model_validate_json(response.text)
+    assert error.code == "EMAIL_ALREADY_REGISTERED"
+    assert error.message == "이미 가입된 이메일입니다."
 
 
 def test_weak_password_signup_is_422(settings: Settings) -> None:

@@ -15,6 +15,9 @@ from dait.services.health_service import ensure_database_ready, ensure_redis_rea
 router = APIRouter(tags=["health"])
 
 
+# 입력: 없음.
+# 출력: 프로세스 생존 상태 응답.
+# 동작: 외부 의존성을 조회하지 않고 즉시 정상 상태를 반환한다.
 # def(동기)로 선언해야 sqlite 호출이 FastAPI 스레드풀에서 돌아 이벤트 루프를 막지 않는다.
 @router.get("/healthz", response_model=HealthResponse)
 def healthz() -> HealthResponse:
@@ -27,6 +30,9 @@ def healthz() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
+# 입력: 의존성으로 주입된 앱 설정.
+# 출력: DB와 선택적 Redis의 준비 상태 응답.
+# 동작: 필수 저장소가 응답하지 않으면 503 도메인 오류를 발생시킨다.
 @router.get("/readyz", response_model=HealthResponse)
 def readyz(settings: Annotated[Settings, Depends(get_settings)]) -> HealthResponse:
     """요청을 받을 준비가 됐는지(DB 연결) 알려 준다.

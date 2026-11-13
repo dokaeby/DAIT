@@ -50,6 +50,8 @@ def _insert_pipeline_news(
     status: str = "SUCCESS",
     lines: tuple[str | None, str | None, str | None] = ("첫째", "둘째", "셋째"),
     canonical_url: str | None = None,
+    title: str | None = None,
+    translated_text: str = "번역",
 ) -> None:
     conn.execute(
         "INSERT INTO pipeline.news VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -57,7 +59,7 @@ def _insert_pipeline_news(
             news_id,
             canonical_url or f"https://example.com/{news_id}",
             source_name,
-            f"기사 {news_id}",
+            title or f"기사 {news_id}",
             category,
             "2026-11-12T01:00:00+00:00",
             "raw",
@@ -69,7 +71,7 @@ def _insert_pipeline_news(
             news_id,
             status,
             *lines,
-            "번역",
+            translated_text,
             "groq",
             "cloud-llm",
         ),
@@ -109,6 +111,108 @@ def test_sync_maps_society_to_politics_and_missing_lines_to_insufficient() -> No
     assert status_row is not None
     assert status_row[0] == "INSUFFICIENT"
     assert json.loads(status_row[1]) == ["하나", "셋"]
+
+
+def test_sync_marks_domestic_source_english_article_as_english() -> None:
+    """국내 매체라도 제목이 영문이면 original_language은 en으로 저장한다."""
+    conn = _connect()
+    conn.execute("INSERT INTO sources (id, name) VALUES ('src_it', 'IT조선')")
+    _insert_pipeline_news(
+        conn,
+        "n_en",
+        source_name="IT조선",
+        title="Chip stocks rally on AI demand",
+        lines=("첫째 요약입니다.", "둘째 요약입니다.", "셋째 요약입니다."),
+        translated_text="한국어로 번역된 본문입니다.",
+    )
+    inserted = pipeline_sync_service.sync_pipeline_news(conn)
+    assert inserted == 1
+    row = conn.execute(
+        "SELECT n.original_language, c.status, c.summary_lines, c.translated_text "
+        "FROM news n JOIN content_results c ON c.news_id = n.id"
+    ).fetchone()
+    assert row is not None
+    language, status, summary, translated = row
+    assert language == "en"
+    assert status == "READY"
+    assert json.loads(summary) == ["첫째 요약입니다.", "둘째 요약입니다.", "셋째 요약입니다."]
+    assert translated == "한국어로 번역된 본문입니다."
+
+
+def test_sync_skips_english_only_summary_for_domestic_source() -> None:
+    """한국어 줄이 하나도 없는 SUCCESS 결과는 공개 테이블에 만들지 않는다."""
+    conn = _connect()
+    conn.execute("INSERT INTO sources (id, name) VALUES ('src_it', 'IT조선')")
+    _insert_pipeline_news(
+        conn,
+        "n_bad",
+        source_name="IT조선",
+        title="Chip stocks rally on AI demand",
+        lines=(
+            "Chip stocks rallied on AI demand.",
+            "Data center orders drove the trend.",
+            "The rally is expected to continue.",
+        ),
+        translated_text="Chip stocks rallied on AI demand.",
+    )
+    inserted = pipeline_sync_service.sync_pipeline_news(conn)
+    assert inserted == 0
+    assert conn.execute("SELECT COUNT(*) FROM news").fetchone() == (0,)
+
+
+def test_sync_repairs_existing_english_ready_row() -> None:
+    """이미 READY로 복사된 영문 요약은 다음 동기화에서 숨기고 언어를 바로잡는다."""
+    conn = _connect()
+    conn.execute("INSERT INTO sources (id, name) VALUES ('src_it', 'IT조선')")
+    url = "https://example.com/bad"
+    conn.execute(
+        "INSERT INTO news (id, source_id, title, canonical_url, published_at, "
+        "collected_at, category, original_language, content_hash, created_at) "
+        "VALUES ('pub1', 'src_it', 'Chip stocks rally', ?, '2026-11-12', "
+        "'2026-11-12', 'AI', 'ko', NULL, '2026-11-12')",
+        (url,),
+    )
+    conn.execute(
+        "INSERT INTO content_results (news_id, status, summary_lines, translated_text, "
+        "model_id, prompt_version, processed_at, updated_at) VALUES "
+        "('pub1', 'READY', ?, ?, 'groq', 'cloud-llm', '2026-11-12', '2026-11-12')",
+        (
+            json.dumps(
+                [
+                    "Chip stocks rallied on AI demand.",
+                    "Data center orders drove the trend.",
+                    "The rally is expected to continue.",
+                ],
+                ensure_ascii=False,
+            ),
+            "Chip stocks rallied on AI demand.",
+        ),
+    )
+    _insert_pipeline_news(
+        conn,
+        "n_bad",
+        source_name="IT조선",
+        title="Chip stocks rally on AI demand",
+        canonical_url=url,
+        lines=(
+            "Chip stocks rallied on AI demand.",
+            "Data center orders drove the trend.",
+            "The rally is expected to continue.",
+        ),
+        translated_text="Chip stocks rallied on AI demand.",
+    )
+    changed = pipeline_sync_service.sync_pipeline_news(conn)
+    assert changed == 1
+    row = conn.execute(
+        "SELECT n.original_language, c.status, c.summary_lines, c.translated_text "
+        "FROM news n JOIN content_results c ON c.news_id = n.id WHERE n.id = 'pub1'"
+    ).fetchone()
+    assert row is not None
+    language, status, summary, translated = row
+    assert language == "en"
+    assert status == "PENDING"
+    assert json.loads(summary) == []
+    assert translated is None
 
 
 def test_sync_skips_unprocessed_unknown_source_and_duplicates() -> None:

@@ -47,12 +47,23 @@ class SignupRequest(BaseModel):
 
     @field_validator("nickname", mode="before")
     @classmethod
+    # 입력: 회원가입 요청의 닉네임 원본 값.
+    # 출력: 빈 문자열이면 None, 아니면 원본 값.
+    # 동작: 선택하지 않은 닉네임을 공개 모델의 없음 값으로 통일한다.
     def _empty_nickname(cls, value: object) -> object:
-        """빈 선택 입력은 이메일 표시를 뜻한다."""
+        """빈 닉네임 입력을 없음 값으로 바꾼다.
+
+        입력: value (회원가입 요청의 닉네임 원본 값)
+        출력: object (빈 문자열이면 None, 아니면 원본 값)
+        기능: 선택하지 않은 닉네임을 공개 모델의 없음 값으로 통일한다.
+        """
         return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("interests")
     @classmethod
+    # 입력: 회원가입 요청에서 검증된 관심사 코드 목록.
+    # 출력: 중복이 없는 같은 관심사 코드 목록.
+    # 동작: 같은 관심사를 두 번 선택한 요청을 거부한다.
     def _no_duplicate_interests(cls, value: list[InterestCode]) -> list[InterestCode]:
         """가입 시 보낸 관심사에 중복이 없는지 확인한다.
 
@@ -64,6 +75,9 @@ class SignupRequest(BaseModel):
 
     @field_validator("email")
     @classmethod
+    # 입력: 형식 검증을 통과한 이메일.
+    # 출력: 길이 제한을 통과한 같은 이메일.
+    # 동작: 저장 가능한 최대 길이 254자를 넘는 이메일을 거부한다.
     def _check_email_length(cls, value: str) -> str:
         """이메일이 254자를 넘지 않는지 확인한다.
 
@@ -76,6 +90,9 @@ class SignupRequest(BaseModel):
         return value
 
     @model_validator(mode="after")
+    # 입력: 비밀번호와 비밀번호 확인이 검증된 회원가입 모델.
+    # 출력: 두 값이 일치하는 같은 회원가입 모델.
+    # 동작: 상수 시간 비교로 비밀번호 확인 불일치를 거부한다.
     def _check_password_confirmation(self) -> Self:
         """비밀번호 확인이 일치하는지 검사한다.
 
@@ -132,11 +149,12 @@ class RefreshRequest(BaseModel):
 
 
 class WithdrawRequest(BaseModel):
-    """회원탈퇴 요청. 본인 확인을 위해 비밀번호를 다시 받는다."""
+    """회원탈퇴 요청. 비밀번호 계정은 비밀번호를, 구글 전용 계정은 확인 문구를 받는다."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    password: SecretStr = Field(min_length=1, max_length=128)
+    password: SecretStr | None = Field(default=None, min_length=1, max_length=128)
+    confirm_text: Literal["탈퇴"] | None = None
 
 
 class ResultResponse(BaseModel):

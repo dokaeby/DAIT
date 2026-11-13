@@ -512,11 +512,9 @@ def test_content_processor_translates_english_grok_summary_lines(
     processor = CloudLLMContentProcessor(_settings(), processor=inner)
 
     async def fake_translate(text: str) -> str:
-        return f"번역된 문장: {text}"
+        return "번역된 한국어 문장입니다."
 
-    monkeypatch.setattr(
-        "src.backend.app.workers.cloud_llm.translate_to_korean", fake_translate
-    )
+    monkeypatch.setattr("src.backend.app.workers.cloud_llm.translate_to_korean", fake_translate)
 
     result = asyncio.run(processor.process(_foreign_collected_article()))
 
@@ -545,9 +543,7 @@ def test_content_processor_rejects_untranslated_foreign_summary(
     async def untranslated(text: str) -> str:
         return text
 
-    monkeypatch.setattr(
-        "src.backend.app.workers.cloud_llm.translate_to_korean", untranslated
-    )
+    monkeypatch.setattr("src.backend.app.workers.cloud_llm.translate_to_korean", untranslated)
 
     with pytest.raises(ProcessingError):
         asyncio.run(processor.process(_foreign_collected_article()))

@@ -8,8 +8,16 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_valida
 _CONTROL_CHARACTERS = "nickname contains control characters"
 
 
+# 입력: 닉네임으로 전달된 원본 값.
+# 출력: 정규화된 문자열 또는 문자열이 아닌 원본 값.
+# 동작: 유니코드 호환 문자와 공백을 정리하고 제어문자를 거부한다.
 def normalize_nickname(value: object) -> object:
-    """호환 문자와 앞뒤 공백을 정규화하고 제어문자를 거부한다."""
+    """닉네임의 문자 형태와 공백을 정규화한다.
+
+    입력: value (닉네임으로 전달된 원본 값)
+    출력: object (정규화된 문자열 또는 문자열이 아닌 원본 값)
+    기능: NFKC 정규화 후 제어문자가 포함된 문자열을 거부한다.
+    """
     if not isinstance(value, str):
         return value
     normalized = unicodedata.normalize("NFKC", value).strip()
@@ -37,8 +45,16 @@ class NicknameUpdate(BaseModel):
 
     @field_validator("nickname", mode="before")
     @classmethod
+    # 입력: 닉네임 변경 요청의 원본 값.
+    # 출력: 빈 문자열이면 None, 아니면 원본 값.
+    # 동작: 빈 입력을 닉네임 제거 요청으로 통일한다.
     def empty_to_none(cls, value: object) -> object:
-        """빈 문자열만 None으로 정규화한다."""
+        """빈 닉네임 변경 입력을 없음 값으로 바꾼다.
+
+        입력: value (닉네임 변경 요청의 원본 값)
+        출력: object (빈 문자열이면 None, 아니면 원본 값)
+        기능: 빈 입력을 닉네임 제거 요청으로 통일한다.
+        """
         return None if isinstance(value, str) and not value.strip() else value
 
 

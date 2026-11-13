@@ -24,6 +24,7 @@
 | 1.0.1 | seonghoon.yang | 2026-11-06 | 화면설계서 v1.0.1 반영 및 문서 세트 정합성 보강 |
 | 1.0.2 | seonghoon.yang | 2026-11-10 | 문서 세트 버전 1.0.2로 갱신 |
 | 1.0.3 | devin | 2026-11-12 | pytest 실행 절차와 1.0.3 추가 테스트 파일 기준으로 절차 갱신 |
+| 1.0.3 | 그린컬 | 2026-11-13 | 구글 로그인·계정 연결 테스트 실행 절차(7.1)와 전체 646건 기준 반영 |
 
 ## 0.1 v1.0.3 실행 기준
 
@@ -32,7 +33,7 @@ cd src/backend
 uv run pytest ../tests/backend -q   # 또는 저장소 루트에서 uv run pytest tests/backend -q
 ```
 
-- 전체 586건 통과가 게이트다. 신규 기능은 해당 모듈 테스트 파일에 케이스를 추가한다.
+- 전체 통과가 게이트다(2026-11-13 기준 646건). 신규 기능은 해당 모듈 테스트 파일에 케이스를 추가한다.
 - DB 의존 테스트는 SQLite 임시 DB를 사용하고, Supabase/PostgreSQL은 통합·수동 검증으로 분리한다.
 
 ## 1. 목적
@@ -160,6 +161,21 @@ pytest tests/unit/api/test_auth_schemas.py -vv
 - refresh rotation
 - logout/revoke
 - 탈퇴 데이터 정리
+
+구글 로그인·계정 연결(UT-AUTH-013~029, 가짜 구글 사용, 네트워크 불필요):
+
+```powershell
+uv run pytest tests/backend/tests/unit/test_google_login.py -vv
+uv run pytest tests/backend/tests/unit/test_social_migration.py -vv
+```
+
+확인:
+- state·nonce·PKCE·redirect_uri 일치, state 쿠키 속성
+- state·교환 코드·연결 표의 1회용·만료
+- 같은 이메일 자동 병합 금지, 비밀번호 확인 후에만 연결, 오입력 잠금
+- 구글 전용 계정의 비밀번호 로그인 거부와 탈퇴 확인(5분 이내 + `탈퇴`)
+- 설정 꺼짐(404)·반쪽 설정 시작 거부, 마이그레이션 0008 왕복
+- 기대 결과: 33건 통과(2026-11-13 실행)
 
 ### 7.2 메인/검색
 

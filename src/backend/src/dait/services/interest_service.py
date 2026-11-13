@@ -15,6 +15,9 @@ from dait.schemas.interest import (
 from dait.schemas.user import UserRecord
 
 
+# 입력: 고정 관심사 코드 하나.
+# 출력: 한글 이름과 대주제를 포함한 관심사 항목.
+# 동작: 코드 앞부분으로 대주제를 구하고 표시 이름을 결합한다.
 def _item(code: InterestCode) -> InterestItem:
     """코드 하나를 화면용 항목으로 바꾼다.
 
@@ -33,6 +36,9 @@ def _item(code: InterestCode) -> InterestItem:
     )
 
 
+# 입력: 없음.
+# 출력: 대주제별로 묶인 전체 관심사 카탈로그.
+# 동작: 고정 관심사 코드를 화면 표시용 그룹으로 구성한다.
 def get_catalog() -> CatalogResponse:
     """선택 가능한 관심사 전체를 대주제별로 묶어 돌려준다.
 
@@ -52,6 +58,9 @@ def get_catalog() -> CatalogResponse:
     return CatalogResponse(groups=groups)
 
 
+# 입력: DB에서 읽은 관심사 코드 문자열 목록.
+# 출력: 카탈로그 순서로 정리된 내 관심사 응답.
+# 동작: 현재 카탈로그에 존재하는 저장 코드만 화면 항목으로 변환한다.
 def _to_response(codes: list[str]) -> MyInterestsResponse:
     """저장된 코드 문자열을 카탈로그 순서의 응답으로 바꾼다.
 
@@ -63,6 +72,9 @@ def _to_response(codes: list[str]) -> MyInterestsResponse:
     return MyInterestsResponse(interests=[_item(c) for c in InterestCode if c.value in saved])
 
 
+# 입력: 앱 설정과 인증이 끝난 사용자 ID.
+# 출력: 사용자가 저장한 관심사 응답.
+# 동작: DB에서 관심사 코드를 조회해 카탈로그 순서로 변환한다.
 def list_interests(settings: Settings, user_id: str) -> MyInterestsResponse:
     """사용자 id로 저장된 관심사를 읽는다(로그인 응답에 붙이는 용도).
 
@@ -75,6 +87,9 @@ def list_interests(settings: Settings, user_id: str) -> MyInterestsResponse:
     return _to_response(codes)
 
 
+# 입력: 앱 설정과 인증된 사용자.
+# 출력: 본인의 관심사 응답.
+# 동작: 요청값이 아닌 인증된 사용자 ID로 관심사를 조회한다.
 def get_my_interests(settings: Settings, user: UserRecord) -> MyInterestsResponse:
     """본인의 관심사를 돌려준다.
 
@@ -85,6 +100,9 @@ def get_my_interests(settings: Settings, user: UserRecord) -> MyInterestsRespons
     return list_interests(settings, user.id)
 
 
+# 입력: 앱 설정, 인증된 사용자, 새 관심사 코드 목록.
+# 출력: 저장된 관심사 응답.
+# 동작: 본인의 관심사 전체를 한 트랜잭션으로 교체한다.
 def replace_my_interests(
     settings: Settings, user: UserRecord, codes: list[InterestCode]
 ) -> MyInterestsResponse:

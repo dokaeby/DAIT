@@ -26,6 +26,9 @@ DbCursor = sqlite3.Cursor | db_postgres.PgCursor
 _POSTGRES_PREFIXES = ("postgresql://", "postgres://", "postgresql+psycopg://")
 
 
+# 입력: DATABASE_URL 문자열.
+# 출력: postgres 또는 sqlite 백엔드 이름.
+# 동작: URL 스킴으로 실행 환경의 DB 드라이버를 선택한다.
 def db_dialect(database_url: str) -> str:
     """DATABASE_URL이 어느 백엔드로 가야 하는지 판별한다.
 
@@ -39,6 +42,9 @@ def db_dialect(database_url: str) -> str:
     return "sqlite"
 
 
+# 입력: DATABASE_URL 문자열.
+# 출력: 선택한 백엔드의 열린 DB 연결.
+# 동작: URL 스킴에 맞는 PostgreSQL 또는 SQLite 연결 생성을 위임한다.
 def connect(database_url: str) -> DbConnection:
     """DATABASE_URL에 맞는 백엔드 연결을 만든다.
 
@@ -52,6 +58,9 @@ def connect(database_url: str) -> DbConnection:
 
 
 @contextmanager
+# 입력: DATABASE_URL 문자열.
+# 출력: with 블록에서 사용하는 트랜잭션 연결.
+# 동작: 선택한 백엔드의 commit·rollback·close 경계를 제공한다.
 def transaction(database_url: str) -> Generator[DbConnection]:
     """백엔드에 맞는 트랜잭션 컨텍스트를 연다.
 
@@ -67,6 +76,9 @@ def transaction(database_url: str) -> Generator[DbConnection]:
         yield conn
 
 
+# 입력: DATABASE_URL 문자열.
+# 출력: 반환값 없음.
+# 동작: 선택한 DB 백엔드에 연결해 간단한 질의 가능 여부를 확인한다.
 def ping(database_url: str) -> None:
     """선택된 백엔드로 DB 연결을 확인한다.
 

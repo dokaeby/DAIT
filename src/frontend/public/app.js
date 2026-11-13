@@ -18,7 +18,7 @@
 
   const authStyles = document.createElement("link");
   authStyles.rel = "stylesheet";
-  authStyles.href = "/mockup/auth.css?v=caps-only-4";
+  authStyles.href = "/mockup/auth.css?v=google-styled-5";
   document.head.appendChild(authStyles);
 
   function rememberEmail(email) {
@@ -253,6 +253,7 @@
     const form = dialog.querySelector("#auth-form");
     form.innerHTML = signup ? signupFieldsHtml() : loginFieldsHtml();
     attachCapsLockHints(form);
+    configureGoogleLogin(form);
     if (!signup && email) {
       form.querySelector("#auth-email").value = email;
       form.querySelector("#auth-remember").checked = getToken(REMEMBERED_EMAIL_KEY) === email;
@@ -261,6 +262,7 @@
     dialog.querySelector("#auth-feedback").textContent = "";
     if (!dialog.open) dialog.showModal();
     dialog._signup = signup;
+    dialog._linkTicket = null;
     form.querySelector("#auth-email").focus({ preventScroll: true });
   }
 
@@ -296,6 +298,25 @@
     } finally { button.disabled = false; }
   }
 
+  function googleLoginHtml() {
+    return '<div class="google-auth-block"><div class="google-divider"><span>또는</span></div><a class="google-login" href="/v1/auth/google/login" aria-disabled="true" tabindex="-1" aria-describedby="google-notice"><span class="google-symbol" aria-hidden="true">G</span><span>Google로 계속하기</span></a><p class="google-notice" id="google-notice" role="status">Google 로그인 확인 중…</p></div>';
+  }
+  function configureGoogleLogin(form) {
+    const button = form.querySelector('.google-login');
+    const notice = form.querySelector('.google-notice');
+    button.addEventListener('click', event => {
+      if (button.getAttribute('aria-disabled') === 'true') event.preventDefault();
+    });
+    fetch('/v1/auth/google/status', {headers: {Accept: 'application/json'}})
+      .then(response => response.ok ? response.json() : {enabled:false})
+      .then(data => {
+        button.setAttribute('aria-disabled', String(!data.enabled));
+        button.tabIndex = data.enabled ? 0 : -1;
+        notice.textContent = data.enabled ? '' : 'Google 로그인 준비 중';
+        notice.hidden = !!data.enabled;
+      }).catch(() => { notice.textContent = 'Google 로그인 상태를 확인하지 못했습니다.'; });
+  }
+
   function loginFieldsHtml() {
     const remembered = getToken(REMEMBERED_EMAIL_KEY) || "";
     return (
@@ -303,6 +324,7 @@
       '<label for="auth-password">비밀번호</label><input id="auth-password" name="password" type="password" autocomplete="current-password" required maxlength="128">' +
       '<label class="auth-check" for="auth-remember"><input id="auth-remember" name="remember_email" type="checkbox"' + (remembered ? ' checked' : '') + '><span>이메일 저장</span></label>' +
       '<button class="login-submit primary-button" type="submit">로그인</button>' +
+      googleLoginHtml() +
       '<p class="auth-navigation">계정이 없으신가요? <button class="auth-link" type="button" id="auth-switch">회원가입</button></p>'
     );
   }
@@ -314,6 +336,7 @@
       '<label for="auth-password">비밀번호 (8자 이상)</label><input id="auth-password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
       '<label for="auth-password-confirm">비밀번호 확인</label><input id="auth-password-confirm" name="password_confirm" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
       '<button class="login-submit primary-button" type="submit">가입하기</button>' +
+      googleLoginHtml() +
       '<p class="auth-navigation">이미 계정이 있으신가요? <button class="auth-link" type="button" id="auth-switch">로그인</button></p>'
     );
   }
@@ -321,6 +344,10 @@
   async function onAuthSubmit(event) {
     event.preventDefault();
     const dialog = document.getElementById("auth-dialog");
+    if (dialog._linkTicket) {
+      submitLink(dialog);
+      return;
+    }
     const form = dialog.querySelector("#auth-form");
     const feedback = dialog.querySelector("#auth-feedback");
     const signup = !!dialog._signup;
@@ -413,8 +440,109 @@
     if (notice && notice.open) notice.close();
   }
 
+  const GOOGLE_ERRORS = {
+    email_in_use: "이 이메일은 이미 이메일 로그인으로 가입되어 있습니다. 이메일과 비밀번호로 로그인해 주세요.",
+    email_unverified: "구글에서 이메일 인증이 끝나지 않은 계정입니다.",
+    google_account_mismatch: "이 이메일에는 다른 구글 계정이 이미 연결되어 있습니다. 기존 방식으로 로그인해 주세요.",
+    access_denied: "구글 로그인을 취소했습니다.",
+    provider_unavailable: "구글과 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  };
+
+  /** 같은 이메일의 기존 계정이 있을 때, 구글 계정을 연결할지 사용자가 고르는 창. */
+  function openLinkDialog(ticket) {
+    openAuthDialog(false);
+    const dialog = document.getElementById("auth-dialog");
+    dialog.querySelector("#auth-title").textContent = "구글 계정 연결";
+    dialog.querySelector("#auth-form").innerHTML =
+      '<p>이 이메일로 가입된 계정이 이미 있어요. 구글 로그인과 연결할까요?</p>' +
+      '<p class="field-help">연결하면 다음부터 구글로 바로 로그인할 수 있어요. 기존 이메일 로그인도 그대로 쓸 수 있고, 원하지 않으면 연결하지 않아도 돼요.</p>' +
+      '<label for="link-password">기존 계정 비밀번호</label>' +
+      '<input id="link-password" name="password" type="password" autocomplete="current-password" required maxlength="128">' +
+      '<button class="login-submit primary-button" type="submit">연결하기</button>' +
+      '<button class="secondary-button" type="button" id="link-skip">연결하지 않기</button>';
+    dialog._linkTicket = ticket;
+    dialog.querySelector("#link-skip").addEventListener("click", () => {
+      openAuthDialog(false);
+      document.getElementById("auth-feedback").textContent = "연결하지 않았습니다. 이메일과 비밀번호로 로그인해 주세요.";
+    });
+    dialog.querySelector("#link-password").focus({ preventScroll: true });
+  }
+
+  /** 연결 창의 제출: 연결 표와 기존 비밀번호를 보내 연결하고 로그인한다. */
+  async function submitLink(dialog) {
+    const feedback = dialog.querySelector("#auth-feedback");
+    const password = dialog.querySelector("#link-password").value;
+    const controls = dialog.querySelectorAll("#auth-form input, #auth-form button");
+    controls.forEach((c) => (c.disabled = true));
+    try {
+      const res = await fetch("/v1/auth/google/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ ticket: dialog._linkTicket, password }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        feedback.textContent =
+          res.status === 429
+            ? "시도 횟수가 초과됐습니다. 잠시 후 다시 시도해 주세요."
+            : res.status === 401 && body.code === "INVALID_CREDENTIALS"
+              ? "비밀번호가 맞지 않습니다. 다시 입력해 주세요."
+              : "연결 시간이 지났습니다. 구글 로그인을 다시 시도해 주세요.";
+        return;
+      }
+      setTokens(body.tokens);
+      dialog.close();
+      if (body.onboarding_required) location.assign("/settings.html?welcome=1#interests");
+      else location.reload();
+    } catch (_e) {
+      feedback.textContent = "서버에 연결하지 못했습니다.";
+    } finally {
+      controls.forEach((c) => (c.disabled = false));
+    }
+  }
+
+  /** 구글 로그인에서 돌아온 주소의 # 값을 처리한다(교환 코드는 주소창에 남기지 않는다). */
+  async function handleGoogleReturn() {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const code = hash.get("google");
+    const error = hash.get("google_error");
+    const linkTicket = hash.get("google_link");
+    if (!code && !error && !linkTicket) return false;
+    history.replaceState(null, "", location.pathname + location.search);
+    if (linkTicket) {
+      openLinkDialog(linkTicket);
+      return true;
+    }
+    if (error) {
+      openAuthDialog(false);
+      document.getElementById("auth-feedback").textContent = GOOGLE_ERRORS[error] || "구글 로그인에 실패했습니다. 다시 시도해 주세요.";
+      return true;
+    }
+    try {
+      const res = await fetch("/v1/auth/google/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("exchange failed");
+      setTokens(body.tokens);
+      if (body.onboarding_required) {
+        location.assign("/settings.html?welcome=1#interests");
+        return true;
+      }
+      location.reload();
+      return true;
+    } catch (_e) {
+      openAuthDialog(false);
+      document.getElementById("auth-feedback").textContent = "구글 로그인을 마치지 못했습니다. 다시 시도해 주세요.";
+      return true;
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     renderAuthArea();
+    handleGoogleReturn();
     document.addEventListener("click", (e) => {
       if (e.target && e.target.id === "auth-switch") {
         const dialog = document.getElementById("auth-dialog");
