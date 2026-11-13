@@ -37,9 +37,10 @@
 v1.0.4에서는 뉴스 탐색 필터(language/topic/personalized/interest), 관심사 집계
 (interest_counts)·읽음 상태 분리 조회(read-state), keepalive 엔드포인트, 관심사 30개
 코드(한국어 15 + `en.*` 15)를 반영한다.
-v1.0.5에서는 영문 기사 기능을 전면 중단한다 — `language` 파라미터, `en.*` 관심사 코드,
+v1.0.5에서는 영문 기사 기능을 범위에서 제외(보류)한다 — `language` 파라미터, `en.*` 관심사 코드,
 `original_language`/`translated_text`/`translation_required` 응답 필드를 제거하고
-모든 뉴스 API는 한국어 기사만 반환한다.
+모든 뉴스 API는 한국어 기사만 반환한다. 영문 기사 기능은 추후 버전에서 재개 개발 예정이며,
+관련 DB 컬럼·코드 체계는 레거시로 보존해 복원 비용을 낮춘다.
 
 ## 2. 공통 API 규칙
 
