@@ -10,15 +10,18 @@
   let sessionPromise = null;
   let sessionSnapshot = null;
   let sessionGeneration = 0;
+  let googleReturnPromise = null;
+  const SESSION_CACHE_KEY = 'dait_session_ui_v1';
   function invalidateSession() {
     sessionGeneration++;
     sessionPromise = null;
     sessionSnapshot = null;
+    try { sessionStorage.removeItem(SESSION_CACHE_KEY); } catch { /* optional UI cache */ }
   }
 
   const authStyles = document.createElement("link");
   authStyles.rel = "stylesheet";
-  authStyles.href = "/mockup/auth.css?v=google-styled-5";
+  authStyles.href = "/mockup/auth.css?v=render-fixes-6";
   document.head.appendChild(authStyles);
 
   function rememberEmail(email) {
@@ -114,9 +117,13 @@
 
   /** 현재 로그인 사용자. 비로그인이면 null. */
   async function currentUser() {
+    if (googleReturnPromise) await googleReturnPromise;
     const access = getToken(ACCESS_KEY);
     if (!access) return null;
-    if (sessionSnapshot && sessionSnapshot.access === access && Date.now() - sessionSnapshot.time < 5000) return sessionSnapshot.user;
+    if (!sessionSnapshot) {
+      try { sessionSnapshot = JSON.parse(sessionStorage.getItem(SESSION_CACHE_KEY) || 'null'); } catch { /* optional UI cache */ }
+    }
+    if (sessionSnapshot && sessionSnapshot.access === access && Date.now() - sessionSnapshot.time < 60000) return sessionSnapshot.user;
     if (sessionPromise) return sessionPromise;
     const generation = sessionGeneration;
     const pending = (async () => {
@@ -125,7 +132,10 @@
         if (!res.ok) return null;
         const data = await res.json();
         const user = data.authenticated && data.user ? { ...data.user, interests: data.interests || [] } : null;
-        if (generation === sessionGeneration && getToken(ACCESS_KEY) === access) sessionSnapshot = {access, user, time: Date.now()};
+        if (user && generation === sessionGeneration && getToken(ACCESS_KEY) === access) {
+          sessionSnapshot = {access: getToken(ACCESS_KEY), user, time: Date.now()};
+          try { sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(sessionSnapshot)); } catch { /* optional UI cache */ }
+        }
         return getToken(ACCESS_KEY) ? user : null;
       } catch (_e) { return null; }
     })();
@@ -176,6 +186,8 @@
 
   function attachCapsLockHints(form) {
     form.querySelectorAll('input[type="password"]').forEach((input) => {
+      if (input.dataset.passwordEnhanced) return;
+      input.dataset.passwordEnhanced = 'true';
       const wrapper = document.createElement('div');
       wrapper.className = 'password-hint-wrapper';
       const hint = document.createElement('span');
@@ -188,6 +200,25 @@
       input.setAttribute('aria-describedby', hint.id);
       input.before(wrapper);
       wrapper.append(input, hint);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'password-visibility';
+      const updateToggle = () => {
+        const visible = input.type === 'text';
+        toggle.setAttribute('aria-label', visible ? '비밀번호 숨기기' : '비밀번호 표시');
+        toggle.setAttribute('aria-pressed', String(visible));
+        toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>' + (visible ? '' : '<path d="m3 3 18 18"/>') + '</svg>';
+      };
+      toggle.addEventListener('click', () => {
+        input.type = input.type === 'password' ? 'text' : 'password';
+        updateToggle();
+        input.focus({preventScroll: true});
+      });
+      updateToggle();
+      wrapper.append(toggle);
+      input.form?.closest('dialog')?.addEventListener('close', () => {
+        input.type = 'password'; hint.hidden = true; updateToggle();
+      });
       let typed = false;
       const update = (event) => {
         if (event.type === 'keydown' && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) typed = true;
@@ -461,6 +492,7 @@
       '<button class="login-submit primary-button" type="submit">연결하기</button>' +
       '<button class="secondary-button" type="button" id="link-skip">연결하지 않기</button>';
     dialog._linkTicket = ticket;
+    attachCapsLockHints(dialog.querySelector('#auth-form'));
     dialog.querySelector("#link-skip").addEventListener("click", () => {
       openAuthDialog(false);
       document.getElementById("auth-feedback").textContent = "연결하지 않았습니다. 이메일과 비밀번호로 로그인해 주세요.";
@@ -531,8 +563,7 @@
         location.assign("/settings.html?welcome=1#interests");
         return true;
       }
-      location.reload();
-      return true;
+      return false;
     } catch (_e) {
       openAuthDialog(false);
       document.getElementById("auth-feedback").textContent = "구글 로그인을 마치지 못했습니다. 다시 시도해 주세요.";
@@ -541,8 +572,8 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    attachCapsLockHints(document);
     renderAuthArea();
-    handleGoogleReturn();
     document.addEventListener("click", (e) => {
       if (e.target && e.target.id === "auth-switch") {
         const dialog = document.getElementById("auth-dialog");
@@ -553,5 +584,8 @@
     });
   });
 
-  window.DAIT = { api, currentUser, clearTokens, getToken, renderAuthArea };
+  window.DAIT = { api, currentUser, clearTokens, getToken, renderAuthArea, attachCapsLockHints };
+  if (new URLSearchParams(location.hash.slice(1)).has('google') || /google_(error|link)=/.test(location.hash)) {
+    googleReturnPromise = handleGoogleReturn();
+  }
 })();

@@ -468,6 +468,48 @@ def test_content_processor_maps_insufficient() -> None:
     assert isinstance(result, InsufficientContent)
 
 
+def test_remote_paragraphs_used_when_body_extractor_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An accessible article must not be rejected because one extractor returned empty."""
+    from src.backend.app.workers import cloud_llm
+
+    async def fetch_page(*_args: object) -> tuple[str, str]:
+        return f"<article><p>{FOREIGN_BODY}</p></article>", ""
+
+    monkeypatch.setattr(cloud_llm, "fetch_article_html_and_body", fetch_page)
+    client = FakeGrokClient(_completion_payload())
+    processor = CloudLLMContentProcessor(
+        _settings(), processor=CloudSummaryProcessor(_settings(), client=client, batch_size=1)
+    )
+    result = asyncio.run(
+        processor.process(
+            _foreign_collected_article().model_copy(update={"raw_text": "Short RSS."})
+        )
+    )
+    assert isinstance(result, SuccessContent)
+    assert FOREIGN_BODY in client.calls[0]["user"]
+
+
+def test_rss_html_keeps_text_when_body_extractor_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Local HTML extraction failure must retain useful RSS text even if detail fetch fails."""
+    from src.backend.app.workers import cloud_llm
+
+    async def unavailable(*_args: object) -> tuple[str, str]:
+        return "", ""
+
+    monkeypatch.setattr(cloud_llm, "extract_clean_body_with_trafilatura", lambda _: "")
+    monkeypatch.setattr(cloud_llm, "fetch_article_html_and_body", unavailable)
+    client = FakeGrokClient(_completion_payload())
+    processor = CloudLLMContentProcessor(
+        _settings(), processor=CloudSummaryProcessor(_settings(), client=client, batch_size=1)
+    )
+    article = _foreign_collected_article().model_copy(update={"raw_text": f"<p>{FOREIGN_BODY}</p>"})
+    result = asyncio.run(processor.process(article))
+    assert isinstance(result, SuccessContent)
+    assert FOREIGN_BODY in client.calls[0]["user"]
+
+
 def test_content_processor_foreign_title_translation() -> None:
     payload = _completion_payload(translated_title="AI 수요에 반도체 주가 급등")
     client = FakeGrokClient(payload)

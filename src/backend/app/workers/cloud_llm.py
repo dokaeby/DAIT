@@ -42,7 +42,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
 from src.backend.app.collectors.content_extractor import (
     extract_clean_body_with_trafilatura,
-    fetch_article_body_with_trafilatura,
+    fetch_article_html_and_body,
 )
 from src.backend.app.core.taxonomy import GLOBAL_SOURCE_NAMES, match_category
 from src.backend.app.schemas.collector import CollectedArticle
@@ -53,6 +53,8 @@ from src.backend.app.schemas.content import (
 )
 from src.backend.app.workers.ai_processor import (
     ProcessingError,
+    _clean_rss_body,
+    _extract_article_paragraphs,
     ensure_terminal_punctuation,
     is_korean_text,
     looks_foreign_text,
@@ -1114,13 +1116,18 @@ class CloudLLMContentProcessor:
     async def process(self, article: CollectedArticle) -> ContentResult:
         raw_input = article.raw_text or ""
         body = (
-            extract_clean_body_with_trafilatura(raw_input)
-            if "<" in raw_input and len(raw_input) >= 120
+            (
+                extract_clean_body_with_trafilatura(raw_input)
+                or _extract_article_paragraphs(raw_input)
+                or _clean_rss_body(raw_input)
+            )
+            if "<" in raw_input
             else raw_input
         )
         # RSS 본문이 짧으면 원문 기사 페이지에서 전체 본문을 가져와 요약 품질을 확보한다.
         if len(body) < 600:
-            remote_body = await fetch_article_body_with_trafilatura(article.canonical_url)
+            remote_html, extracted_body = await fetch_article_html_and_body(article.canonical_url)
+            remote_body = extracted_body or _extract_article_paragraphs(remote_html)
             if len(remote_body) > len(body):
                 body = remote_body
         title = article.title.split(" ||| ", 1)[0].strip()
