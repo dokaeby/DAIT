@@ -90,17 +90,23 @@ Procfile은 통합 서버를 실행하며 DB 마이그레이션은 자동 실행
 - 로컬에서 실제 구글 계정으로 가입·재로그인·연결·구글 전용 계정 탈퇴를 직접 확인했다.
 - 아직 하지 않은 것: 운영 서버(Render)에서의 실제 구글 로그인, 구글 콘솔 앱 게시(현재 "테스트" 상태라 등록된 계정만 로그인).
 
-### 푸시 후 작업 (운영 반영 체크리스트)
-코드는 `develop`에 반영되었지만, 운영 서버(Render)에서 구글 로그인이 동작하려면 아래 작업이 필요하다.
+### 푸시 후 작업 (배포 서버 반영 체크리스트)
+코드는 `develop`에 반영되었지만, 배포 서버에서 구글 로그인이 동작하려면 아래 작업이 필요하다.
+`.env`는 깃에 올리지 않으므로 서버마다 환경변수를 직접 넣어야 한다.
 작업을 마치면 체크하고 날짜를 적는다. (현재: 모두 미완료)
 
-- [ ] 1. Render 환경변수에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` 등록
-      (`GOOGLE_REDIRECT_URI`는 `https://project-dait.onrender.com/v1/auth/google/callback`이며 구글 콘솔의
-      "승인된 리디렉션 URI"와 정확히 같아야 한다)
-- [ ] 2. 운영 DB에 마이그레이션 적용(`python -m src.server migrate`): `0008_social_identities`, `0009_merge_social_topics`
+대상 서버 두 종류:
+- **개인 테스트 서버**(예: `https://project-dait.onrender.com`): 푸시한 변경을 실제 환경에서 먼저 확인하는 용도.
+- **팀 운영 서버**: 로드맵 문서에 적힌 운영 서버. 환경변수·마이그레이션 반영은 담당자와 일정을 맞춘 뒤 진행한다.
+
+각 서버마다 다음을 한다.
+- [ ] 1. 서버 환경변수에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` 등록
+      (`GOOGLE_REDIRECT_URI`는 `https://<서버 주소>/v1/auth/google/callback`이며 구글 콘솔의
+      "승인된 리디렉션 URI"에 같은 주소가 등록되어 있어야 한다)
+- [ ] 2. 해당 서버 DB에 마이그레이션 적용(`python -m src.server migrate`): `0008_social_identities`, `0009_merge_social_topics`
 - [ ] 3. 구글 콘솔 "테스트 사용자"에 시험할 팀원 지메일 추가(앱 게시 전에는 등록된 계정만 로그인)
-- [ ] 4. 운영 주소에서 실제 구글 로그인 확인: 신규 가입, 재로그인, 같은 이메일 계정 연결 창, 구글 전용 계정 탈퇴
-- [ ] 5. Render가 배포하는 브랜치(`develop` 또는 `main`)에 이 변경이 반영되었는지 확인
+- [ ] 4. 서버 주소에서 실제 구글 로그인 확인: 신규 가입, 재로그인, 같은 이메일 계정 연결 창, 구글 전용 계정 탈퇴
+- [ ] 5. 서버가 배포하는 브랜치(`develop` 또는 `main`)에 이 변경이 반영되었는지 확인
 
 ## 코드 위치
 
