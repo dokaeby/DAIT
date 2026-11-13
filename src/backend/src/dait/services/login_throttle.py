@@ -1,35 +1,58 @@
 """로그인 실패 누적 잠금. Redis가 있으면 분산 구현, 없거나 장애면 메모리 구현을 쓴다."""
 
 import hashlib
-import json
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Protocol, cast
+from typing import Protocol
 
 from redis.exceptions import RedisError
 
 from dait.core.config import Settings
-from dait.repositories import redis_repository
+from dait.repositories import login_throttle_repository, redis_repository
 
-_BASE_LOCK_SECONDS = 60
-_MAX_LOCK_SECONDS = 900
+_BASE_LOCK_SECONDS = login_throttle_repository.BASE_LOCK_SECONDS
+_MAX_LOCK_SECONDS = login_throttle_repository.MAX_LOCK_SECONDS
 _MAX_ENTRIES = 10_000  # 공격자가 이메일을 무한히 바꿔도 메모리가 무한정 늘지 않게 하는 상한
 
 
 class Throttle(Protocol):
     """실패 횟수에 따라 잠그는 장치의 약속. Redis 구현이 같은 메서드를 가진다."""
 
+    # 입력: 계정 또는 IP 키와 현재 UTC 시각.
+    # 출력: 현재 잠금 여부.
+    # 동작: 구현체의 실패 기록을 기준으로 로그인 허용 여부를 확인한다.
     def is_locked(self, key: str, now: datetime) -> bool:
-        """해당 키가 지금 잠겨 있는지 알려 준다."""
+        """해당 키가 지금 잠겨 있는지 알려 준다.
+
+        입력: key (계정 또는 IP 키), now (현재 UTC 시각)
+        출력: bool (잠겨 있으면 True)
+        기능: 구현체가 관리하는 실패 기록으로 현재 잠금 여부를 계산한다.
+        """
         ...
 
+    # 입력: 계정 또는 IP 키와 현재 UTC 시각.
+    # 출력: 반환값 없음.
+    # 동작: 로그인 실패 한 번을 구현체의 저장소에 누적한다.
     def register_failure(self, key: str, now: datetime) -> None:
-        """실패 한 번을 기록한다."""
+        """로그인 실패 한 번을 기록한다.
+
+        입력: key (계정 또는 IP 키), now (현재 UTC 시각)
+        출력: 없음
+        기능: 구현체의 저장소에 실패 횟수와 시각을 갱신한다.
+        """
         ...
 
+    # 입력: 로그인에 성공한 계정 또는 IP 키.
+    # 출력: 반환값 없음.
+    # 동작: 성공한 키의 누적 실패 기록을 지운다.
     def clear(self, key: str) -> None:
-        """성공했을 때 실패 기록을 지운다."""
+        """성공한 키의 실패 기록을 지운다.
+
+        입력: key (계정 또는 IP 키)
+        출력: 없음
+        기능: 이후 로그인이 이전 실패 횟수의 영향을 받지 않게 한다.
+        """
         ...
 
 
@@ -43,6 +66,9 @@ class _Entry:
 class AttemptThrottle:
     """키(계정 또는 IP)별 실패를 세어 점진적으로 잠그는 메모리 구현."""
 
+    # 입력: 잠금이 시작되는 실패 횟수.
+    # 출력: 메모리 기반 실패 제한 객체.
+    # 동작: 동시 요청을 보호할 빈 실패 기록과 잠금 장치를 초기화한다.
     def __init__(self, threshold: int) -> None:
         """잠금 기준을 정해 만든다.
 
@@ -55,6 +81,9 @@ class AttemptThrottle:
         self._entries: dict[str, _Entry] = {}
         self._lock = threading.Lock()  # 요청이 스레드풀에서 동시에 들어오므로 보호한다.
 
+    # 입력: 계정 또는 IP 키와 현재 UTC 시각.
+    # 출력: 현재 잠금 여부.
+    # 동작: 메모리 기록의 잠금 종료 시각과 현재 시각을 비교한다.
     def is_locked(self, key: str, now: datetime) -> bool:
         """해당 키가 지금 잠겨 있는지 알려 준다.
 
@@ -66,6 +95,9 @@ class AttemptThrottle:
             entry = self._entries.get(key)
             return entry is not None and entry.locked_until is not None and now < entry.locked_until
 
+    # 입력: 계정 또는 IP 키와 현재 UTC 시각.
+    # 출력: 반환값 없음.
+    # 동작: 실패 횟수를 누적하고 기준 이후 잠금 시간을 점진적으로 늘린다.
     def register_failure(self, key: str, now: datetime) -> None:
         """실패 한 번을 기록하고 기준을 넘으면 잠금 시각을 정한다.
 
@@ -88,6 +120,9 @@ class AttemptThrottle:
                 entry.locked_until = now + timedelta(seconds=seconds)
             self._entries[key] = entry
 
+    # 입력: 로그인에 성공한 계정 또는 IP 키.
+    # 출력: 반환값 없음.
+    # 동작: 메모리에 남은 해당 키의 실패 기록을 제거한다.
     def clear(self, key: str) -> None:
         """실패 기록을 지운다.
 
@@ -98,6 +133,9 @@ class AttemptThrottle:
         with self._lock:
             self._entries.pop(key, None)
 
+    # 입력: 현재 UTC 시각.
+    # 출력: 반환값 없음.
+    # 동작: 최대 잠금 시간보다 오래된 메모리 기록을 제거한다.
     def _drop_stale(self, now: datetime) -> None:
         """오래된 기록을 버려 메모리를 줄인다(호출한 쪽이 락을 잡고 있어야 함).
 
@@ -111,9 +149,6 @@ class AttemptThrottle:
             del self._entries[key]
 
 
-_STATE_TTL_MS = (_MAX_LOCK_SECONDS + 60) * 1000  # 상태가 잠금 시간보다 오래 살 이유가 없다.
-
-
 class RedisThrottle:
     """설계서 8절 `rate:{scope}:{identity}` 규격의 분산 잠금 구현.
 
@@ -124,90 +159,95 @@ class RedisThrottle:
           상태는 JSON 하나에 failures·last_failure·locked_until을 담고 TTL을 붙인다.
     """
 
+    # 입력: 앱 설정, 제한 범위, 잠금 시작 실패 횟수.
+    # 출력: Redis 기반 실패 제한 객체.
+    # 동작: Redis 장애에 대비한 같은 정책의 메모리 구현을 함께 초기화한다.
     def __init__(self, settings: Settings, scope: str, threshold: int) -> None:
+        """Redis 기반 실패 제한 객체를 만든다.
+
+        입력: settings (앱 설정), scope (account 또는 ip), threshold (잠금 시작 횟수)
+        출력: 없음
+        기능: Redis 장애 때 사용할 같은 정책의 메모리 구현을 함께 준비한다.
+        """
         self._settings = settings
         self._scope = scope
         self._threshold = threshold
         self._fallback = AttemptThrottle(threshold)
 
+    # 입력: 계정 이메일 또는 클라이언트 IP 원문.
+    # 출력: 원문이 포함되지 않은 Redis 키.
+    # 동작: 식별자를 SHA-256으로 줄여 실패 제한 범위 키를 만든다.
     def _key(self, identity: str) -> str:
-        """개인정보를 남기지 않는 Redis 키를 만든다."""
+        """개인정보를 남기지 않는 Redis 키를 만든다.
+
+        입력: identity (계정 이메일 또는 클라이언트 IP 원문)
+        출력: str (범위와 해시가 포함된 Redis 키)
+        기능: 원문 대신 SHA-256 앞 24자를 사용해 개인정보 노출을 줄인다.
+        """
         digest = hashlib.sha256(identity.encode()).hexdigest()[:24]
         return f"rate:login:{self._scope}:{digest}"
 
-    def _load(self, client: redis_repository.RedisLike, key: str) -> dict[str, object] | None:
-        """저장된 상태 JSON을 읽는다. 없거나 깨졌으면 None."""
-        raw = client.get(key)
-        text = raw.decode() if isinstance(raw, bytes) else raw
-        if not isinstance(text, str):
-            return None
-        try:
-            state: object = json.loads(text)
-        except ValueError:
-            return None
-        if not isinstance(state, dict):
-            return None
-        return cast("dict[str, object]", state)
-
-    def _store(
-        self, client: redis_repository.RedisLike, key: str, state: dict[str, object]
-    ) -> None:
-        """상태 JSON을 TTL과 함께 저장한다."""
-        client.set(key, json.dumps(state), px=_STATE_TTL_MS)
-
+    # 입력: 계정 또는 IP 식별 키와 현재 UTC 시각.
+    # 출력: 현재 로그인 시도가 잠겼는지 여부.
+    # 동작: 메모리 장애 대체 기록을 먼저 확인하고 Redis 상태를 검증한다.
     def is_locked(self, key: str, now: datetime) -> bool:
-        """해당 키가 지금 잠겨 있는지 알려 준다(Redis 우선, 실패 시 메모리)."""
+        """해당 키가 지금 잠겨 있는지 알려 준다.
+
+        입력: key는 계정 또는 IP 식별자이고 now는 현재 UTC 시각이다.
+        출력: Redis 또는 메모리 상태에 따른 잠금 여부다.
+        기능: Redis 쓰기 장애 때 남긴 메모리 잠금을 조회 성공으로 잃지 않는다.
+        """
+        # 쓰기만 실패한 경우에도 메모리에 기록한 잠금이 다음 조회에서 사라지지 않게 한다.
+        if self._fallback.is_locked(key, now):
+            return True
         client = redis_repository.shared_client(self._settings.redis_url)
         if client is None:
             return self._fallback.is_locked(key, now)
         try:
-            state = self._load(client, self._key(key))
+            state = login_throttle_repository.read_state(client, self._key(key))
         except (RedisError, OSError):
             return self._fallback.is_locked(key, now)
         if state is None:
             return False
-        locked_until = state.get("lu")
-        return isinstance(locked_until, (int, float)) and now.timestamp() < locked_until
+        return state.locked_until is not None and now.timestamp() < state.locked_until
 
+    # 입력: 계정 또는 IP 식별 키와 현재 UTC 시각.
+    # 출력: 반환값 없음.
+    # 동작: Redis에서 실패 횟수를 원자적으로 늘리고 장애면 메모리에 기록한다.
     def register_failure(self, key: str, now: datetime) -> None:
-        """실패 한 번을 기록하고 기준을 넘으면 잠금 시각을 정한다."""
+        """로그인 실패 한 번을 기록한다.
+
+        입력: key는 계정 또는 IP 식별자이고 now는 현재 UTC 시각이다.
+        출력: 없음.
+        기능: Redis 원자 갱신이 실패하면 같은 잠금 정책의 메모리 구현을 사용한다.
+        """
         client = redis_repository.shared_client(self._settings.redis_url)
         if client is None:
             self._fallback.register_failure(key, now)
             return
-        rkey = self._key(key)
         try:
-            state = self._load(client, rkey) or {}
-            failures = state.get("f")
-            last = state.get("lf")
-            count = failures + 1 if isinstance(failures, int) else 1
-            # 마지막 실패로부터 최대 잠금 시간이 지났으면 처음부터 센다(메모리 구현과 동일 규칙).
-            if not isinstance(last, (int, float)) or now.timestamp() - last > _MAX_LOCK_SECONDS:
-                count = 1
-            locked_until: float | None = None
-            if count >= self._threshold:
-                seconds = min(
-                    _BASE_LOCK_SECONDS * 2 ** (count - self._threshold), _MAX_LOCK_SECONDS
-                )
-                locked_until = now.timestamp() + seconds
-            self._store(
-                client,
-                rkey,
-                {"f": count, "lf": now.timestamp(), "lu": locked_until},
-            )
-        except (RedisError, OSError):
+            login_throttle_repository.register_failure(client, self._key(key), self._threshold, now)
+        except (RedisError, OSError, ValueError, TypeError):
             self._fallback.register_failure(key, now)
 
+    # 입력: 성공한 로그인의 계정 또는 IP 식별 키.
+    # 출력: 반환값 없음.
+    # 동작: 메모리와 Redis의 실패 기록을 모두 지운다.
     def clear(self, key: str) -> None:
-        """실패 기록을 지운다. 성공한 로그인에서 부른다."""
+        """성공한 로그인의 실패 기록을 지운다.
+
+        입력: key는 계정 또는 IP 식별자다.
+        출력: 없음.
+        기능: 장애 대체 기록이 남지 않도록 메모리를 먼저 지우고 Redis도 정리한다.
+        """
+        self._fallback.clear(key)
         client = redis_repository.shared_client(self._settings.redis_url)
         if client is None:
-            self._fallback.clear(key)
             return
         try:
             client.delete(self._key(key))
         except (RedisError, OSError):
-            self._fallback.clear(key)
+            return
 
 
 @dataclass(frozen=True)
@@ -218,6 +258,9 @@ class LoginThrottles:
     ip: Throttle
 
 
+# 입력: 선택적 앱 설정.
+# 출력: 계정·IP 단위 로그인 실패 제한 장치 묶음.
+# 동작: Redis URL이 있으면 분산 구현, 없으면 메모리 구현을 만든다.
 def create_throttles(settings: Settings | None = None) -> LoginThrottles:
     """잠금 장치를 만든다. REDIS_URL이 있으면 분산 구현, 없으면 메모리 구현.
 

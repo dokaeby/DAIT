@@ -9,6 +9,9 @@ _URL_MESSAGE = "sqlite:/// 형식의 DATABASE_URL이 필요합니다."
 _BUSY_TIMEOUT_SECONDS = 5.0  # 다른 연결이 잠근 DB를 기다리는 최대 시간. 무한 대기를 막는다.
 
 
+# 입력: sqlite 형식의 DATABASE_URL.
+# 출력: sqlite3가 받는 파일 경로.
+# 동작: URL 접두사를 검증하고 실제 DB 경로를 분리한다.
 def sqlite_path(database_url: str) -> str:
     """DATABASE_URL에서 파일 경로를 꺼낸다.
 
@@ -21,6 +24,9 @@ def sqlite_path(database_url: str) -> str:
     return database_url.removeprefix(_SQLITE_PREFIX)
 
 
+# 입력: sqlite 형식의 DATABASE_URL.
+# 출력: 외래키 검사가 켜진 SQLite 연결.
+# 동작: 제한 시간과 외래키 옵션을 적용해 로컬 DB 연결을 만든다.
 def connect(database_url: str) -> sqlite3.Connection:
     """외래키 검사를 켠 sqlite 연결을 만든다.
 
@@ -35,6 +41,9 @@ def connect(database_url: str) -> sqlite3.Connection:
 
 
 @contextmanager
+# 입력: sqlite 형식의 DATABASE_URL.
+# 출력: with 블록에서 사용하는 SQLite 연결.
+# 동작: 성공 시 커밋하고 실패 시 롤백한 뒤 연결을 닫는다.
 def transaction(database_url: str) -> Generator[sqlite3.Connection]:
     """한 의미 단위의 쓰기를 묶는 트랜잭션 컨텍스트.
 
@@ -54,6 +63,9 @@ def transaction(database_url: str) -> Generator[sqlite3.Connection]:
         connection.close()
 
 
+# 입력: sqlite 형식의 DATABASE_URL.
+# 출력: 반환값 없음.
+# 동작: 연결 후 SELECT 1을 실행해 SQLite 준비 상태를 확인한다.
 def ping(database_url: str) -> None:
     """DB가 열리고 질의가 되는지 확인한다.
 

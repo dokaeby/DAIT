@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 
 from dait.core.config import Settings
 from dait.core.errors import (
+    EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidTokenError,
     NicknameTakenError,
-    SignupFailedError,
     TooManyAttemptsError,
     WeakPasswordError,
 )
@@ -52,6 +52,9 @@ from dait.schemas.user import UserPublic, UserRecord, UserRole, UserStatus
 from dait.services.login_throttle import LoginThrottles
 
 
+# 입력: 열린 DB 연결, 앱 설정, 사용자, 현재 시각, 선택적 토큰 계열 ID.
+# 출력: 새 access·refresh 토큰 쌍.
+# 동작: 토큰을 발급하고 refresh 토큰은 해시만 DB에 저장한다.
 def _issue_tokens(
     conn: DbConnection,
     settings: Settings,
@@ -85,6 +88,9 @@ def _issue_tokens(
     return TokenPair(access_token=access, refresh_token=refresh)
 
 
+# 입력: 내부 사용자 레코드와 발급한 토큰 쌍.
+# 출력: 비밀번호 해시가 제외된 인증 응답.
+# 동작: 내부 사용자 모델을 공개 사용자 모델로 변환한다.
 def _to_response(user: UserRecord, tokens: TokenPair) -> AuthResponse:
     """사용자 레코드와 토큰을 응답 모델로 바꾼다.
 
@@ -98,6 +104,9 @@ def _to_response(user: UserRecord, tokens: TokenPair) -> AuthResponse:
     return AuthResponse(user=public, tokens=tokens)
 
 
+# 입력: 앱 설정, 검증된 가입 요청, 클라이언트 IP, 현재 UTC 시각.
+# 출력: 새 사용자와 최초 토큰 응답.
+# 동작: 비밀번호를 검증·해시하고 사용자·관심사·토큰을 한 트랜잭션으로 저장한다.
 def signup(
     settings: Settings, request: SignupRequest, client_ip: str | None, now: datetime
 ) -> AuthResponse:
@@ -105,7 +114,7 @@ def signup(
 
     입력: settings (앱 설정), request (검증된 가입 요청), client_ip (감사 로그용), now (UTC 시각)
     출력: AuthResponse (새 사용자와 토큰)
-    기능: 흔한 비밀번호는 WeakPasswordError, 이미 쓰는 이메일은 SignupFailedError.
+    기능: 흔한 비밀번호는 WeakPasswordError, 이미 쓰는 이메일은 EmailAlreadyRegisteredError.
           중복이어도 해시를 먼저 계산해 응답 시간 차이로 가입 여부를 알아내기 어렵게 한다.
     """
     email = str(request.email).lower()
@@ -133,20 +142,32 @@ def signup(
             tokens = _issue_tokens(conn, settings, user, now)
     except DuplicateEmailError as exc:
         audit("signup", "duplicate", client_ip=client_ip)
-        raise SignupFailedError from exc
+        # 제품 정책상 중복 이메일은 사용자가 바로 수정할 수 있도록 명확히 알린다.
+        raise EmailAlreadyRegisteredError from exc
     except DuplicateNicknameError as exc:
         raise NicknameTakenError from exc
     audit("signup", "success", user_id=user.id, client_ip=client_ip)
     return _to_response(user, tokens)
 
 
+# 입력: 앱 설정과 정규화된 닉네임.
+# 출력: 닉네임 사용 가능 여부.
+# 동작: DB에서 중복을 조회하며 가입 시 유니크 제약으로 다시 검증한다.
 def check_nickname(settings: Settings, nickname: str) -> NicknameAvailability:
-    """중복 확인은 안내이며 가입 시 DB 유니크 인덱스로 다시 보장한다."""
+    """닉네임의 현재 사용 가능 여부를 확인한다.
+
+    입력: settings (앱 설정), nickname (정규화된 닉네임)
+    출력: NicknameAvailability (조회한 닉네임과 사용 가능 여부)
+    기능: 중복 확인은 안내이며 가입 시 DB 유니크 제약으로 다시 보장한다.
+    """
     with transaction(settings.database_url) as conn:
         exists = nickname_exists(conn, nickname)
     return NicknameAvailability(nickname=nickname, available=not exists)
 
 
+# 입력: 앱 설정, 로그인 요청, 실패 제한 장치, 클라이언트 IP, 현재 시각.
+# 출력: 인증된 사용자와 새 토큰 응답.
+# 동작: 잠금·자격 증명을 검증하고 토큰과 최초 관심사 안내 여부를 발급한다.
 def login(
     settings: Settings,
     request: LoginRequest,
@@ -181,15 +202,33 @@ def login(
         )
         raise InvalidCredentialsError
     throttles.account.clear(email)
+    response = open_session(settings, user, now)
+    audit("login", "success", user_id=user.id, client_ip=client_ip)
+    return response
+
+
+# 입력: 앱 설정, 인증이 끝난 사용자, 현재 UTC 시각.
+# 출력: 새 토큰과 최초 관심사 안내 여부가 담긴 인증 응답.
+# 동작: 새 로그인 계열의 토큰을 발급하고 온보딩 표시를 한 번만 소비한다.
+def open_session(settings: Settings, user: UserRecord, now: datetime) -> AuthResponse:
+    """인증된 사용자에게 로그인 세션(토큰 한 쌍)을 열어 준다.
+
+    입력: settings (앱 설정), user (이미 인증된 사용자), now (UTC 시각)
+    출력: AuthResponse (사용자·토큰·onboarding_required)
+    기능: 이메일 로그인과 구글 로그인이 같은 토큰 발급 경로를 쓰게 해, refresh 회전과
+          재사용 감지가 두 방식에 똑같이 적용된다.
+    """
     with transaction(settings.database_url) as conn:
         tokens = _issue_tokens(conn, settings, user, now)
         onboarding_required = onboarding_repository.consume(conn, user.id)
-    audit("login", "success", user_id=user.id, client_ip=client_ip)
     return _to_response(user, tokens).model_copy(
         update={"onboarding_required": onboarding_required}
     )
 
 
+# 입력: 열린 DB 연결, 사용자 ID, 토큰 계열 ID, 현재 시각.
+# 출력: 재사용 감지 결과 튜플.
+# 동작: 폐기된 refresh 토큰 계열을 모두 폐기한다.
 def _revoke_family_for_reuse(
     conn: DbConnection, user_id: str, family_id: str, now: datetime
 ) -> tuple[str, str, None]:
@@ -203,6 +242,9 @@ def _revoke_family_for_reuse(
     return "reuse_detected", user_id, None
 
 
+# 입력: 열린 DB 연결, 앱 설정, refresh 토큰 해시, 현재 시각.
+# 출력: 회전 결과 사유, 사용자 ID, 새 토큰 쌍.
+# 동작: refresh 토큰 상태를 검증하고 정상 토큰을 한 번만 회전한다.
 def _rotate(
     conn: DbConnection, settings: Settings, token_hash: str, now: datetime
 ) -> tuple[str, str | None, TokenPair | None]:
@@ -230,6 +272,9 @@ def _rotate(
     return "success", user.id, tokens
 
 
+# 입력: 앱 설정, refresh 요청, 클라이언트 IP, 현재 시각.
+# 출력: 회전해 발급한 새 토큰 쌍.
+# 동작: refresh 토큰을 해시해 검증하고 기존 토큰을 폐기한 뒤 새 토큰을 발급한다.
 def refresh(
     settings: Settings, request: RefreshRequest, client_ip: str | None, now: datetime
 ) -> TokenPair:
@@ -250,6 +295,9 @@ def refresh(
     return tokens
 
 
+# 입력: 앱 설정, 인증된 사용자, 클라이언트 IP, 현재 시각.
+# 출력: 반환값 없음.
+# 동작: 사용자의 모든 활성 refresh 토큰을 폐기하고 감사 로그를 남긴다.
 def logout(settings: Settings, user: UserRecord, client_ip: str | None, now: datetime) -> None:
     """한 사용자의 refresh 토큰을 모두 폐기한다.
 

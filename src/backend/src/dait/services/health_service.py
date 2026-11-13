@@ -10,6 +10,9 @@ from dait.repositories.db import DB_ERRORS, ping
 logger = logging.getLogger(__name__)
 
 
+# 입력: DATABASE_URL 문자열.
+# 출력: 반환값 없음.
+# 동작: DB 질의가 실패하면 내부 원인을 숨긴 준비 실패 오류로 변환한다.
 def ensure_database_ready(database_url: str) -> None:
     """DB가 응답하는지 확인하고 아니면 NotReadyError를 낸다.
 
@@ -24,6 +27,9 @@ def ensure_database_ready(database_url: str) -> None:
         raise NotReadyError from exc
 
 
+# 입력: 선택적 Redis URL이 포함된 앱 설정.
+# 출력: 반환값 없음.
+# 동작: Redis가 설정된 경우 연결을 확인하고 실패하면 준비 실패 오류를 낸다.
 def ensure_redis_ready(settings: Settings) -> None:
     """Redis가 설정돼 있으면 연결을 확인하고, 아니면 NotReadyError를 낸다.
 

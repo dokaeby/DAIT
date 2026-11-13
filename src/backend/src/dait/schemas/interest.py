@@ -59,6 +59,9 @@ class InterestItem(BaseModel):
     group: str
 
 
+# 입력: 없음.
+# 출력: 새 빈 관심사 코드 목록.
+# 동작: 요청 모델마다 공유되지 않는 기본 목록을 만든다.
 def empty_interests() -> list[InterestCode]:
     """빈 관심사 목록을 만든다.
 
@@ -69,6 +72,9 @@ def empty_interests() -> list[InterestCode]:
     return []
 
 
+# 입력: 없음.
+# 출력: 새 빈 관심사 응답 항목 목록.
+# 동작: 응답 모델마다 공유되지 않는 기본 목록을 만든다.
 def empty_items() -> list[InterestItem]:
     """빈 관심사 항목 목록을 만든다.
 
@@ -79,6 +85,9 @@ def empty_items() -> list[InterestItem]:
     return []
 
 
+# 입력: 검증된 관심사 코드 목록.
+# 출력: 중복이 없는 같은 관심사 코드 목록.
+# 동작: 같은 코드가 두 번 포함된 요청을 거부한다.
 def check_no_duplicates(values: list[InterestCode]) -> list[InterestCode]:
     """관심사 목록에 같은 코드가 두 번 들어 있지 않은지 확인한다.
 
@@ -126,6 +135,9 @@ class InterestsUpdateRequest(BaseModel):
 
     @field_validator("interests")
     @classmethod
+    # 입력: 관심사 변경 요청에서 검증된 코드 목록.
+    # 출력: 중복이 없는 같은 코드 목록.
+    # 동작: 공통 중복 검사 규칙으로 관심사 변경 요청을 검증한다.
     def _no_duplicates(cls, value: list[InterestCode]) -> list[InterestCode]:
         """중복 코드를 거부한다.
 

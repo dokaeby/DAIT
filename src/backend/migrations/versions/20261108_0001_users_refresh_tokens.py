@@ -14,6 +14,9 @@ branch_labels = None
 depends_on = None
 
 
+# 입력: 현재 Alembic DB 연결 상태.
+# 출력: 반환값 없음.
+# 동작: 사용자와 refresh 토큰 테이블·제약·인덱스를 생성한다.
 def upgrade() -> None:
     """users와 refresh_tokens를 만든다(SQLite·PostgreSQL 공통 문법만 사용).
 
@@ -51,6 +54,9 @@ def upgrade() -> None:
     op.create_index("ix_refresh_tokens_family_id", "refresh_tokens", ["family_id"])
 
 
+# 입력: 현재 Alembic DB 연결 상태.
+# 출력: 반환값 없음.
+# 동작: refresh 토큰과 사용자 테이블을 외래키 역순으로 제거한다.
 def downgrade() -> None:
     """만든 테이블을 역순으로 지운다.
 

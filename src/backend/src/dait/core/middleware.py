@@ -21,6 +21,9 @@ _REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9-]{1,64}")
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """모든 요청/응답에 공통 처리를 적용하는 미들웨어."""
 
+    # 입력: 감쌀 ASGI 앱과 일반·HTML 응답의 CSP 값.
+    # 출력: 요청 공통 처리 미들웨어.
+    # 동작: 설정 계층에서 결정된 보안 헤더 값을 저장한다.
     def __init__(self, app: ASGIApp, csp: str, html_csp: str | None = None) -> None:
         """미들웨어를 만든다.
 
@@ -32,6 +35,9 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         self._csp = csp
         self._html_csp = html_csp
 
+    # 입력: 현재 HTTP 요청과 다음 처리 단계.
+    # 출력: request_id와 보안 헤더가 포함된 HTTP 응답.
+    # 동작: 요청 크기·ID를 검증하고 미처리 예외의 내부 정보를 숨긴다.
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """요청을 처리하고 응답에 request_id와 보안 헤더를 붙인다.
 

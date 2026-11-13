@@ -9,6 +9,9 @@ branch_labels = None
 depends_on = None
 
 
+# 입력: 사용자 테이블이 생성된 Alembic DB 상태.
+# 출력: 반환값 없음.
+# 동작: 선택 닉네임과 중복 비교 키 컬럼·유니크 인덱스를 추가한다.
 def upgrade() -> None:
     """기존 사용자는 NULL을 유지하므로 이메일 표시가 보존된다."""
     op.add_column("users", sa.Column("nickname", sa.String(30), nullable=True))
@@ -16,6 +19,9 @@ def upgrade() -> None:
     op.create_index("uq_users_nickname_key", "users", ["nickname_key"], unique=True)
 
 
+# 입력: 닉네임 컬럼과 인덱스가 있는 Alembic DB 상태.
+# 출력: 반환값 없음.
+# 동작: 사용자 계정은 유지하고 닉네임 관련 스키마만 제거한다.
 def downgrade() -> None:
     """닉네임만 제거하고 기존 계정은 유지한다."""
     op.drop_index("uq_users_nickname_key", table_name="users")

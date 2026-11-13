@@ -242,6 +242,7 @@
       '<label for="auth-email">이메일</label><input id="auth-email" name="email" type="email" autocomplete="username" required maxlength="254" value="' + escapeHtml(remembered) + '">' +
       '<label for="auth-password">비밀번호</label><input id="auth-password" name="password" type="password" autocomplete="current-password" required maxlength="128">' +
       '<label class="auth-check" for="auth-remember"><input id="auth-remember" name="remember_email" type="checkbox"' + (remembered ? ' checked' : '') + '><span>이메일 저장</span></label>' +
+      '<a class="secondary-button google-login" href="/v1/auth/google/login">구글로 계속</a>' +
       '<button class="login-submit primary-button" type="submit">로그인</button>' +
       '<p class="auth-navigation">계정이 없으신가요? <button class="auth-link" type="button" id="auth-switch">회원가입</button></p>'
     );
@@ -253,6 +254,7 @@
       '<label for="auth-nickname">닉네임 (선택)</label><div class="nickname-row"><input id="auth-nickname" name="nickname" type="text" autocomplete="nickname" maxlength="30" aria-describedby="nickname-feedback nickname-help"><button class="secondary-button" type="button" id="nickname-check">중복 확인</button></div><p id="nickname-help" class="field-help">2~30자 · 비워두면 이메일로 표시됩니다.</p><p id="nickname-feedback" class="settings-feedback" role="status" aria-live="polite"></p>' +
       '<label for="auth-password">비밀번호 (8자 이상)</label><input id="auth-password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
       '<label for="auth-password-confirm">비밀번호 확인</label><input id="auth-password-confirm" name="password_confirm" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
+      '<a class="secondary-button google-login" href="/v1/auth/google/login">구글로 계속</a>' +
       '<button class="login-submit primary-button" type="submit">가입하기</button>' +
       '<p class="auth-navigation">이미 계정이 있으신가요? <button class="auth-link" type="button" id="auth-switch">로그인</button></p>'
     );
@@ -353,8 +355,50 @@
     if (notice && notice.open) notice.close();
   }
 
+  const GOOGLE_ERRORS = {
+    email_in_use: "이 이메일은 이미 이메일 로그인으로 가입되어 있습니다. 이메일과 비밀번호로 로그인해 주세요.",
+    email_unverified: "구글에서 이메일 인증이 끝나지 않은 계정입니다.",
+    access_denied: "구글 로그인을 취소했습니다.",
+    provider_unavailable: "구글과 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  };
+
+  /** 구글 로그인에서 돌아온 주소의 # 값을 처리한다(교환 코드는 주소창에 남기지 않는다). */
+  async function handleGoogleReturn() {
+    const hash = new URLSearchParams(location.hash.slice(1));
+    const code = hash.get("google");
+    const error = hash.get("google_error");
+    if (!code && !error) return false;
+    history.replaceState(null, "", location.pathname + location.search);
+    if (error) {
+      openAuthDialog(false);
+      document.getElementById("auth-feedback").textContent = GOOGLE_ERRORS[error] || "구글 로그인에 실패했습니다. 다시 시도해 주세요.";
+      return true;
+    }
+    try {
+      const res = await fetch("/v1/auth/google/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error("exchange failed");
+      setTokens(body.tokens);
+      if (body.onboarding_required) {
+        location.assign("/settings.html?welcome=1#interests");
+        return true;
+      }
+      location.reload();
+      return true;
+    } catch (_e) {
+      openAuthDialog(false);
+      document.getElementById("auth-feedback").textContent = "구글 로그인을 마치지 못했습니다. 다시 시도해 주세요.";
+      return true;
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     renderAuthArea();
+    handleGoogleReturn();
     document.addEventListener("click", (e) => {
       if (e.target && e.target.id === "auth-switch") {
         const dialog = document.getElementById("auth-dialog");

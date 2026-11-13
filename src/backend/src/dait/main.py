@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from dait.api.deps import get_throttles
+from dait.api.deps import get_one_time_store, get_throttles
 from dait.api.v1 import (
     auth_routes,
     health_routes,
@@ -19,15 +19,20 @@ from dait.api.v1 import (
     news_routes,
     scheduler_routes,
     settings_routes,
+    social_routes,
 )
 from dait.core.config import Settings, get_settings
 from dait.core.errors import register_error_handlers
 from dait.core.logging import configure_logging
 from dait.core.middleware import RequestContextMiddleware
+from dait.repositories.one_time_store import OneTimeStore
 from dait.services.legacy_news_service import import_saved_news
 from dait.services.login_throttle import create_throttles
 
 
+# 입력: 선택적 앱 설정.
+# 출력: 회원 라우트와 공통 보안 계층이 조립된 FastAPI 앱.
+# 동작: 설정·로깅·오류 처리·로그인 제한·라우터를 한 앱에 연결한다.
 def create_app(settings: Settings | None = None) -> FastAPI:
     """설정에 맞는 FastAPI 앱을 만든다.
 
@@ -74,8 +79,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # 앱마다 하나: REDIS_URL이 있으면 실패 기록을 Redis에 공유하고, 없으면 메모리에 둔다.
     throttles = create_throttles(config)
     app.dependency_overrides[get_throttles] = lambda: throttles
+    one_time_store = OneTimeStore(config.redis_url)  # 앱마다 하나: 메모리 대체 저장소 공유
+    app.dependency_overrides[get_one_time_store] = lambda: one_time_store
     app.include_router(health_routes.router)
     app.include_router(auth_routes.router)
+    app.include_router(social_routes.router)
     app.include_router(me_routes.router)
     app.include_router(interest_routes.router)
     app.include_router(news_routes.router)
