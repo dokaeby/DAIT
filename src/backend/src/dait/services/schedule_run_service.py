@@ -379,13 +379,15 @@ def _search_one(settings: Settings, run_id: str, now: datetime, searcher: Schedu
     try:
         criteria = ScheduleCriteria.model_validate(json.loads(run.criteria_json))
         if criteria.interests is None:
-            # 관심사를 명시하지 않은 예약은 검색 시점의 저장 관심사(영문 en.* 포함)를 따른다.
+            # 관심사를 명시하지 않은 예약은 검색 시점의 저장 관심사(한국어 코드)를 따른다.
             with transaction(settings.database_url) as conn:
                 saved = interest_repository.list_codes(conn, run.user_id)
             criteria = criteria.model_copy(
                 update={
                     "interests": [
-                        InterestCode(code) for code in saved if code in _INTEREST_VALUES
+                        InterestCode(code)
+                        for code in saved
+                        if code in _INTEREST_VALUES and not code.startswith("en.")
                     ]
                 }
             )

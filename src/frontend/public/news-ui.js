@@ -23,7 +23,7 @@
   function pageCursor(page) {
     return page === 1 ? null : btoa(JSON.stringify({o: (page - 1) * DISPLAY_PAGE_SIZE})).replace(/\+/g, '-').replace(/\//g, '_');
   }
-  let language = params.get('language') === 'en' ? 'en' : 'ko', sidebarTopic = params.get('topic') || '';
+  let language = 'ko', sidebarTopic = params.get('topic') || '';
   const responseCache = new Map();
   const pendingResponses = new Map();
   const FEED_TTL = 60 * 1000;
@@ -51,6 +51,7 @@
   const readIds = new Set();
   let personalizedChips = false;
   let selectedInterest = params.get('interest') || '';
+  if (selectedInterest.startsWith('en.')) selectedInterest = '';
   let savedInterests = [];
   const englishNames = { AI: 'AI & Technology', ECONOMY: 'Economy & Business', POLITICS: 'Society & Culture' };
   const topicCodes = {AI: ['models','agents','devtools','opensource','infra'], ECONOMY: ['industry','business','startups','markets','jobs'], POLITICS: ['policy','education','health','climate','culture']};
@@ -58,12 +59,11 @@
   function configureInterestChips(user) {
     const host = $('categories');
     host.replaceChildren();
-    savedInterests = user?.interests || [];
+    savedInterests = (user?.interests || []).filter(item => !item.code.startsWith('en.'));
     personalizedChips = savedInterests.length > 0;
     $('interest-count-note').hidden = !personalizedChips;
     if (!savedInterests.some(item => item.code === selectedInterest)) selectedInterest = '';
-    if (selectedInterest) language = selectedInterest.startsWith('en.') ? 'en' : 'ko';
-    for (const region of ['ko', 'en']) {
+    for (const region of ['ko']) {
       const row = document.createElement('div'); row.className = 'region-chip-row'; row.dataset.region = region;
       const label = document.createElement('strong'); label.className = 'region-chip-label'; label.textContent = region === 'ko' ? '국내' : '해외';
       const chips = document.createElement('div'); chips.className = 'region-chips';
@@ -344,7 +344,7 @@
       $('result-count').textContent = selectionTitle() + ' · 조회 중';
       $('news-list').innerHTML = '<li class="empty-result" role="status">선택한 조건의 기사를 확인하고 있습니다.</li>';
     }
-    const countsPromise = guest ? Promise.resolve({}) : Promise.all(['ko','en'].map(async region => {
+    const countsPromise = guest ? Promise.resolve({}) : Promise.all(['ko'].map(async region => {
       const aq = new URLSearchParams({q: keyword, language: region});
       if (personalizedChips && !searchAllArticles) aq.set('personalized', 'true');
       return [region, await json('/v1/news/activity?' + aq, request.signal, cacheOptions)];
@@ -439,7 +439,7 @@
     event.preventDefault();
     globalSearch = !!$('query').value.trim();
     searchAllArticles = globalSearch;
-    language = globalSearch ? '' : 'ko';
+    language = 'ko';
     category = ''; selectedInterest = ''; sidebarTopic = '';
     load();
   });
@@ -522,35 +522,7 @@
   window.addEventListener('resize', () => { scrollAnchor = 0; updateScrollControls(); });
   new MutationObserver(updateScrollControls).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
 
-  function buildEnglishSidebar() {
-    const groups = [
-      ['AI', 'AI & Technology', 'ai', [['models','Models & Research'],['agents','AI Agents'],['devtools','Developer Tools'],['opensource','Open Source & Local Models'],['infra','AI Infrastructure']]],
-      ['ECONOMY', 'Economy & Business', 'economy', [['industry','Industry Trends'],['business','Corporate & Management'],['startups','Startups & Ventures'],['markets','Finance & Markets'],['jobs','Jobs & Employment']]],
-      ['POLITICS', 'Society & Culture', 'society', [['policy','Policy & Administration'],['education','Education'],['health','Health & Medicine'],['climate','Environment & Climate'],['culture','Culture & Content']]]
-    ];
-    const host = $('sidebar-categories');
-    const label = document.createElement('span'); label.className = 'nav-label'; label.textContent = 'English News'; host.append(label);
-    for (const [categoryCode, name, prefix, values] of groups) {
-      const group = document.createElement('div'); group.className = 'topic-group';
-      const row = document.createElement('div'); row.className = 'topic-heading-row';
-      const heading = document.createElement('button'); heading.type = 'button'; heading.className = 'nav-item topic-heading'; heading.textContent = name; heading.dataset.englishGroup = categoryCode;
-      const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'topic-toggle'; toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>'; toggle.setAttribute('aria-label', name + ' topics');
-      const list = document.createElement('ul'); list.className = 'topic-list'; list.hidden = true; list.id = 'english-' + prefix;
-      toggle.setAttribute('aria-controls', list.id); toggle.setAttribute('aria-expanded','false');
-      toggle.addEventListener('click', () => { list.hidden = !list.hidden; toggle.setAttribute('aria-expanded', String(!list.hidden)); });
-      const select = topic => { globalSearch = false; searchAllArticles = false; language = 'en'; sidebarTopic = topic; selectedInterest = ''; category = categoryCode; $('query').value = ''; load(); };
-      heading.addEventListener('click', () => select(''));
-      row.append(heading, toggle);
-      for (const [id, text] of values) {
-        const li = document.createElement('li'); const button = document.createElement('button'); button.type = 'button'; button.className = 'topic-button'; button.textContent = text; button.dataset.englishTopic = prefix + '.' + id;
-        button.addEventListener('click', () => select(prefix + '.' + id)); li.append(button); list.append(li);
-      }
-      group.append(row, list); host.append(group);
-    }
-  }
-
   buildSidebar();
-  buildEnglishSidebar();
   function applySession(user) {
     const main = document.querySelector('main');
     main?.removeAttribute('data-session-pending');

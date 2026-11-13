@@ -12,7 +12,7 @@ const ctx = {URLSearchParams, AbortController, Event, clearTimeout, setTimeout,
   DISPLAY_PAGE_SIZE: 8, PAGE_SIZE: '4', currentPage: 1, totalPages: 13, pageStart: null,
   cursor: null, busy: false, guest: false, listRequest: null, prefetchTimer: null,
   category: 'AI', shownCategory: 'AI', shownQuery: 'chip', shownHasResults: true,
-  language: 'en', selectedInterest: 'en.ai.agents', sidebarTopic: '', personalizedChips: true,
+  language: 'ko', selectedInterest: '', sidebarTopic: '', personalizedChips: false,
   globalSearch: false, searchAllArticles: false, readIds: new Set(), $: node,
   window: {dispatchEvent() {}, scrollTo() {}}, history: {replaceState() {}},
   syncSidebar() {}, updateChips() {}, refreshReads() {}, prefetchInterests() {}, updateScrollControls() {},
@@ -40,8 +40,8 @@ vm.runInContext(source.slice(source.indexOf('  function pageCursor('), source.in
   assert.equal(JSON.parse(Buffer.from(requests[0].get('cursor'), 'base64url')).o, 72);
   assert.equal(JSON.parse(Buffer.from(requests[1].get('cursor'), 'base64url')).o, 76);
   for (const query of requests) {
-    assert.equal(query.get('language'), 'en'); assert.equal(query.get('category'), 'AI');
-    assert.equal(query.get('interest'), 'en.ai.agents'); assert.equal(query.get('q'), 'chip');
+    assert.equal(query.get('language'), 'ko'); assert.equal(query.get('category'), 'AI');
+    assert.equal(query.get('interest'), null); assert.equal(query.get('q'), 'chip');
   }
   await ctx.load('prev'); assert.equal(ctx.currentPage, 9);
   await ctx.load('next'); assert.equal(ctx.currentPage, 10);
