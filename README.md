@@ -100,6 +100,9 @@ Procfile은 통합 서버를 실행하며 DB 마이그레이션은 자동 실행
 - **개인 테스트 서버**(예: `https://project-dait.onrender.com`)는 푸시한 변경을 개인적으로 먼저 확인한 용도이며,
   팀 배포와는 별개다.
 
+배포 담당자용 상세 절차(구글 콘솔 설정, 환경변수, 마이그레이션 순서, 확인·문제 해결)는
+`docs/DAIT_v1.0.3/18_구글_로그인_운영_적용_가이드.md`를 본다.
+
 서버마다 다음을 한다.
 - [ ] 1. 서버 환경변수에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` 등록
       (`GOOGLE_REDIRECT_URI`는 `https://<서버 주소>/v1/auth/google/callback`이며 구글 콘솔의
