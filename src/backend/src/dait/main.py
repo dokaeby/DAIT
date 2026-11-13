@@ -24,6 +24,7 @@ from dait.core.config import Settings, get_settings
 from dait.core.errors import register_error_handlers
 from dait.core.logging import configure_logging
 from dait.core.middleware import RequestContextMiddleware
+from dait.core.migrations import run_migrations
 from dait.services.legacy_news_service import import_saved_news
 from dait.services.login_throttle import create_throttles
 
@@ -42,6 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+        # 무료 플랜 Render는 preDeploy를 실행하지 않으므로 시작 시 스키마를 맞춘다.
+        await run_in_threadpool(run_migrations, config.database_url)
         await run_in_threadpool(import_saved_news, config)
         yield
 
