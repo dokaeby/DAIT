@@ -187,8 +187,9 @@ html { scrollbar-gutter: stable; }
   .header-search.is-open .header-search-close { display:block; font-size:12px; padding:8px; }
 }
 
-#pagination { flex-wrap:wrap; }
-.page-jump-form { display:flex; align-items:center; gap:6px; margin:0; }
+#pagination { flex-wrap:wrap; align-items:flex-start; }
+.page-jump-form { display:flex; flex-direction:column; align-items:center; gap:8px; margin:0; }
+.page-jump-value { display:flex; align-items:center; gap:8px; }
 #page-jump-input { width:64px; min-width:0; height:40px; padding:6px 8px; border:1px solid var(--line-strong); border-radius:10px; background:white; color:var(--ink); text-align:center; font:inherit; }
 #page-jump-input:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
 #page-jump-input[aria-invalid="true"] { border-color:#c62828; }

@@ -386,7 +386,7 @@
       cursor = data.page.has_more ? data.page.next_cursor : null;
       $('pagination').hidden = guest || !items.length;
       $('load-more').hidden = guest; $('load-previous').hidden = guest;
-      $('page-number').textContent = currentPage + ' / ' + totalPages + ' 페이지';
+      $('page-number').textContent = '/ ' + totalPages + ' 페이지';
       $('page-jump-input').value = String(currentPage);
       $('page-jump-input').setAttribute('aria-invalid', 'false');
       $('page-jump-input').setAttribute('aria-label', '이동할 페이지 번호 (1~' + totalPages + ')');

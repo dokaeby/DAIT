@@ -251,6 +251,15 @@
     });
   });
   for (let hour = 0; hour < 24; hour++) { const option = document.createElement('option'); option.value = String(hour).padStart(2, '0'); option.textContent = option.value + '시'; $('sched-hour').append(option); }
+  // Test mode: set data-minute-step back to 30 in settings.html to restore normal options.
+  const minuteStep = Number($('sched-minute').dataset.minuteStep) === 5 ? 5 : 30;
+  for (let minute = 0; minute < 60; minute += minuteStep) {
+    const option = document.createElement('option');
+    option.value = String(minute).padStart(2, '0');
+    option.textContent = option.value + '분';
+    $('sched-minute').append(option);
+  }
+  $('schedule-timezone-note').textContent = `시간대: Asia/Seoul (KST) · ${minuteStep}분 단위${minuteStep === 5 ? ' (테스트용)' : ''}`;
   const getTime = () => $('sched-hour').value + ':' + $('sched-minute').value;
   let scheduleCount = 0;
   // 비밀번호 칸은 한글 조합이 안 돼서, 구글 전용 계정은 일반 글자칸에 '탈퇴'를 입력해 확인한다.
