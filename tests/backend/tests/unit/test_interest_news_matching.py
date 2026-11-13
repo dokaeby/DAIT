@@ -3,6 +3,7 @@
 import sqlite3
 
 from dait.repositories import news_repository
+from dait.services import feed_index_service
 
 
 def test_interest_union_counts_search_and_pages() -> None:
@@ -12,7 +13,12 @@ def test_interest_union_counts_search_and_pages() -> None:
             CREATE TABLE sources(id TEXT PRIMARY KEY, name TEXT, priority INTEGER);
             CREATE TABLE news(id TEXT PRIMARY KEY, source_id TEXT, title TEXT,
                 published_at TEXT, category TEXT, canonical_url TEXT);
-            CREATE TABLE content_results(news_id TEXT PRIMARY KEY, summary_lines TEXT, status TEXT);
+            CREATE TABLE content_results(news_id TEXT PRIMARY KEY, summary_lines TEXT,
+                status TEXT, updated_at TEXT, extracted_text TEXT, translated_text TEXT);
+            CREATE TABLE news_classified(news_id TEXT PRIMARY KEY,
+                content_updated_at TEXT, classified_at TEXT);
+            CREATE TABLE news_topics(news_id TEXT, topic_code TEXT,
+                PRIMARY KEY (news_id, topic_code));
             INSERT INTO sources VALUES ('s', 'Source', 1);
         """)
         for index, (title, status) in enumerate(
@@ -28,11 +34,15 @@ def test_interest_union_counts_search_and_pages() -> None:
                 "INSERT INTO news VALUES (?, 's', ?, ?, 'AI', ?)",
                 (str(index), title, "2026-11-12T00:00:00+00:00", f"https://example.com/{index}"),
             )
-            conn.execute("INSERT INTO content_results VALUES (?, '[]', ?)", (str(index), status))
+            conn.execute(
+                "INSERT INTO content_results VALUES (?, '[]', ?, "
+                "'2026-11-12T00:00:00+00:00', NULL, NULL)",
+                (str(index), status),
+            )
         conn.execute("ALTER TABLE news ADD COLUMN original_language TEXT DEFAULT 'ko'")
-        conn.execute("ALTER TABLE content_results ADD COLUMN extracted_text TEXT")
-        conn.execute("ALTER TABLE content_results ADD COLUMN translated_text TEXT")
         conn.execute("UPDATE news SET original_language = 'en' WHERE id = '0'")
+        # 관심사 조회는 저장된 분류 결과만 읽으므로 먼저 1회 분류를 실행한다.
+        feed_index_service.classify_pending(conn)
         assert news_repository.count_public_news(conn, None, "", None, "en") == 1
         assert (
             len(news_repository.list_public_news(conn, None, "", "latest", 4, 0, None, "en")) == 1
@@ -53,6 +63,13 @@ def test_interest_union_counts_search_and_pages() -> None:
         assert len(second) == 1
         assert len({row.id for row in first + second}) == 3
         assert news_repository.count_public_news(conn, None, "") == 4
+        # 콘텐츠가 갱신되면 다음 스윕에서 재분류된다.
+        conn.execute(
+            "UPDATE content_results SET summary_lines = '[\"GPU 데이터센터\"]', "
+            "updated_at = '2026-11-13T00:00:00+00:00' WHERE news_id = '3'"
+        )
+        feed_index_service.classify_pending(conn)
+        assert news_repository.count_public_news(conn, None, "", ("ai.infra",)) == 1
         # Legacy imports marked overseas articles as und, sometimes ko after translation.
         conn.execute("UPDATE sources SET name = 'TechCrunch' WHERE id = 's'")
         conn.execute("UPDATE news SET original_language = 'und' WHERE id = '0'")

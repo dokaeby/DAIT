@@ -125,25 +125,45 @@ KEYWORDS["en.society.culture"] = KEYWORDS["society.culture"]
 GROUPS = {"ai": "AI", "economy": "ECONOMY", "society": "POLITICS"}
 
 
+def matching_codes(text: str) -> tuple[str, ...]:
+    """기사 텍스트(제목+요약 원문)에 포함된 주제 코드를 돌려준다.
+
+    입력: text (lower() 전 원문)
+    출력: 매칭된 기본 주제 코드 tuple (en.* 중복 키는 제외)
+    기능: 목록·활성 건수의 interest_clause가 요구하는 것과 동일한
+          키워드 포함 규칙을 저장 시점에 한 번 계산해 news_topics에 둔다.
+    """
+    lowered = text.lower()
+    return tuple(
+        code
+        for code, words in KEYWORDS.items()
+        if not code.startswith("en.") and any(word.lower() in lowered for word in words)
+    )
+
+
 def interest_clause(codes: tuple[str, ...]) -> tuple[str, list[str]]:
-    """OR topics together; bound parameters preserve literal keyword matching."""
+    """OR topics together using precomputed news_topics rows.
+
+    입력: codes (저장된 관심사/주제 코드, en.* 포함 가능)
+    출력: (SQL 절, 바인딩 값)
+    기능: 요청마다 키워드 LIKE를 실행하지 않고 분류 시 저장된
+          news_topics 결과만 조회한다. 잘못된 코드는 건너뛰고
+          전부 무효면 1=0을 돌려준다.
+    """
     clauses: list[str] = []
     params: list[str] = []
     for code in codes:
         words = KEYWORDS.get(code)
         if not words:
             continue
-        matches = []
         base_code = code.removeprefix("en.")
-        params.append(GROUPS[base_code.split(".")[0]])
-        for word in words:
-            matches.append("(lower(n.title) LIKE ? OR lower(c.summary_lines) LIKE ?)")
-            params.extend([f"%{word.lower()}%"] * 2)
-        clauses.append(
-            "(n.category = ? AND "
-            + (f"({NEWS_LANGUAGE_SQL}) = 'en' AND " if code.startswith("en.") else "")
-            + "("
-            + " OR ".join(matches)
-            + "))"
+        clause = (
+            "(n.category = ? AND EXISTS ("  # noqa: S608 - 상수 절과 바인딩 값만 결합
+            "SELECT 1 FROM news_topics nt WHERE nt.news_id = n.id "
+            "AND nt.topic_code = ?)"
+            + (f" AND ({NEWS_LANGUAGE_SQL}) = 'en'" if code.startswith("en.") else "")
+            + ")"
         )
+        clauses.append(clause)
+        params.extend([GROUPS[base_code.split(".")[0]], base_code])
     return "(" + " OR ".join(clauses) + ")" if clauses else "1=0", params

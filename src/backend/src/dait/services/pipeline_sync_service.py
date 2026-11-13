@@ -21,6 +21,7 @@ from dait.core.config import Settings
 from dait.repositories import db as db_module
 from dait.repositories.db import DbConnection, transaction
 from dait.schemas.news import ACTIVE_CATEGORIES, NewsCategory
+from dait.services import feed_index_service
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ def sync_if_needed(settings: Settings) -> None:
         try:
             with transaction(settings.database_url) as conn:
                 inserted = sync_pipeline_news(conn)
+                feed_index_service.classify_pending(conn)
             if inserted:
                 logger.info("pipeline 뉴스 동기화 완료: %d건", inserted)
         except Exception:
