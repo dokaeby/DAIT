@@ -95,6 +95,7 @@ def list_news(
     now: datetime | None = None,
     interests: tuple[str, ...] | None = None,
     language: str | None = None,
+    refresh: bool = False,
 ) -> NewsListResponse:
     """뉴스 목록을 조회한다(캐시 우선).
 
@@ -118,12 +119,12 @@ def list_news(
         cursor,
     )
     hit = cache_retry_service.load_cached(settings, cache_key, NewsListResponse)
-    if hit is not None:
+    if hit is not None and not refresh:
         return hit
     with cache_retry_service.locked(settings, cache_key, cache_key) as acquired:
         if not acquired:
             hit = cache_retry_service.load_cached(settings, cache_key, NewsListResponse)
-            if hit is not None:
+            if hit is not None and not refresh:
                 return hit
         response = _list_news_uncached(
             settings, category, normalized, sort, page_size, cursor, now, interests, language

@@ -198,6 +198,49 @@ def count_public_news(
     return int(row[0]) if row else 0
 
 
+def public_news_counts(
+    conn: DbConnection,
+    query: str,
+    interests: tuple[str, ...] | None,
+    topics: tuple[str, ...],
+    language: str | None,
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Return all chip counts in one DB round trip, without multiplying overlapping rows."""
+    expressions: list[str] = []
+    params: list[str] = []
+    scope, scope_values = interest_clause(interests) if interests is not None else ("1=1", [])
+    for category in _CATEGORY_VALUES:
+        expressions.append(f"COUNT(CASE WHEN n.category = ? AND {scope} THEN 1 END)")
+        params.extend([category, *scope_values])
+    for topic in topics:
+        clause, values = interest_clause((topic,))
+        expressions.append(f"COUNT(CASE WHEN {clause} THEN 1 END)")
+        params.extend(values)
+    clauses = [_CATEGORY_CLAUSE, _public_status_clause(), "n.canonical_url LIKE 'https://%'"]
+    params.extend(_CATEGORY_VALUES)
+    if language:
+        clauses.append(f"({NEWS_LANGUAGE_SQL}) = ?")
+        params.append(language)
+    if query:
+        pattern = f"%{_escape_like(query.lower())}%"
+        clauses.append(
+            "(lower(n.title) LIKE ? ESCAPE '\\' OR lower(c.summary_lines) LIKE ? ESCAPE '\\')"
+        )
+        params.extend([pattern, pattern])
+    sql = (
+        f"SELECT {', '.join(expressions)} FROM news n "  # noqa: S608 - internal SQL and bound values
+        "JOIN sources s ON s.id = n.source_id "
+        "JOIN content_results c ON c.news_id = n.id "
+        f"WHERE {' AND '.join(clauses)}"
+    )
+    row = conn.execute(sql, params).fetchone()
+    size = len(_CATEGORY_VALUES)
+    return (
+        {category: int(row[i]) for i, category in enumerate(_CATEGORY_VALUES)},
+        {topic: int(row[size + i]) for i, topic in enumerate(topics)},
+    )
+
+
 def has_recent_job_failures(conn: DbConnection, since_iso: str) -> bool:
     """최근 작업 실패가 있는지 확인한다(목록의 partial 표시용).
 

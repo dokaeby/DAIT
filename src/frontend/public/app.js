@@ -7,10 +7,18 @@
   const REMEMBERED_EMAIL_KEY = "dait_remembered_email";
   let checkedNickname = null;
   let nicknameCheck = 0;
+  let sessionPromise = null;
+  let sessionSnapshot = null;
+  let sessionGeneration = 0;
+  function invalidateSession() {
+    sessionGeneration++;
+    sessionPromise = null;
+    sessionSnapshot = null;
+  }
 
   const authStyles = document.createElement("link");
   authStyles.rel = "stylesheet";
-  authStyles.href = "/mockup/auth.css?v=safari-auth-1";
+  authStyles.href = "/mockup/auth.css?v=google-styled-5";
   document.head.appendChild(authStyles);
 
   function rememberEmail(email) {
@@ -31,6 +39,7 @@
   }
 
   function setTokens(tokens) {
+    invalidateSession();
     try {
       if (tokens && tokens.access_token) localStorage.setItem(ACCESS_KEY, tokens.access_token);
       if (tokens && tokens.refresh_token) localStorage.setItem(REFRESH_KEY, tokens.refresh_token);
@@ -40,6 +49,8 @@
   }
 
   function clearTokens() {
+    invalidateSession();
+    try { sessionStorage.removeItem('dait_feed_cache_v1'); } catch (_e) { /* noop */ }
     try {
       localStorage.removeItem(ACCESS_KEY);
       localStorage.removeItem(REFRESH_KEY);
@@ -48,25 +59,39 @@
     }
   }
 
-  async function refreshToken() {
-    const refresh = getToken(REFRESH_KEY);
-    if (!refresh) return false;
-    try {
+  let refreshPromise = null;
+  async function refreshToken(expiredAccess) {
+    if (refreshPromise) return refreshPromise;
+    const perform = async () => {
+      const currentAccess = getToken(ACCESS_KEY);
+      if (!currentAccess) return false;
+      if (currentAccess !== expiredAccess) return true;
+      const refresh = getToken(REFRESH_KEY);
+      if (!refresh) return false;
       const res = await fetch("/v1/auth/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ refresh_token: refresh }),
       });
       if (!res.ok) {
-        clearTokens();
-        return false;
+        if (res.status === 401) {
+          if (getToken(REFRESH_KEY) !== refresh) return !!getToken(ACCESS_KEY);
+          clearTokens();
+          return false;
+        }
+        throw new TypeError('로그인 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
       }
       const data = await res.json();
+      if (getToken(REFRESH_KEY) !== refresh) return !!getToken(ACCESS_KEY);
       setTokens(data);
       return true;
-    } catch (_e) {
-      return false;
-    }
+    };
+    const pending = navigator.locks?.request
+      ? navigator.locks.request('dait-token-refresh', perform)
+      : perform();
+    refreshPromise = pending;
+    try { return await pending; }
+    finally { if (refreshPromise === pending) refreshPromise = null; }
   }
 
   /** 인증이 필요한 API 호출. 401이면 refresh 한 번 재시도한다. */
@@ -79,10 +104,11 @@
     const access = getToken(ACCESS_KEY);
     if (access) opts.headers.Authorization = "Bearer " + access;
     let res = await fetch(path, opts);
-    if (res.status === 401 && (await refreshToken())) {
+    if (res.status === 401 && access && (await refreshToken(access))) {
       opts.headers.Authorization = "Bearer " + getToken(ACCESS_KEY);
       res = await fetch(path, opts);
     }
+    if (res.status === 401 || (res.ok && (opts.method || 'GET').toUpperCase() !== 'GET' && path.startsWith('/v1/me/'))) invalidateSession();
     return res;
   }
 
@@ -90,14 +116,22 @@
   async function currentUser() {
     const access = getToken(ACCESS_KEY);
     if (!access) return null;
-    try {
-      const res = await api("/v1/me/session");
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data.authenticated && data.user ? { ...data.user, interests: data.interests || [] } : null;
-    } catch (_e) {
-      return null;
-    }
+    if (sessionSnapshot && sessionSnapshot.access === access && Date.now() - sessionSnapshot.time < 5000) return sessionSnapshot.user;
+    if (sessionPromise) return sessionPromise;
+    const generation = sessionGeneration;
+    const pending = (async () => {
+      try {
+        const res = await api('/v1/me/session');
+        if (!res.ok) return null;
+        const data = await res.json();
+        const user = data.authenticated && data.user ? { ...data.user, interests: data.interests || [] } : null;
+        if (generation === sessionGeneration && getToken(ACCESS_KEY) === access) sessionSnapshot = {access, user, time: Date.now()};
+        return getToken(ACCESS_KEY) ? user : null;
+      } catch (_e) { return null; }
+    })();
+    sessionPromise = pending;
+    try { return await pending; }
+    finally { if (sessionPromise === pending) sessionPromise = null; }
   }
 
   function escapeHtml(value) {
@@ -138,6 +172,31 @@
       host.querySelector("#login-open").addEventListener("click", () => openAuthDialog(false));
       host.querySelector("#signup-open").addEventListener("click", () => openAuthDialog(true));
     }
+  }
+
+  function attachCapsLockHints(form) {
+    form.querySelectorAll('input[type="password"]').forEach((input) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'password-hint-wrapper';
+      const hint = document.createElement('span');
+      hint.id = input.id + '-caps-lock';
+      hint.className = 'caps-lock-hint';
+      hint.setAttribute('role', 'status');
+      hint.setAttribute('aria-live', 'polite');
+      hint.hidden = true;
+      hint.textContent = 'Caps Lock이 켜져 있습니다.';
+      input.setAttribute('aria-describedby', hint.id);
+      input.before(wrapper);
+      wrapper.append(input, hint);
+      let typed = false;
+      const update = (event) => {
+        if (event.type === 'keydown' && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) typed = true;
+        if (typeof event.getModifierState === 'function') hint.hidden = !(typed && event.getModifierState('CapsLock'));
+      };
+      input.addEventListener('keydown', update);
+      input.addEventListener('keyup', update);
+      input.addEventListener('blur', () => { hint.hidden = true; typed = false; });
+    });
   }
 
   function openAuthDialog(signup, email = "") {
@@ -193,6 +252,8 @@
     }
     const form = dialog.querySelector("#auth-form");
     form.innerHTML = signup ? signupFieldsHtml() : loginFieldsHtml();
+    attachCapsLockHints(form);
+    configureGoogleLogin(form);
     if (!signup && email) {
       form.querySelector("#auth-email").value = email;
       form.querySelector("#auth-remember").checked = getToken(REMEMBERED_EMAIL_KEY) === email;
@@ -237,14 +298,33 @@
     } finally { button.disabled = false; }
   }
 
+  function googleLoginHtml() {
+    return '<div class="google-auth-block"><div class="google-divider"><span>또는</span></div><a class="google-login" href="/v1/auth/google/login" aria-disabled="true" tabindex="-1" aria-describedby="google-notice"><span class="google-symbol" aria-hidden="true">G</span><span>Google로 계속하기</span></a><p class="google-notice" id="google-notice" role="status">Google 로그인 확인 중…</p></div>';
+  }
+  function configureGoogleLogin(form) {
+    const button = form.querySelector('.google-login');
+    const notice = form.querySelector('.google-notice');
+    button.addEventListener('click', event => {
+      if (button.getAttribute('aria-disabled') === 'true') event.preventDefault();
+    });
+    fetch('/v1/auth/google/status', {headers: {Accept: 'application/json'}})
+      .then(response => response.ok ? response.json() : {enabled:false})
+      .then(data => {
+        button.setAttribute('aria-disabled', String(!data.enabled));
+        button.tabIndex = data.enabled ? 0 : -1;
+        notice.textContent = data.enabled ? '' : 'Google 로그인 준비 중';
+        notice.hidden = !!data.enabled;
+      }).catch(() => { notice.textContent = 'Google 로그인 상태를 확인하지 못했습니다.'; });
+  }
+
   function loginFieldsHtml() {
     const remembered = getToken(REMEMBERED_EMAIL_KEY) || "";
     return (
       '<label for="auth-email">이메일</label><input id="auth-email" name="email" type="email" autocomplete="username" required maxlength="254" value="' + escapeHtml(remembered) + '">' +
       '<label for="auth-password">비밀번호</label><input id="auth-password" name="password" type="password" autocomplete="current-password" required maxlength="128">' +
       '<label class="auth-check" for="auth-remember"><input id="auth-remember" name="remember_email" type="checkbox"' + (remembered ? ' checked' : '') + '><span>이메일 저장</span></label>' +
-      '<a class="secondary-button google-login" href="/v1/auth/google/login">구글로 계속</a>' +
       '<button class="login-submit primary-button" type="submit">로그인</button>' +
+      googleLoginHtml() +
       '<p class="auth-navigation">계정이 없으신가요? <button class="auth-link" type="button" id="auth-switch">회원가입</button></p>'
     );
   }
@@ -255,8 +335,8 @@
       '<label for="auth-nickname">닉네임 (선택)</label><div class="nickname-row"><input id="auth-nickname" name="nickname" type="text" autocomplete="nickname" maxlength="30" aria-describedby="nickname-feedback nickname-help"><button class="secondary-button" type="button" id="nickname-check">중복 확인</button></div><p id="nickname-help" class="field-help">2~30자 · 비워두면 이메일로 표시됩니다.</p><p id="nickname-feedback" class="settings-feedback" role="status" aria-live="polite"></p>' +
       '<label for="auth-password">비밀번호 (8자 이상)</label><input id="auth-password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
       '<label for="auth-password-confirm">비밀번호 확인</label><input id="auth-password-confirm" name="password_confirm" type="password" autocomplete="new-password" required minlength="8" maxlength="128">' +
-      '<a class="secondary-button google-login" href="/v1/auth/google/login">구글로 계속</a>' +
       '<button class="login-submit primary-button" type="submit">가입하기</button>' +
+      googleLoginHtml() +
       '<p class="auth-navigation">이미 계정이 있으신가요? <button class="auth-link" type="button" id="auth-switch">로그인</button></p>'
     );
   }

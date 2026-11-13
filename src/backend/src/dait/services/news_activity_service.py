@@ -5,7 +5,7 @@ from dait.core.errors import NewsNotFoundError
 from dait.repositories import interest_repository, news_repository
 from dait.repositories.db import transaction
 from dait.repositories.interest_matching import KEYWORDS
-from dait.schemas.news import ACTIVE_CATEGORIES, NewsActivity
+from dait.schemas.news import NewsActivity
 from dait.services.news_search_service import normalize_query
 
 
@@ -25,16 +25,9 @@ def activity(
             c for c in all_saved if not language or c.startswith("en.") == (language == "en")
         )
         scope = saved if personalized and all_saved else None
-        interest_counts = {
-            c: news_repository.count_public_news(conn, None, normalized, (c,), language)
-            for c in saved
-        }
-        counts = {
-            category: news_repository.count_public_news(
-                conn, category.value, normalized, scope, language
-            )
-            for category in sorted(ACTIVE_CATEGORIES)
-        }
+        counts, interest_counts = news_repository.public_news_counts(
+            conn, normalized, scope, saved, language
+        )
         read_ids: list[str] = []
         if ids:
             placeholders = ",".join("?" for _ in ids)

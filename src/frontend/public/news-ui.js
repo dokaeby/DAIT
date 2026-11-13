@@ -20,6 +20,27 @@
   let pageStart = null, pageHistory = [], currentPage = 1;
   let language = params.get('language') === 'en' ? 'en' : 'ko', sidebarTopic = params.get('topic') || '';
   const responseCache = new Map();
+  const FEED_TTL = 15 * 60 * 1000;
+  const FEED_RETENTION = 24 * 60 * 60 * 1000;
+  const feedCacheKey = 'dait_feed_cache_v1';
+  let feedScope = '';
+  function restoreFeedCache(user) {
+    responseCache.clear();
+    feedScope = user ? JSON.stringify([user.id || user.email, (user.interests || []).map(item => item.code).sort()]) : '';
+    try {
+      if (!feedScope) { sessionStorage.removeItem(feedCacheKey); return; }
+      const saved = JSON.parse(sessionStorage.getItem(feedCacheKey) || 'null');
+      if (saved?.scope !== feedScope || !Array.isArray(saved.entries)) return;
+      for (const [key, entry] of saved.entries.slice(-100)) {
+        if (typeof key === 'string' && entry && Date.now() - entry.time < FEED_RETENTION) responseCache.set(key, entry);
+      }
+    } catch { /* A storage failure must not block the feed. */ }
+  }
+  function persistFeedCache() {
+    if (!feedScope) return;
+    try { sessionStorage.setItem(feedCacheKey, JSON.stringify({scope: feedScope, entries: [...responseCache]})); }
+    catch { /* Quota/private browsing falls back to the in-memory cache. */ }
+  }
   let shownCategory = '', shownQuery = '', shownHasResults = false;
   const readIds = new Set();
   let personalizedChips = false;
@@ -118,19 +139,24 @@
   function summary(lines, status) {
     return lines?.length ? `<ul class="summary-list">${lines.map(line => `<li>${escape(line)}</li>`).join('')}</ul>` : `<p class="empty-summary">${escape(status === 'INSUFFICIENT' ? '요약을 작성하기에 기사 정보가 부족합니다.' : labels[status] || '저장된 요약이 없습니다.')}</p>`;
   }
-  async function json(url, signal) {
+  async function json(url, signal, {force = false, stale = () => {}} = {}) {
     const canonical = new URL(url, location.origin);
     canonical.searchParams.sort();
     const cacheKey = canonical.pathname + canonical.search;
     const cached = responseCache.get(cacheKey);
-    const ttl = canonical.pathname === '/v1/news/activity' ? 15000 : 60000;
-    if (cached && Date.now() - cached.time < ttl) return cached.value;
-    const res = await DAIT.api(url, { signal, headers: { Accept: 'application/json' } });
+    if (!force && cached && Date.now() - cached.time < FEED_RETENTION) {
+      if (Date.now() - cached.time >= FEED_TTL) stale();
+      return cached.value;
+    }
+    const networkUrl = new URL(canonical);
+    if (force && canonical.pathname === '/v1/news') networkUrl.searchParams.set('refresh', 'true');
+    const res = await DAIT.api(networkUrl.pathname + networkUrl.search, { signal, headers: { Accept: 'application/json' } });
     if (!res.ok) throw new Error(res.status === 404 ? '기사를 찾을 수 없습니다.' : '뉴스를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
     const value = await res.json();
-    if (url.startsWith('/v1/news?') || url.startsWith('/v1/news/activity?')) {
+    if (!signal?.aborted && (url.startsWith('/v1/news?') || url.startsWith('/v1/news/activity?'))) {
       if (responseCache.size > 100) responseCache.clear();
       responseCache.set(cacheKey, {time: Date.now(), value});
+      persistFeedCache();
     }
     return value;
   }
@@ -235,9 +261,28 @@
       });
 
   }
-  async function load(direction = '') {
-    if (direction && (guest || busy)) return;
-    const target = direction === 'next' ? cursor : direction === 'prev' ? pageHistory.at(-1) : null;
+  let prefetchTimer;
+  function prefetchInterests(base, request) {
+    clearTimeout(prefetchTimer);
+    if (guest || globalSearch || base.has('q') || !personalizedChips) return;
+    const candidates = [...document.querySelectorAll('[data-interest-chip]')]
+      .filter(el => !el.hidden && !el.classList.contains('active'))
+      .slice(0, 6).map(el => ({code: el.dataset.interestChip, region: el.dataset.chipLanguage}));
+    prefetchTimer = setTimeout(async () => {
+      for (const {code, region} of candidates) {
+        if (request.signal.aborted || request !== listRequest || document.hidden) return;
+        const query = new URLSearchParams(base);
+        for (const key of ['cursor', 'category', 'topic', 'interest', 'search_scope']) query.delete(key);
+        query.set('language', region); query.set('personalized', 'true'); query.set('interest', code);
+        try { await json('/v1/news?' + query, request.signal); }
+        catch { return; }
+      }
+    }, 900);
+  }
+  async function load(direction = '', retainSearch = false, force = false) {
+    clearTimeout(prefetchTimer);
+    if (direction && ((guest && direction !== 'refresh') || busy)) return;
+    const target = direction === 'refresh' ? pageStart : direction === 'next' ? cursor : direction === 'prev' ? pageHistory.at(-1) : null;
     if (direction === 'next' && !target || direction === 'prev' && !pageHistory.length) return;
     if (direction) { category = shownCategory; $('query').value = shownQuery; }
     window.dispatchEvent(new Event('dait-search-sync'));
@@ -246,6 +291,8 @@
     updateChips({});
     listRequest?.abort();
     const request = listRequest = new AbortController();
+    let staleSeen = false;
+    const cacheOptions = {force, stale: () => { staleSeen = true; }};
     busy = true;
     $('search-results').setAttribute('aria-busy', 'true');
     $('load-more').disabled = true; $('load-previous').disabled = true;
@@ -263,10 +310,14 @@
     if (keyword) query.set('q', keyword);
     if (target) query.set('cursor', target);
     $('search-status').textContent = '뉴스를 불러오고 있습니다…';
+    if (!direction && !force) {
+      $('result-count').textContent = selectionTitle() + ' · 조회 중';
+      $('news-list').innerHTML = '<li class="empty-result" role="status">선택한 조건의 기사를 확인하고 있습니다.</li>';
+    }
     const countsPromise = guest ? Promise.resolve({}) : Promise.all(['ko','en'].map(async region => {
       const aq = new URLSearchParams({q: keyword, language: region});
       if (personalizedChips && !searchAllArticles) aq.set('personalized', 'true');
-      return [region, await json('/v1/news/activity?' + aq, request.signal)];
+      return [region, await json('/v1/news/activity?' + aq, request.signal, cacheOptions)];
     })).then(entries => Object.fromEntries(entries));
     countsPromise.then(activities => {
       if (request === listRequest) updateChips(activities);
@@ -274,16 +325,17 @@
       if (request === listRequest && error.name !== 'AbortError') $('search-status').textContent = '기사 수를 갱신하지 못했습니다.';
     });
     try {
-      let data = await json('/v1/news?' + query, request.signal);
+      let data = await json('/v1/news?' + query, request.signal, cacheOptions);
       if (request !== listRequest) return;
       let items = data.items;
+      $('result-count').textContent = guest ? '최신 뉴스 ' + items.length + '건' : selectionTitle() + ' · ' + data.meta.total_visible + '건';
       $('news-list').innerHTML = items.map(card).join('');
       refreshReads();
       if (!guest && data.page.has_more) {
         $('news-list').innerHTML = items.map(card).join('');
         const next = new URLSearchParams(query);
         next.set('cursor', data.page.next_cursor);
-        const second = await json('/v1/news?' + next, request.signal);
+        const second = await json('/v1/news?' + next, request.signal, cacheOptions);
         if (request !== listRequest) return;
         items = [...items, ...second.items];
         data = {...data, page: second.page};
@@ -291,7 +343,7 @@
       if (request !== listRequest) return;
       if (direction === 'next') { pageHistory.push(pageStart); currentPage++; }
       else if (direction === 'prev') { pageHistory.pop(); currentPage--; }
-      else { pageHistory = []; currentPage = 1; }
+      else if (direction !== 'refresh') { pageHistory = []; currentPage = 1; }
       pageStart = target;
       shownCategory = category; shownQuery = keyword; shownHasResults = items.length > 0;
       history.replaceState(null, '', '/?' + query);
@@ -305,7 +357,7 @@
       $('pagination').hidden = guest || !items.length;
       $('load-more').hidden = guest; $('load-previous').hidden = guest;
       $('page-number').textContent = currentPage + ' / ' + Math.max(1, Math.ceil(data.meta.total_visible / 8)) + ' 페이지';
-      if (direction) window.scrollTo({top: 0, behavior: 'instant'});
+      if (direction && direction !== 'refresh') window.scrollTo({top: 0, behavior: 'instant'});
       refreshReads();
       if (!guest && items.length) {
         const reads = new URLSearchParams();
@@ -316,6 +368,14 @@
         }).catch(() => {});
       }
       updateScrollControls();
+      prefetchInterests(query, request);
+      // Finish rendering cached pages before replacing the same page in the background.
+      const revalidate = () => {
+        if (staleSeen && !force && request === listRequest) {
+          setTimeout(() => { if (request === listRequest && !request.signal.aborted) load('refresh', false, true); }, 0);
+        }
+      };
+      countsPromise.then(revalidate, revalidate);
     } catch (error) {
       if (error.name !== 'AbortError') $('search-status').textContent = error.message;
     } finally {
@@ -438,7 +498,7 @@
   buildSidebar();
   buildEnglishSidebar();
   function applySession(user) {
-    responseCache.clear(); readIds.clear();
+    restoreFeedCache(user); readIds.clear();
     guest = !user;
     configureInterestChips(user);
     if (guest) { try { const ids = JSON.parse(localStorage.getItem('dait_guest_reads') || '[]'); if (Array.isArray(ids)) ids.filter(id => typeof id === 'string').slice(-2000).forEach(id => readIds.add(id)); } catch {} }

@@ -42,6 +42,12 @@ def _redirect(target: str) -> RedirectResponse:
 # 입력: HTTP 요청, 앱 설정, 1회용 저장소, 현재 로그인 사용자.
 # 출력: 구글 로그인 화면으로 가는 302 응답.
 # 동작: state를 쿠키에 심고 구글 주소로 보낸다.
+@router.get("/status")
+def google_login_status(settings: SettingsDep) -> dict[str, bool]:
+    """Expose availability only; credentials remain on the server."""
+    return {"enabled": settings.google_enabled}
+
+
 @router.get("/login", status_code=302, response_class=RedirectResponse)
 def login(
     settings: SettingsDep,
