@@ -130,6 +130,14 @@ class SchedulerAuthError(AppError):
     message = "인증에 실패했습니다."
 
 
+class CronJobOrgUnavailableError(AppError):
+    """cron-job.org 연동이 설정됐지만 외부 등록/수정/삭제에 실패했을 때."""
+
+    status_code = 502
+    code = "CRON_JOB_ORG_UNAVAILABLE"
+    message = "예약 실행 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+
 class InvalidTokenError(AppError):
     """토큰이 만료·변조됐거나 형식이 맞지 않을 때."""
 
