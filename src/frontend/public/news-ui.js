@@ -49,10 +49,12 @@
       make(region === 'ko' ? '전체' : 'All', '', false);
       if (personalizedChips) {
         const interests = savedInterests.filter(item => item.code.startsWith('en.') === (region === 'en'));
-        interests.forEach((item,index) => { make(item.name, item.code, true).hidden = index >= 5; });
+        interests.forEach((item, index) => { make(item.name, item.code, true).hidden = index >= 5; });
         if (interests.length > 5) {
-          const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'chip'; toggle.dataset.interestExpand = region;
-          toggle.setAttribute('aria-expanded','false'); toggle.textContent = '더 보기 (' + (interests.length - 5) + ')'; chips.append(toggle);
+          const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'chip interest-toggle'; toggle.dataset.interestExpand = region;
+          chips.id = 'interest-chips-' + region;
+          toggle.setAttribute('aria-controls', chips.id); toggle.setAttribute('aria-label', (region === 'ko' ? '국내' : '해외') + ' 관심사 펼치기');
+          toggle.setAttribute('aria-expanded','false'); toggle.textContent = '더 보기 (' + (interests.length - 5) + ')'; row.append(toggle);
         }
         if (!interests.length) {
           const note = document.createElement('span'); note.className = 'region-empty'; note.textContent = '선택한 관심사가 없습니다'; chips.append(note);
@@ -60,7 +62,7 @@
       } else {
         for (const code of Object.keys(names)) make((region === 'ko' ? names : englishNames)[code], code, false);
       }
-      row.append(label, chips); host.append(row);
+      row.prepend(label, chips); host.append(row);
     }
   }
   function selectionTitle() {
@@ -238,6 +240,7 @@
     const target = direction === 'next' ? cursor : direction === 'prev' ? pageHistory.at(-1) : null;
     if (direction === 'next' && !target || direction === 'prev' && !pageHistory.length) return;
     if (direction) { category = shownCategory; $('query').value = shownQuery; }
+    window.dispatchEvent(new Event('dait-search-sync'));
     if (guest) category = '';
     syncSidebar();
     updateChips({});
@@ -354,9 +357,10 @@
     if (toggle) {
       const expanded = toggle.getAttribute('aria-expanded') !== 'true';
       toggle.setAttribute('aria-expanded', String(expanded));
-      const buttons = [...toggle.parentElement.querySelectorAll('[data-interest-chip]')];
+      const buttons = [...toggle.closest('.region-chip-row').querySelectorAll('[data-interest-chip]')];
       buttons.forEach((el,index) => { el.hidden = index >= 5 && !expanded; });
       toggle.textContent = expanded ? '접기' : '더 보기 (' + (buttons.length - 5) + ')';
+      toggle.setAttribute('aria-label', (toggle.dataset.interestExpand === 'ko' ? '국내' : '해외') + ' 관심사 ' + (expanded ? '접기' : '펼치기'));
       return;
     }
     const el = event.target.closest('[data-chip-language]');

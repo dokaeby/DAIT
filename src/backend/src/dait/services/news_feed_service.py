@@ -11,6 +11,7 @@ from dait.core.config import Settings
 from dait.core.errors import ValidationFailedError
 from dait.repositories import news_repository
 from dait.repositories.db import transaction
+from dait.repositories.interest_matching import MATCHING_VERSION
 from dait.schemas.news import (
     ContentStatus,
     NewsCategory,
@@ -104,7 +105,9 @@ def list_news(
     pipeline_sync_service.request_sync(settings)
     feed_index_service.request_classify(settings)
     normalized = news_search_service.normalize_query(query)
-    scope_key = sha256(repr((settings.database_url, language, interests)).encode()).hexdigest()[:24]
+    scope_key = sha256(
+        repr((MATCHING_VERSION, settings.database_url, language, interests)).encode()
+    ).hexdigest()[:24]
     cache_key = cache_retry_service.list_cache_key(
         scope_key + ":" + (category.value if category is not None else "ALL"),
         normalized,

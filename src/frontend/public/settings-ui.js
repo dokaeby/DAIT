@@ -71,6 +71,7 @@
       link.classList.toggle('active', link.getAttribute('href') === target);
     });
   }
+  if (location.hash === '#display') history.replaceState(null, '', '#schedule');
   markSettingsSection();
   window.addEventListener('hashchange', () => markSettingsSection());
   let sectionScrollPending = false;
@@ -80,7 +81,9 @@
       .map(link => document.getElementById(link.hash.slice(1)))
       .filter(Boolean);
     if (!sections.length) return;
-    const marker = Math.max(100, window.innerHeight * 0.35);
+    const head = document.querySelector('[data-sticky-controls]');
+    const menu = document.querySelector('.settings-menu');
+    const marker = Math.max(head.getBoundingClientRect().bottom, window.innerWidth <= 1100 ? menu.getBoundingClientRect().bottom : 0) + 24;
     let current = sections[0];
     for (const section of sections) {
       if (section.getBoundingClientRect().top <= marker) current = section;
@@ -164,24 +167,44 @@
       $('interest-options').replaceChildren(fragment);
       applyInterests(mine);
       $('interest-fields').disabled = false;
-      show('interests-feedback', '선택 후 관심사 저장을 눌러 주세요.');
+      show('interests-feedback', '선택하거나 해제하면 자동으로 저장됩니다.');
       if (location.hash === '#interests') $('interests').scrollIntoView();
     } catch (error) {
       show('interests-feedback', '관심사를 불러오지 못했습니다. 다시 불러오기를 눌러 주세요.', false);
       $('interests-retry').hidden = false;
     } finally { interestLoading = false; }
   }
-  $('interest-options').addEventListener('change', interestCount);
-  for (const [id, checked] of [['interests-all', true], ['interests-clear', false]]) $(id).addEventListener('click', () => { interestInputs().forEach(el => { el.checked = checked; }); interestCount(); });
-  $('interests-retry').addEventListener('click', loadInterests);
-  $('interests-form').addEventListener('submit', event => {
-    event.preventDefault();
+  const autosave = window.createInterestAutosave({
+    read: () => interestInputs().filter(el => el.checked).map(el => el.value),
+    write: interests => request('/v1/me/interests', { method: 'PUT', body: JSON.stringify({ interests }) }),
+    status: state => {
+      $('interests-save-retry').hidden = state !== 'error';
+      show('interests-feedback', state === 'saving' ? '저장 중…' : state === 'saved' ? '저장되었습니다.' : '저장하지 못했습니다. 다시 시도해 주세요.', state !== 'error');
+    }
+  });
+  function interestsChanged() {
     if ($('interest-fields').disabled) return;
-    const interests = interestInputs().filter(el => el.checked).map(el => el.value);
-    action(event.currentTarget, 'interests-feedback', async () => {
-      const result = await request('/v1/me/interests', { method: 'PUT', body: JSON.stringify({ interests }) });
-      applyInterests(result); show('interests-feedback', '관심사를 저장했습니다.');
-    });
+    interestCount(); autosave.change();
+  }
+  $('interest-options').addEventListener('change', interestsChanged);
+  for (const [id, checked] of [['interests-all', true], ['interests-clear', false]]) $(id).addEventListener('click', () => {
+    interestInputs().forEach(el => { el.checked = checked; }); interestsChanged();
+  });
+  $('interests-retry').addEventListener('click', loadInterests);
+  $('interests-save-retry').addEventListener('click', () => autosave.flush().catch(() => {}));
+  $('interests-form').addEventListener('submit', event => event.preventDefault());
+  // Finish pending writes before leaving for the main page or a sidebar topic.
+  document.addEventListener('click', async event => {
+    const link = event.target.closest('a[href]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || link.target || link.hasAttribute('download')) return;
+    const target = new URL(link.href, location.href);
+    if (target.origin !== location.origin || (target.pathname === location.pathname && target.search === location.search) || !autosave.dirty()) return;
+    event.preventDefault();
+    try { await autosave.flush(); location.assign(target.href); }
+    catch { $('interests-feedback').scrollIntoView({ block: 'center' }); }
+  });
+  window.addEventListener('beforeunload', event => {
+    if (autosave.dirty()) { event.preventDefault(); event.returnValue = ''; }
   });
 
   function applySettings(data) {
@@ -249,7 +272,6 @@
   });
   await Promise.all([
     loadInterests(),
-    action($('settings-form'), 'settings-feedback', async () => { applySettings(await request('/v1/me/settings')); }),
     action($('schedule-form'), 'schedule-feedback', loadSchedules),
   ]);
 })();
