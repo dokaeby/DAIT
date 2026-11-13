@@ -60,7 +60,14 @@ def list_news(
         if cursor is not None:
             raise ValidationFailedError
         response = news_feed_service.list_news(
-            settings, None, q, "latest", min(page_size, 10), None, refresh=refresh
+            settings,
+            category,
+            q,
+            "latest",
+            min(page_size, 10),
+            None,
+            language=language,
+            refresh=refresh,
         )
         return response.model_copy(
             update={
