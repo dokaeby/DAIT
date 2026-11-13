@@ -12,7 +12,7 @@
 |---|---|
 | 문서 버전 | 1.0.4 |
 | 기준일 | 2026-11-13 |
-| 대상 | DAIT 단계 1 MVP 메인·상세보기·설정 UI |
+| 대상 | DAIT 단계 1 MVP 메인·설정 UI |
 | 테스트 수준 | Browser UI Automation / End-to-End |
 | 기본 도구 | Playwright for Python, pytest |
 | 기준 문서 | 화면·기능·API·DB·통합 테스트 문서 v1.0.4 |
@@ -48,7 +48,7 @@
 
 - 메인: 뉴스 목록, 카테고리, 정렬, 검색, 빈 결과, 부분 상태, 재시도
 - 상세보기: 3줄 요약, 번역, 처리·원본 정보, 관련 뉴스, 원문, 링크 복사
-- 설정: 예약 수집, 관심 설정, 노출 개수, 알림, 취소, 저장, 재진입 복원
+- 설정: 예약 수집, 관심 설정, 목록 표시, 닉네임·계정 관리, 취소, 저장, 재진입 복원. 알림 토글은 없다.
 - 공통: 네비게이션, 반응형 레이아웃, 키보드 조작, 접근성 이름, 로딩·오류 상태
 - 인증 경계: 비인증 상태의 보호 화면 접근 차단
 
@@ -69,8 +69,8 @@
 | `10_통합_test_cases_v1.0.4.md` | 통합 시나리오와 seed |
 | `11_통합_test_procedure_v1.0.4.md` | 통합 환경, 장애·보안 절차 |
 | `12_test_guide_v1.0.4.md` | 실행 순서와 품질 게이트 |
-| `DAIT_화면설계서_v1.0.1.pptx` | 화면 구성과 표시 우선순위 |
-| `mockup/*.html` | 메인·상세·설정 DOM과 반응형 기준 |
+| `DAIT_화면설계서_v1.0.4.pptx` | 메인·설정 화면 구성과 표시 우선순위 |
+| `mockup/index.html`, `mockup/settings.html` | 메인·설정 DOM과 반응형 기준 |
 
 ## 4. 공통 사전 조건
 
@@ -108,7 +108,7 @@ Firefox·WebKit은 호환성 게이트로 추가할 수 있지만 v1.0.4 기본 
 | ID | 우선순위 | 관련 요구 | 시나리오·절차 | 기대 결과 | 증거 |
 |---|---|---|---|---|---|
 | UI-COM-001 | P0 | 공통, FR-HOME-01 | Desktop 메인 진입 후 랜드마크, 탐색, `h1`, 검색, 뉴스 목록을 role로 조회한다. | 핵심 영역이 중복 없이 보이고 현재 화면이 탐색에서 식별된다. | screenshot |
-| UI-COM-002 | P0 | 공통 반응형 | 세 화면을 Desktop·Mobile로 열고 `scrollWidth <= clientWidth`를 확인한다. | 가로 넘침·겹침이 없고 Mobile은 단일 열과 하단 탐색을 사용한다. | 6 screenshots |
+| UI-COM-002 | P0 | 공통 반응형 | 메인과 설정을 Desktop·Mobile로 열고 `scrollWidth <= clientWidth`를 확인한다. | 가로 넘침·겹침이 없고 Mobile은 단일 열과 두 메뉴 하단 탐색을 사용한다. | 4 screenshots |
 | UI-COM-003 | P1 | 공통 접근성 | `Tab`으로 해당 화면의 모든 조작 요소를 순회하고 focus-visible을 확인한다. | 포커스가 유실·고립되지 않고 버튼·링크·입력의 이름이 유일하다. | trace, screenshot |
 | UI-COM-004 | P1 | FR-HOME-02, AC-STATE-01 | `aria-live="polite"` 영역에 로딩·빈 결과·오류 메시지를 순차적으로 노출한다. | 상태 변경이 텍스트로 전달되고 새로 추가된 메시지가 포커스를 빼앗지 않는다. | DOM assertion |
 | UI-AUTH-001 | P0 | FR-AUTH-03 | 인증 상태를 제거하고 설정 URL을 직접 연다. | 로그인 화면으로 이동하거나 정책상 일반화된 인증 오류를 표시하며 설정 데이터는 보이지 않는다. | URL, screenshot |
@@ -149,12 +149,12 @@ Firefox·WebKit은 호환성 게이트로 추가할 수 있지만 v1.0.4 기본 
 
 | ID | 우선순위 | 관련 요구 | 시나리오·절차 | 기대 결과 | 증거 |
 |---|---|---|---|---|---|
-| UI-SET-001 | P0 | FR-SET-01~03, IT-SET-001 | USER-A로 설정을 열고 settings·schedules 응답과 필드를 비교한다. | `08:30`, `Asia/Seoul`, 관심 키워드, 출처, 카테고리, 10건, 알림 상태가 일치한다. | responses, screenshot |
+| UI-SET-001 | P0 | FR-SET-01~03, IT-SET-001 | USER-A로 설정을 열고 settings·schedules 응답과 화면 필드를 비교한다. | `08:30`, `Asia/Seoul`, 관심 조건, 10건, 계정 정보가 일치하며 알림 토글은 표시되지 않는다. | responses, screenshot |
 | UI-SET-002 | P0 | FR-SET-01, IT-SCH-001~002 | 예약을 `09:00 Asia/Seoul`로 생성 또는 변경하고 저장한다. | POST/PATCH가 1회 호출되고 다음 실행 시각이 새 값으로 표시된다. | request, response |
 | UI-SET-003 | P0 | FR-SET-01, IT-SCH-003 | 예약 활성 스위치를 끄고 저장한다. | `enabled=false`가 전송되고 재조회·재진입 후에도 비활성이다. | request, reload |
 | UI-SET-004 | P1 | FR-SET-01, IT-SCH-004 | 테스트 예약을 삭제하고 확인한다. | DELETE 204 후 목록에서 사라지고 재조회에서도 복원되지 않는다. | request, reload |
 | UI-SET-005 | P0 | FR-SET-02, IT-SET-002 | 키워드에 공백·중복을 포함하고 승인 출처·AI 카테고리를 선택해 저장한다. | trim·중복 제거된 목록과 선택 ID 배열이 저장되고 화면에 복원된다. | request body, reload |
-| UI-SET-006 | P0 | FR-SET-03, IT-SET-004~006 | 기본 노출 수를 10→5로 바꾸고 인앱·이메일 알림을 토글한다. | 허용된 5/10과 boolean 값만 저장되고 재진입 후 유지된다. | request body, reload |
+| UI-SET-006 | P0 | FR-SET-03, IT-SET-004~006 | 기본 노출 수를 10→5로 바꾸고 저장한다. | 5가 저장되고 재진입 후 유지되며 알림 설정 컨트롤은 표시되지 않는다. | request body, reload |
 | UI-SET-007 | P0 | FR-SET-02~03, IT-SET-003 | 허용되지 않은 출처, 카테고리, 노출 수, 잘못된 시간을 각각 입력한다. | 항목별 오류가 입력과 연결되고 저장 API·DB는 변경되지 않는다. | error DOM, request absence |
 | UI-SET-008 | P0 | FR-SET-02~03, IT-SET-007 | 값을 바꾸고 `취소`를 선택한다. | PATCH/POST가 호출되지 않고 서버 최신 값으로 복원된다. | request count, DOM |
 | UI-SET-009 | P0 | FR-SET-01~03 | 설정을 저장하고 새 페이지에서 재진입한다. | 저장 성공 안내 후 서버 값이 복원되며 클라이언트 메모리만으로 유지하지 않는다. | fresh context screenshot |

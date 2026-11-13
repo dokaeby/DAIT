@@ -48,7 +48,7 @@ ruff check . && ruff format --check . && pyright && pytest -q
 2. 단위 테스트 실행
 3. API 테스트 실행
 4. 메인 화면 수동 테스트
-5. 상세보기 화면 수동 테스트
+5. 메인 내 상세 패널 수동 테스트
 6. 설정 화면 수동 테스트
 7. DB 저장값 확인
 8. Redis 캐시·큐 확인
@@ -403,8 +403,6 @@ $body = @{
     categories = @("AI")
     keywords = @("멀티모달", "AI 에이전트")
     source_ids = @("source-openai")
-    in_app_notice = $true
-    email_notice = $false
 } | ConvertTo-Json
 
 Invoke-RestMethod `
@@ -484,12 +482,12 @@ DB에 다음 데이터가 준비되어 있어야 한다.
 
 ---
 
-# 8. 상세보기 화면 테스트 방법
+# 8. 메인 내 상세 패널 테스트 방법
 
 ## 8.1 진입
 
 1. 메인 화면에서 첫 번째 뉴스의 `상세 보기` 클릭
-2. 상세 화면 URL 또는 route 변경 확인
+2. 메인 화면에서 상세 패널이 열리는지 확인
 
 ## 8.2 화면 검증
 
@@ -537,7 +535,7 @@ Clipboard 권한 거부도 테스트한다.
 
 # 9. 설정 화면 테스트 방법
 
-메인·상세·설정은 모두 단계 1 MVP 구현 범위다.
+메인·설정은 단계 1 MVP 화면이며 상세 정보는 메인 내 패널로 제공한다.
 
 ## 9.1 설정 화면 진입
 
@@ -549,7 +547,7 @@ Clipboard 권한 거부도 테스트한다.
 
 - 예약 수집
 - 관심 설정
-- 노출·알림
+- 목록 표시
 - 계정·정책
 
 ## 9.2 예약 수집 테스트
@@ -592,16 +590,6 @@ ORDER BY id DESC;
 2. 10 저장 → 성공
 3. 7 전송 → 422 또는 명시적 validation 실패
 
-## 9.5 알림 테스트
-
-1. 인앱 알림 ON
-2. 이메일 알림 OFF
-3. 저장
-4. 재조회
-5. 동일 상태 확인
-
-이후 반대로 설정해 재검증한다.
-
 ## 9.6 변경 취소 테스트
 
 1. 저장된 값과 다른 값을 입력
@@ -626,8 +614,6 @@ WHERE user_id = 'TEST_USER_ID';
 - categories
 - keywords
 - source_ids
-- in_app_notice
-- email_notice
 
 ## 10.2 뉴스와 콘텐츠 결과
 
@@ -868,7 +854,7 @@ document.documentElement.scrollWidth <= document.documentElement.clientWidth
 3. 검색 입력 이동
 4. 검색 실행
 5. 카드 상세 보기 이동
-6. 상세 화면 버튼 이동
+6. 메인 내 상세 패널 버튼 동작
 7. 설정 이동
 8. 모든 입력과 버튼 접근 확인
 
@@ -950,7 +936,6 @@ javascript:alert(1)
 15. 예약 시각 변경
 16. 관심 키워드 변경
 17. 기본 노출 수 5 또는 10 선택
-18. 인앱/메일 알림 변경
 19. 설정 저장
 20. 페이지 새로고침
 21. 저장값 복원 확인

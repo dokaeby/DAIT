@@ -23,7 +23,12 @@ from dait.schemas.news import (
     decode_cursor,
     encode_cursor,
 )
-from dait.services import cache_retry_service, news_search_service, pipeline_sync_service
+from dait.services import (
+    cache_retry_service,
+    feed_index_service,
+    news_search_service,
+    pipeline_sync_service,
+)
 
 _PARTIAL_WINDOW = timedelta(hours=24)
 _PARTIAL_MESSAGE = "일부 출처의 수집이 지연되고 있습니다."
@@ -97,6 +102,7 @@ def list_news(
           Redis(또는 메모리 fallback) 캐시 5분+jitter, 락으로 stampede를 막는다.
     """
     pipeline_sync_service.request_sync(settings)
+    feed_index_service.request_classify(settings)
     normalized = news_search_service.normalize_query(query)
     scope_key = sha256(repr((settings.database_url, language, interests)).encode()).hexdigest()[:24]
     cache_key = cache_retry_service.list_cache_key(

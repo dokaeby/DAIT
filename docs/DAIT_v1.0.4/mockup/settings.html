@@ -15,9 +15,6 @@
           <span class="brand-copy">AI 뉴스 큐레이션 서비스</span>
         </a>
         <div class="header-actions">
-          <button class="icon-button" type="button" aria-label="알림 목업">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></svg>
-          </button>
           <span class="text-button">
             <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
             설정
@@ -33,10 +30,6 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8" /><path d="M5 10v10h5v-6h4v6h5V10" /></svg>
               오늘의 AI 뉴스
             </a>
-            <a class="nav-item" href="detail.html">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
-              뉴스 상세
-            </a>
           </nav>
           <nav class="nav-group">
             <span class="nav-label">Account</span>
@@ -45,7 +38,7 @@
               설정
             </span>
           </nav>
-          <p class="nav-note">단계 2 예상 화면 목업입니다. 입력·토글·저장 버튼은 실제 값을 변경하지 않습니다.</p>
+          <p class="nav-note">DAIT 설정 화면의 구성과 저장 항목을 보여주는 목업입니다.</p>
         </aside>
 
         <main class="main">
@@ -53,22 +46,22 @@
             <div>
               <p class="eyebrow">Personal Workspace</p>
               <h1 class="page-title">설정</h1>
-              <p class="page-description">뉴스 수집 조건, 표시 방식과 알림 채널을 관리합니다.</p>
+              <p class="page-description">뉴스 수집 조건과 목록 표시 방식을 관리합니다.</p>
             </div>
-            <span class="phase-tag">단계 2 예상 화면</span>
+            <span class="phase-tag">설정 화면</span>
           </div>
 
           <div class="mockup-note">
             <strong>목업</strong>
-            <span>이 화면은 상세기획서의 예약·관심 설정·알림 정책을 시각화한 정적 화면입니다.</span>
+            <span>예약·관심 설정, 목록 표시, 닉네임과 계정 관리 항목을 보여줍니다.</span>
           </div>
 
           <div class="settings-layout">
             <nav class="settings-menu" aria-label="설정 구역 목업">
               <a class="active" href="#schedule">예약 수집</a>
               <a href="#interests">관심 설정</a>
-              <a href="#display">노출·알림</a>
-              <a href="#account">계정·정책</a>
+              <a href="#display">목록 표시</a>
+              <a href="#account">닉네임·계정</a>
             </nav>
 
             <div class="settings-sections">
@@ -133,8 +126,8 @@
               <section class="settings-card" id="display">
                 <div class="settings-card-head">
                   <div>
-                    <h2>노출·알림</h2>
-                    <p>목록의 기본 개수와 결과를 받을 채널을 선택합니다.</p>
+                    <h2>목록 표시</h2>
+                    <p>뉴스 목록에 표시할 기본 개수를 선택합니다.</p>
                   </div>
                 </div>
                 <div class="form-grid">
@@ -145,28 +138,14 @@
                       <option>5개</option>
                     </select>
                   </label>
-                  <div class="form-field">
-                    <span class="field-label">알림 채널</span>
-                    <span class="field-help">활성화한 채널에만 한 번 전달됩니다.</span>
-                  </div>
-                </div>
-                <div style="margin-top: 10px">
-                  <div class="toggle-row">
-                    <div class="toggle-copy"><strong>인앱 알림</strong><span>처리 완료 결과를 DAIT 안에서 알려줍니다.</span></div>
-                    <span class="switch on" role="img" aria-label="인앱 알림 켜짐 목업"></span>
-                  </div>
-                  <div class="toggle-row">
-                    <div class="toggle-copy"><strong>메일 알림</strong><span>가입 이메일로 요약 결과를 보냅니다.</span></div>
-                    <span class="switch" role="img" aria-label="메일 알림 꺼짐 목업"></span>
-                  </div>
                 </div>
               </section>
 
               <section class="settings-card" id="account">
                 <div class="settings-card-head">
                   <div>
-                    <h2>계정·정책</h2>
-                    <p>개인정보 처리 내용을 확인하거나 계정 탈퇴 흐름으로 이동합니다.</p>
+                    <h2>닉네임·계정</h2>
+                    <p>닉네임을 변경하고 계정 정보를 확인하거나 탈퇴를 진행합니다.</p>
                   </div>
                 </div>
                 <div class="toggle-row">
@@ -193,10 +172,6 @@
       <a class="mobile-tab" href="index.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8" /><path d="M5 10v10h5v-6h4v6h5V10" /></svg>
         오늘의 뉴스
-      </a>
-      <a class="mobile-tab" href="detail.html">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
-        상세 목업
       </a>
       <a class="mobile-tab active" href="settings.html">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>

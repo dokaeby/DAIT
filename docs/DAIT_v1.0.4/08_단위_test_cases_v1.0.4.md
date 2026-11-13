@@ -13,7 +13,7 @@
 | 문서 버전 | 1.0.4 |
 | 기준일 | 2026-11-13 |
 | 대상 | 단계 1 MVP 전체 기능 |
-| 기준 화면 | 메인 / 상세보기 / 설정 |
+| 기준 화면 | 메인 / 메인 내 상세 패널 / 설정 |
 | 기준 문서 | 01~07 v1.0.4 문서, 화면설계서 v1.0.1 |
 | 테스트 수준 | Unit Test |
 | 기본 도구 | pytest, pytest-asyncio, FastAPI TestClient/httpx, unittest.mock |
@@ -314,7 +314,7 @@
 
 ### UT-SET-001 설정 기본 조회
 - 관련: FR-SET-02/03
-- 기대 `default_count`, categories, keywords, source_ids, in_app_notice, email_notice 반환
+- 기대 `default_count`, categories, keywords, source_ids 반환
 
 ### UT-SET-002 default_count 허용값
 - 5, 10 허용
@@ -329,12 +329,6 @@
 
 ### UT-SET-005 미지원 카테고리 거부
 - 활성 카테고리(`AI`/`ECONOMY`/`POLITICS`) 외 값(예: `WEATHER`) 거부
-
-### UT-SET-006 인앱 알림 독립 토글
-- true/false 모두 저장 가능
-
-### UT-SET-007 이메일 알림 독립 토글
-- true/false 모두 저장 가능
 
 ### UT-SET-008 설정 저장 후 정규화 응답
 - repository 저장 값과 response 동일

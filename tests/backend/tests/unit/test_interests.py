@@ -40,6 +40,21 @@ EXPECTED_CODES = [
     "society.health",
     "society.climate",
     "society.culture",
+    "en.ai.models",
+    "en.ai.agents",
+    "en.ai.devtools",
+    "en.ai.opensource",
+    "en.ai.infra",
+    "en.economy.industry",
+    "en.economy.business",
+    "en.economy.startups",
+    "en.economy.markets",
+    "en.economy.jobs",
+    "en.society.policy",
+    "en.society.education",
+    "en.society.health",
+    "en.society.climate",
+    "en.society.culture",
 ]
 
 
@@ -74,7 +89,7 @@ def codes_of(text: str) -> list[str]:
 
 
 def test_enum_matches_readme_table() -> None:
-    """관심사 코드 15개가 README 6.2절 표와 철자·순서까지 같다."""
+    """관심사 코드 30개(국내 15 + 해외 15)가 README 6.2절 표와 철자·순서까지 같다."""
     assert [code.value for code in InterestCode] == EXPECTED_CODES
     assert set(INTEREST_NAMES) == set(InterestCode)
 

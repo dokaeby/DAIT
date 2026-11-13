@@ -11,15 +11,6 @@
       const source = card.querySelector('.news-meta span').textContent.trim();
       const time = card.querySelector('time').textContent.trim();
       const data = {title, summary, source, time, id: String(i + 1)};
-      card.tabIndex = 0;
-      card.setAttribute('role', 'link');
-      card.setAttribute('aria-label', `${title} 상세 보기`);
-      const link = card.querySelector('a[href="detail.html"]');
-      link.href = `detail.html?article=${i + 1}`;
-      const open = () => { sessionStorage.setItem('dait-article', JSON.stringify(data)); location.href = link.href; };
-      card.addEventListener('click', e => { if (!e.target.closest('button, a, select')) open(); });
-      card.addEventListener('keydown', e => { if (e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(); } });
-      link.addEventListener('click', () => sessionStorage.setItem('dait-article', JSON.stringify(data)));
       return {card, data, index:i};
     });
     function search() {
