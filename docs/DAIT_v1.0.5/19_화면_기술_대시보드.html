@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DAIT v1.0.5 · 화면 및 기술 대시보드</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #171e2e;
+    --panel-2: #1d2740;
+    --line: #2a3554;
+    --text: #e8ecf6;
+    --muted: #93a0bd;
+    --accent: #6ea8fe;
+    --accent-2: #7ee2b8;
+    --warn: #f5c26b;
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    line-height: 1.55;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  /* ── 헤더 ─────────────────────────── */
+  .hero {
+    display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;
+    justify-content: space-between; margin-bottom: 28px;
+  }
+  .hero h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .hero p { margin: 0; color: var(--muted); }
+  .hero .meta { text-align: right; color: var(--muted); font-size: 13px; }
+  .hero .meta b { color: var(--text); }
+
+  /* ── 기술 스택 카드 ────────────────── */
+  .stack-grid {
+    display: grid; gap: 14px; margin-bottom: 36px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  }
+  .stack-card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px 18px;
+  }
+  .stack-card h3 { margin: 0 0 10px; font-size: 14px; color: var(--accent); letter-spacing: .4px; }
+  .stack-card ul { margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
+  .stack-card li { padding: 3px 0; }
+  .stack-card li b { color: var(--text); font-weight: 600; }
+
+  /* ── 섹션 타이틀 ───────────────────── */
+  .section-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 18px; margin: 40px 0 16px; letter-spacing: -0.3px;
+  }
+  .section-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .section-title .count {
+    font-size: 12px; color: var(--muted); font-weight: 400;
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px;
+  }
+
+  /* ── 화면 카드 ─────────────────────── */
+  .screen-grid { display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); }
+  .screen-card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .screen-shot {
+    background: #0b0f1a; border-bottom: 1px solid var(--line);
+    max-height: 340px; overflow: hidden; position: relative;
+  }
+  .screen-shot img { width: 100%; display: block; object-fit: cover; object-position: top; }
+  .screen-shot .shot-tag {
+    position: absolute; top: 10px; left: 10px;
+    background: rgba(15,20,32,.85); border: 1px solid var(--line);
+    color: var(--muted); font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    font-family: var(--mono);
+  }
+  .screen-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .screen-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .screen-head h2 { margin: 0; font-size: 18px; letter-spacing: -0.3px; }
+  .route {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    background: rgba(110,168,254,.12); border: 1px solid rgba(110,168,254,.3);
+    padding: 2px 8px; border-radius: 6px;
+  }
+  .desc { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .block h4 {
+    margin: 0 0 6px; font-size: 12px; color: var(--accent-2);
+    letter-spacing: .6px; text-transform: uppercase;
+  }
+  .block ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .block li { padding: 2px 0; }
+  .block li b, .block p b { color: var(--text); font-weight: 600; }
+
+  .tech-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .badge {
+    font-size: 11.5px; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+  }
+  .badge.api { color: var(--accent); border-color: rgba(110,168,254,.35); }
+  .badge.fe { color: var(--accent-2); border-color: rgba(126,226,184,.35); }
+  .badge.be { color: var(--warn); border-color: rgba(245,194,107,.35); }
+
+  .files { font-family: var(--mono); font-size: 11.5px; color: var(--muted); word-break: break-all; }
+  .files span { color: var(--text); }
+
+  /* ── API 표 ────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--panel-2); color: var(--accent); font-size: 12px; letter-spacing: .4px; }
+  tr:last-child td { border-bottom: none; }
+  td code, .mono { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  td small { color: var(--muted); }
+
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-size: 13px; color: var(--muted); margin: 8px 0 0;
+  }
+  .flow .node {
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 12px; color: var(--text); font-size: 12.5px;
+  }
+  .flow .arrow { color: var(--accent); }
+
+  footer { margin-top: 56px; color: var(--muted); font-size: 12px; text-align: center; }
+  @media (max-width: 560px) {
+    .screen-grid { grid-template-columns: 1fr; }
+    .hero .meta { text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div>
+      <h1>DAIT 화면 · 기술 대시보드</h1>
+      <p>v1.0.5 기준 구현 화면과 사용 기술을 정리한 문서입니다. 스크린샷은 로컬 SQLite + 샘플 데이터로 실제 앱을 실행해 촬영했습니다.</p>
+    </div>
+    <div class="meta">
+      문서 버전 <b>1.0.5</b> · 작성일 <b>2026-11-16</b><br/>
+      배포 <b>Render (dait.onrender.com)</b> · DB <b>Supabase PostgreSQL</b>
+    </div>
+  </div>
+
+  <!-- ══════════ 기술 스택 ══════════ -->
+  <div class="section-title">전체 기술 스택 <span class="count">Architecture</span></div>
+  <div class="stack-grid">
+    <div class="stack-card">
+      <h3>프론트엔드</h3>
+      <ul>
+        <li><b>HTML5</b> 시맨틱 마크업 + CSS3 반응형 (모바일 대응)</li>
+        <li><b>Vanilla JavaScript</b> — 프레임워크 없이 모듈 스크립트</li>
+        <li>상태는 <b>URL 쿼리스트링</b> + <b>Web Storage</b>(local/session)</li>
+        <li><code>&lt;dialog&gt;</code> 네이티브 모달, SVG 인라인 아이콘</li>
+      </ul>
+    </div>
+    <div class="stack-card">
+      <h3>백엔드 API</h3>
+      <ul>
+        <li><b>FastAPI</b> + Python 3.12, Pydantic v2 검증</li>
+        <li>REST <code>/v1/*</code> — auth · news · me · interests · settings · schedules</li>
+        <li>JWT Access(15분)/Refresh(14일), 슬라이딩 갱신</li>
+        <li>요청 컨텍스트 미들웨어, 감사 로그, Rate throttle</li>
+      </ul>
+    </div>
+    <div class="stack-card">
+      <h3>데이터 · 인프라</h3>
+      <ul>
+        <li><b>Supabase PostgreSQL</b> 운영 / <b>SQLite</b> 로컬·테스트</li>
+        <li><b>Alembic</b> 마이그레이션 — 앱 시작 시 자동 <code>upgrade head</code></li>
+        <li>뉴스 수집·AI 요약은 별도 <b>pipeline 서비스</b>가 비동기 처리</li>
+        <li><b>Render</b> 웹서비스 2개 + Key Value(Redis 호환)</li>
+      </ul>
+    </div>
+    <div class="stack-card">
+      <h3>핵심 동작 방식</h3>
+      <ul>
+        <li>목록·검색은 <b>DB 저장 결과만 조회</b> (요청 경로에 크롤링/LLM 없음)</li>
+        <li>주제 분류는 <b>1회 비동기 사전 분류</b> → 이후 카테고리/관심사는 DB 조인</li>
+        <li>외국어 기사는 <b>3줄 요약 전부 한국어 번역</b> 후 저장</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ══════════ 화면 목록 ══════════ -->
+  <div class="section-title">화면 목록 <span class="count">5 screens</span></div>
+  <div class="screen-grid">
+
+    <!-- 1. 메인 뉴스 -->
+    <article class="screen-card">
+      <div class="screen-shot">
+        <span class="shot-tag">member · desktop</span>
+        <img src="shots/main-member.png" alt="메인 뉴스 화면 (로그인)" loading="lazy" />
+      </div>
+      <div class="screen-body">
+        <div class="screen-head">
+          <h2>메인 뉴스 목록</h2>
+          <span class="route">GET /</span>
+        </div>
+        <p class="desc">오늘의 AI 뉴스를 카드 목록으로 보여주는 메인 화면. 비회원은 최신 10건, 회원은 카테고리·관심사·검색·언어 필터와 페이지네이션을 사용한다. 각 카드에는 AI 3줄 요약, 출처, 발행 시각, 읽음 표시가 포함된다.</p>
+        <div class="block">
+          <h4>주요 기능</h4>
+          <ul>
+            <li><b>검색</b>: 키워드·기업·기술 검색 + 검색 초기화, 결과 건수 표시</li>
+            <li><b>필터</b>: 카테고리 칩(건수 배지), 하위 카테고리/관심사, 언어(한/영) 전환</li>
+            <li><b>페이지네이션</b>: 이전/다음 + 페이지 번호 직접 이동, URL과 동기화</li>
+            <li><b>읽음 상태</b>: 회원은 서버 read-state, 비회원은 localStorage 기록</li>
+          </ul>
+        </div>
+        <div class="block">
+          <h4>사용 기술</h4>
+          <div class="tech-row">
+            <span class="badge fe">HTML5 시맨틱</span>
+            <span class="badge fe">Vanilla JS 모듈</span>
+            <span class="badge fe">URLSearchParams + history.replaceState</span>
+            <span class="badge fe">AbortController (stale 요청 취소)</span>
+            <span class="badge fe">sessionStorage 피드 캐시</span>
+            <span class="badge fe">sticky controls / scroll buttons</span>
+          </div>
+        </div>
+        <div class="block">
+          <h4>연관 API</h4>
+          <div class="tech-row">
+            <span class="badge api">GET /v1/news</span>
+            <span class="badge api">GET /v1/news/activity</span>
+            <span class="badge api">GET /v1/news/read-state</span>
+            <span class="badge api">PUT /v1/news/{id}/read</span>
+          </div>
+        </div>
+        <p class="files"><span>index.html</span> · news-ui.js · app.js · header-search.js · sticky-controls.js · news-ui.css · local-design.css · local-app.css · mockup.css</p>
+      </div>
+    </article>
+
+    <!-- 2. 카테고리 필터 상태 -->
+    <article class="screen-card">
+      <div class="screen-shot">
+        <span class="shot-tag">member · category=AI</span>
+        <img src="shots/main-category-ai.png" alt="카테고리 필터 적용 화면" loading="lazy" />
+      </div>
+      <div class="screen-body">
+        <div class="screen-head">
+          <h2>카테고리 · 관심사 필터</h2>
+          <span class="route">/?category=AI</span>
+        </div>
+        <p class="desc">칩 선택 시 <code>category</code>·<code>topic</code>·<code>interest</code> 파라미터가 URL에 반영되고, 서버는 사전 분류된 <code>news_topics</code> 테이블을 조회해 필터링한다. 최초 1회 비동기 분류 이후에는 매 요청마다 키워드 매칭을 다시 하지 않는다.</p>
+        <div class="block">
+          <h4>사용 기술</h4>
+          <div class="tech-row">
+            <span class="badge fe">chip/button 상태 관리</span>
+            <span class="badge fe">URLSearchParams 직렬화</span>
+            <span class="badge fe">요청 abort + stale 응답 무시</span>
+            <span class="badge be">news_topics 사전 분류 테이블</span>
+          </div>
+        </div>
+        <div class="block">
+          <h4>데이터 흐름</h4>
+          <div class="flow">
+            <span class="node">/v1/news 요청</span><span class="arrow">→</span>
+            <span class="node">feed_index_service</span><span class="arrow">→</span>
+            <span class="node">news_topics 조회</span><span class="arrow">→</span>
+            <span class="node">필터된 목록 응답</span>
+          </div>
+        </div>
+        <p class="files"><span>news-ui.js</span> · interest_matching.py · feed_index_service.py · feed_index_repository.py</p>
+      </div>
+    </article>
+
+    <!-- 3. 로그인/회원가입 -->
+    <article class="screen-card">
+      <div class="screen-shot">
+        <span class="shot-tag">auth dialog</span>
+        <img src="shots/login-dialog.png" alt="로그인 다이얼로그" loading="lazy" />
+      </div>
+      <div class="screen-body">
+        <div class="screen-head">
+          <h2>로그인 · 회원가입</h2>
+          <span class="route">modal · /v1/auth/*</span>
+        </div>
+        <p class="desc">app.js가 <code>&lt;dialog&gt;</code> 요소로 인증 카드를 동적으로 생성한다. 이메일+비밀번호 로그인/회원가입, 비밀번호 표시 토글, 구글 로그인 연동, 닉네임 중복 실시간 확인을 제공한다. 첫 로그인 성공 시 설정 페이지의 관심사 온보딩으로 이동한다.</p>
+        <div class="block">
+          <h4>사용 기술</h4>
+          <div class="tech-row">
+            <span class="badge fe">&lt;dialog&gt; + closedby</span>
+            <span class="badge fe">localStorage JWT 저장</span>
+            <span class="badge fe">navigator.locks 토큰 갱신 직렬화</span>
+            <span class="badge fe">fetch + Bearer 헤더</span>
+            <span class="badge be">JWT HS256 · access 15분 / refresh 14일</span>
+          </div>
+        </div>
+        <div class="block">
+          <h4>연관 API</h4>
+          <div class="tech-row">
+            <span class="badge api">POST /v1/auth/login</span>
+            <span class="badge api">POST /v1/auth/signup</span>
+            <span class="badge api">POST /v1/auth/refresh</span>
+            <span class="badge api">POST /v1/auth/logout</span>
+            <span class="badge api">GET /v1/auth/nickname-availability</span>
+            <span class="badge api">/v1/auth/google/*</span>
+          </div>
+        </div>
+        <p class="files"><span>app.js</span> · auth.css · auth_routes.py · social_routes.py</p>
+      </div>
+    </article>
+
+    <!-- 4. 설정 화면 -->
+    <article class="screen-card">
+      <div class="screen-shot">
+        <span class="shot-tag">/settings.html</span>
+        <img src="shots/settings-main.png" alt="설정 화면" loading="lazy" />
+      </div>
+      <div class="screen-body">
+        <div class="screen-head">
+          <h2>설정</h2>
+          <span class="route">GET /settings.html</span>
+        </div>
+        <p class="desc">예약 수집, 관심 카테고리, 닉네임 변경, 계정 정보를 한 페이지의 사이드 메뉴 + 카드 섹션으로 제공한다. 비로그인 시 "로그인이 필요합니다" 상태를 표시하고, 첫 로그인 사용자에게는 관심사 선택 온보딩을 먼저 보여준다.</p>
+        <div class="block">
+          <h4>주요 기능</h4>
+          <ul>
+            <li><b>예약 수집</b>: 시간·분 선택으로 최대 5개 예약, 30분 단위, KST 기준</li>
+            <li><b>관심 카테고리</b>: 카탈로그 기반 다중 선택 + 자동 저장(interest-autosave.js)</li>
+            <li><b>닉네임</b>: 2~30자, 중복 확인 후 변경</li>
+            <li><b>계정</b>: 이메일·닉네임 표시, 비밀번호/확인 입력 후 회원 탈퇴</li>
+          </ul>
+        </div>
+        <div class="block">
+          <h4>사용 기술</h4>
+          <div class="tech-row">
+            <span class="badge fe">앵커 네비게이션 + 카드 섹션</span>
+            <span class="badge fe">switch/field 공통 폼 컴포넌트</span>
+            <span class="badge fe">&lt;dialog&gt; 탈퇴 확인</span>
+            <span class="badge fe">낙관적 자동 저장 + 재시도 버튼</span>
+          </div>
+        </div>
+        <div class="block">
+          <h4>연관 API</h4>
+          <div class="tech-row">
+            <span class="badge api">GET/PUT /v1/interests/catalog · /v1/me/interests</span>
+            <span class="badge api">GET/POST/PATCH/DELETE /v1/me/schedules</span>
+            <span class="badge api">PATCH /v1/me/nickname</span>
+            <span class="badge api">GET/PATCH /v1/me/settings</span>
+            <span class="badge api">DELETE /v1/me (탈퇴)</span>
+          </div>
+        </div>
+        <p class="files"><span>settings.html</span> · settings-ui.js · settings-ui.css · interest-autosave.js</p>
+      </div>
+    </article>
+
+    <!-- 5. 첫 로그인 온보딩 -->
+    <article class="screen-card">
+      <div class="screen-shot">
+        <span class="shot-tag">?welcome=1</span>
+        <img src="shots/settings-welcome.png" alt="관심사 온보딩" loading="lazy" />
+      </div>
+      <div class="screen-body">
+        <div class="screen-head">
+          <h2>관심사 온보딩 (첫 로그인)</h2>
+          <span class="route">/settings.html?welcome=1#interests</span>
+        </div>
+        <p class="desc">회원가입/첫 로그인 직후 관심 카테고리를 선택하도록 유도하는 화면. "나중에 설정하고 뉴스 보기"로 건너뛸 수 있고, 선택하지 않아도 저장되지 않는다. 이후 뉴스 목록의 카테고리 칩과 사이드바 소주제에 반영된다.</p>
+        <div class="block">
+          <h4>사용 기술</h4>
+          <div class="tech-row">
+            <span class="badge fe">welcome 쿼리 파라미터 분기</span>
+            <span class="badge fe">관심사 체크박스 그리드</span>
+            <span class="badge be">PUT /v1/me/interests 저장</span>
+          </div>
+        </div>
+        <p class="files"><span>settings.html</span>의 <span>welcome-interests</span> 섹션 · settings-ui.js · interest_routes.py</p>
+      </div>
+    </article>
+
+  </div>
+
+  <!-- ══════════ 보조 화면 ══════════ -->
+  <div class="section-title">보조 · 상태 화면 <span class="count">states</span></div>
+  <div class="screen-grid">
+    <article class="screen-card">
+      <div class="screen-body">
+        <div class="screen-head"><h2>비회원 뉴스 화면</h2><span class="route">/ (guest)</span></div>
+        <p class="desc">로그인 없이도 최신 뉴스 10건과 AI 요약을 볼 수 있다. 읽음 기록은 서버 대신 <code>localStorage(dait_guest_reads)</code>에 최대 2000건까지 보관한다.</p>
+        <div class="tech-row">
+          <span class="badge fe">비회원 분기 UI</span>
+          <span class="badge fe">localStorage 읽음 기록</span>
+          <span class="badge api">GET /v1/news (public)</span>
+        </div>
+        <p class="files"><span>news-ui.js</span> · app.js · <img src="shots/main-guest.png" style="display:none"></p>
+      </div>
+    </article>
+    <article class="screen-card">
+      <div class="screen-body">
+        <div class="screen-head"><h2>모바일 반응형</h2><span class="route">390px</span></div>
+        <p class="desc">모든 화면이 모바일 폭에서 한 컬럼으로 재배치된다. 카테고리는 칩 대신 셀렉트 박스로 제공되고 스크롤 이동 버튼이 표시된다.</p>
+        <div class="tech-row">
+          <span class="badge fe">CSS media query</span>
+          <span class="badge fe">모바일 토픽 select</span>
+          <span class="badge fe">스크롤 업/다운 버튼</span>
+        </div>
+        <p class="files"><span>mockup.css</span> · news-ui.css · settings-ui.css</p>
+      </div>
+    </article>
+    <article class="screen-card">
+      <div class="screen-body">
+        <div class="screen-head"><h2>개인정보처리방침 · 이용약관</h2><span class="route">/privacy.html · /terms.html</span></div>
+        <p class="desc">정적 HTML 문서로 FastAPI가 FileResponse로 직접 서빙한다. 사이드바 푸터와 회원가입/탈퇴 플로우에서 링크된다.</p>
+        <div class="tech-row">
+          <span class="badge fe">정적 HTML</span>
+          <span class="badge be">FileResponse 라우트</span>
+        </div>
+        <p class="files"><span>privacy.html</span> · <span>terms.html</span> · dait/main.py</p>
+      </div>
+    </article>
+  </div>
+
+  <!-- ══════════ API 맵 ══════════ -->
+  <div class="section-title">화면 ↔ API 매핑 <span class="count">API map</span></div>
+  <table>
+    <thead>
+      <tr><th style="width:180px">화면</th><th>주요 API</th><th>용도</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><b>메인 뉴스</b></td><td><code>GET /v1/news</code> <small>(q, category, topic, interest, language, sort, page)</small></td><td>목록·검색·필터 조회 (DB 저장 결과만)</td></tr>
+      <tr><td></td><td><code>GET /v1/news/activity</code></td><td>카테고리별 건수 배지</td></tr>
+      <tr><td></td><td><code>GET/PUT /v1/news/read-state</code>, <code>PUT /v1/news/{id}/read</code></td><td>읽음 표시 동기화</td></tr>
+      <tr><td><b>로그인/회원가입</b></td><td><code>POST /v1/auth/login · signup · refresh · logout</code></td><td>JWT 발급·갱신·폐기</td></tr>
+      <tr><td></td><td><code>GET /v1/auth/nickname-availability</code>, <code>/v1/auth/google/*</code></td><td>닉네임 중복 확인, 구글 OAuth</td></tr>
+      <tr><td><b>설정</b></td><td><code>GET/PUT /v1/me/interests</code>, <code>GET /v1/interests/catalog</code></td><td>관심 카테고리 조회·저장</td></tr>
+      <tr><td></td><td><code>GET/POST/PATCH/DELETE /v1/me/schedules</code></td><td>예약 수집 CRUD</td></tr>
+      <tr><td></td><td><code>PATCH /v1/me/nickname</code>, <code>DELETE /v1/me</code></td><td>닉네임 변경, 회원 탈퇴</td></tr>
+      <tr><td><b>공통</b></td><td><code>GET /v1/me/session</code>, <code>GET /healthz</code></td><td>세션 복원, 헬스체크</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    DAIT v1.0.5 · 화면/기술 대시보드 · 스크린샷은 로컬 실행 환경(127.0.0.1:8799, SQLite)에서 촬영 · 문서 폴더: docs/DAIT_v1.0.5/
+  </footer>
+</div>
+</body>
+</html>
