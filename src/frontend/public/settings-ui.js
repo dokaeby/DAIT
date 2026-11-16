@@ -313,6 +313,72 @@
     $('schedule-timezone-warning').hidden = !otherTimezones;
     $('schedule-list').replaceChildren(fragment);
   }
+  const SEARCH_STATUS_LABEL = { QUEUED: '대기 중', RUNNING: '검색 중', SUCCEEDED: '완료', NO_RESULTS: '결과 없음', FAILED: '실패' };
+  const kst = iso => new Date(iso).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  let runsUnseen = 0;
+  let runsSeenObserver = null;
+  function renderRuns(data) {
+    runsUnseen = data.unseen || 0;
+    const badge = $('runs-unseen');
+    badge.hidden = !runsUnseen;
+    badge.textContent = `새 결과 ${runsUnseen}건`;
+    const list = $('runs-list');
+    if (!data.items.length) {
+      const li = document.createElement('li'); li.className = 'run-empty';
+      li.textContent = '아직 실행된 예약 검색이 없습니다.'; list.replaceChildren(li); return;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const run of data.items) {
+      const li = document.createElement('li'); li.className = 'run-item';
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      const when = document.createElement('span'); when.className = 'run-when'; when.textContent = kst(run.scheduled_for);
+      const status = document.createElement('span');
+      status.className = 'run-status' + (run.search_status === 'FAILED' ? ' is-failed' : run.search_status === 'NO_RESULTS' ? ' is-empty' : '');
+      status.textContent = SEARCH_STATUS_LABEL[run.search_status] || run.search_status;
+      const count = document.createElement('span'); count.className = 'run-count';
+      count.textContent = run.result_count == null ? '' : `${run.result_count}건`;
+      summary.append(when, status, count);
+      details.append(summary);
+      if (run.search_error) {
+        const err = document.createElement('p'); err.className = 'run-error'; err.textContent = run.search_error;
+        details.append(err);
+      }
+      if (run.items.length) {
+        const ul = document.createElement('ul'); ul.className = 'run-items';
+        for (const item of run.items) {
+          const eli = document.createElement('li');
+          const a = document.createElement('a'); a.href = item.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = item.title;
+          const meta = document.createElement('span'); meta.className = 'run-item-meta';
+          meta.textContent = `${item.source_name} · ${kst(item.published_at)}`;
+          eli.append(a, meta); ul.append(eli);
+        }
+        details.append(ul);
+      } else {
+        const note = document.createElement('p'); note.className = 'run-empty-note';
+        note.textContent = run.search_status === 'NO_RESULTS' ? '조건에 맞는 기사가 없었습니다.' : '표시할 결과가 없습니다.';
+        details.append(note);
+      }
+      li.append(details); fragment.append(li);
+    }
+    list.replaceChildren(fragment);
+  }
+  async function loadRuns() {
+    const data = await request('/v1/me/schedule-runs');
+    renderRuns(data);
+    if (runsUnseen && !runsSeenObserver) {
+      runsSeenObserver = new IntersectionObserver(async entries => {
+        if (!entries.some(entry => entry.isIntersecting)) return;
+        runsSeenObserver.disconnect(); runsSeenObserver = null;
+        try {
+          await request('/v1/me/schedule-runs/seen', { method: 'POST', body: '{}' });
+          runsUnseen = 0;
+          $('runs-unseen').hidden = true;
+        } catch { /* 다음 방문 때 다시 표시된다 */ }
+      }, { threshold: 0.3 });
+      runsSeenObserver.observe($('schedule-runs'));
+    }
+  }
   $('schedule-form').addEventListener('submit', event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -327,5 +393,6 @@
   await Promise.all([
     loadInterests(),
     action($('schedule-form'), 'schedule-feedback', loadSchedules),
+    action($('runs-list'), 'runs-feedback', loadRuns),
   ]);
 })();
