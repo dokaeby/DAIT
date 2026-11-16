@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
+from starlette.types import Scope
 
 from dait.api.deps import get_one_time_store, get_throttles
 from dait.api.v1 import (
@@ -96,7 +98,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scheduler_routes.router)
     frontend_dir = Path(__file__).resolve().parents[3] / "frontend" / "public"
     if frontend_dir.is_dir():
-        app.mount("/mockup", StaticFiles(directory=str(frontend_dir)), name="mockup-static")
+        app.mount(
+            "/mockup",
+            _RevalidatingStaticFiles(directory=str(frontend_dir)),
+            name="mockup-static",
+        )
 
         for route_path, filename in (
             ("/", "index.html"),
@@ -118,6 +124,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 methods=["GET"],
             )
     return app
+
+
+class _RevalidatingStaticFiles(StaticFiles):
+    """버전 쿼리스트링을 빠뜨린 자산도 브라우저가 매번 재검증하도록 no-cache를 붙인다."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def _media_type(path: Path) -> str:
