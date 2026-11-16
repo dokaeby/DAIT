@@ -260,7 +260,7 @@
     option.textContent = option.value + '분';
     $('sched-minute').append(option);
   }
-  $('schedule-timezone-note').textContent = `시간대: Asia/Seoul (KST) · ${minuteStep}분 단위${minuteStep === 5 ? ' (테스트용)' : ''}`;
+  $('schedule-timezone-note').textContent = `시간대: Asia/Seoul (KST) · ${minuteStep}분 단위${minuteStep === 5 ? '' : ''}`;
   const getTime = () => $('sched-hour').value + ':' + $('sched-minute').value;
   let scheduleCount = 0;
   // 비밀번호 칸은 한글 조합이 안 돼서, 구글 전용 계정은 일반 글자칸에 '탈퇴'를 입력해 확인한다.
