@@ -3,15 +3,17 @@
 import asyncio
 import json
 import socket
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from pydantic import HttpUrl, ValidationError
 from src.backend.app.collectors.content_extractor import (
     extract_clean_body_with_trafilatura,
     fetch_article_body_with_trafilatura,
+    fetch_article_html_and_body,
 )
 from src.backend.app.schemas.collector import CollectedArticle
 from src.backend.app.schemas.content import (
@@ -181,8 +183,6 @@ def test_insufficient_does_not_call_llm_or_scanner(body: str | None) -> None:
     "lines",
     [
         (),
-        ("One.",),
-        ("One.", "Two."),
         ("One.", "Two.", "Three.", "Four."),
         (" ", "Two.", "Three."),
         ("One. Two.", "Two.", "Three."),
@@ -200,6 +200,14 @@ def test_invalid_sentence_contract(lines: tuple[str, ...]) -> None:
         GeneratedContent.model_validate_json(
             '{"summary_lines":' + json.dumps(lines) + ',"translated_text":"text"}'
         )
+
+
+def test_summary_line_count_contract_allows_one_to_three() -> None:
+    for lines in (("One.",), ("One.", "Two."), ("One.", "Two.", "Three.")):
+        result = GeneratedContent.model_validate_json(
+            '{"summary_lines":' + json.dumps(lines) + ',"translated_text":"text"}'
+        )
+        assert result.summary_lines == lines
 
 
 def test_decimal_and_abbreviation_and_whitespace() -> None:
@@ -645,6 +653,86 @@ def test_techcrunch_global_article_produces_pure_korean_three_line_summary(
             assert phrase not in line
 
 
+def test_google_translate_processor_fails_when_summary_stays_english(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """외국어 기사 요약 번역이 실패하면 영어 원문을 저장하지 않고 실패시킨다."""
+    from src.backend.app.workers.ai_processor import ProcessingError
+
+    async def untranslated(text: str, *, enable_network: bool = True) -> str:
+        return text
+
+    monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", untranslated)
+    techcrunch_article = CollectedArticle(
+        source_name="TechCrunch",
+        title="Acme unveils a new AI chip",
+        canonical_url=HttpUrl("https://techcrunch.com/2026/11/08/acme-chip/"),
+        category="AI",
+        published_at=datetime(2026, 11, 8, 12, 0, tzinfo=UTC),
+        raw_text=(
+            "Acme unveiled a new AI accelerator chip for data centers today. "
+            "The chip doubles inference throughput for large models. "
+            "Analysts expect the launch to intensify AI chip competition."
+        ),
+    )
+    processor = GoogleTranslateContentProcessor(enable_network_translation=False)
+    with pytest.raises(ProcessingError):
+        asyncio.run(processor.process(techcrunch_article))
+
+
+def test_domestic_source_english_body_is_translated_before_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IT조선 같은 국내 매체의 영문 본문도 외국어로 판정해 한국어 요약을 저장한다."""
+
+    async def korean(text: str, *, enable_network: bool = True) -> str:
+        return "한국어로 번역된 문장입니다."
+
+    monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", korean)
+    article = CollectedArticle(
+        source_name="IT조선",
+        title="Chip stocks rally on AI demand",
+        canonical_url=HttpUrl("https://it.chosun.com/example/article/1"),
+        category="AI",
+        published_at=datetime(2026, 11, 12, 12, 0, tzinfo=UTC),
+        raw_text=(
+            "Global chip demand pushed semiconductor stocks higher on Tuesday. "
+            "Analysts said orders from AI data centers drove the rally. "
+            "The trend is expected to continue through next quarter. 로그인 구독 공유"
+        ),
+    )
+    processor = GoogleTranslateContentProcessor(enable_network_translation=False)
+    result = asyncio.run(processor.process(article))
+    assert isinstance(result, SuccessContent)
+    assert all(any("가" <= ch <= "힣" for ch in line) for line in result.summary_lines)
+
+
+def test_domestic_source_english_body_fails_when_translation_stays_english(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """국내 매체 영문 기사의 번역 실패도 영어 요약을 SUCCESS로 남기지 않는다."""
+
+    async def unchanged(text: str, *, enable_network: bool = True) -> str:
+        return text
+
+    monkeypatch.setattr("src.backend.app.workers.ai_processor.translate_to_korean", unchanged)
+    article = CollectedArticle(
+        source_name="IT조선",
+        title="Chip stocks rally on AI demand",
+        canonical_url=HttpUrl("https://it.chosun.com/example/article/2"),
+        category="AI",
+        published_at=datetime(2026, 11, 12, 12, 0, tzinfo=UTC),
+        raw_text=(
+            "Global chip demand pushed semiconductor stocks higher on Tuesday. "
+            "Analysts said orders from AI data centers drove the rally. "
+            "The trend is expected to continue through next quarter."
+        ),
+    )
+    processor = GoogleTranslateContentProcessor(enable_network_translation=False)
+    with pytest.raises(ProcessingError):
+        asyncio.run(processor.process(article))
+
+
 def test_translate_to_korean_logs_error_and_retries_on_translator_failure(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -744,3 +832,145 @@ def test_google_translate_processor_returns_insufficient_when_body_too_short() -
     assert isinstance(result, InsufficientContent)
     assert result.status == "INSUFFICIENT"
     assert result.summary_lines == ()
+
+
+def _short_foreign_article() -> CollectedArticle:
+    return CollectedArticle(
+        source_name="TechCrunch",
+        title="Acme unveils a new AI chip",
+        canonical_url=HttpUrl("https://news.example/article/123"),
+        category="AI",
+        published_at=datetime(2026, 11, 8, 12, 0, tzinfo=UTC),
+        raw_text="Acme unveiled a new AI accelerator chip for data centers today.",
+    )
+
+
+def _patch_guarded_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> list[httpx.Request]:
+    requests: list[httpx.Request] = []
+
+    def recording_handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return handler(request)
+
+    async def public_dns(_host: str, _port: int) -> tuple[str, ...]:
+        return ("93.184.216.34",)
+
+    async def guarded_fetch(url: HttpUrl) -> tuple[str, str]:
+        return await fetch_article_html_and_body(
+            url,
+            resolver=public_dns,
+            transport=httpx.MockTransport(recording_handler),
+        )
+
+    async def fail_client_get(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Article enrichment must not use an unguarded HTTP client")
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.ai_processor.fetch_article_html_and_body", guarded_fetch
+    )
+    monkeypatch.setattr(httpx.AsyncClient, "get", fail_client_get)
+
+    def fake_translate(_self: object, text: str) -> str:
+        return "번역된 한국어 문장입니다."
+
+    monkeypatch.setattr(
+        "src.backend.app.workers.ai_processor.GoogleTranslator.translate", fake_translate
+    )
+    return requests
+
+
+def test_google_translate_processor_does_not_follow_redirect_to_private_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "127.0.0.1":
+            return httpx.Response(200, text="<p>Internal secret paragraph that must not leak.</p>")
+        return httpx.Response(302, headers={"location": "http://127.0.0.1/"})
+
+    requests = _patch_guarded_fetch(monkeypatch, handler)
+    processor = GoogleTranslateContentProcessor(enable_network_translation=True)
+    result = asyncio.run(processor.process(_short_foreign_article()))
+
+    assert [request.url.host for request in requests] == ["93.184.216.34"]
+    assert isinstance(result, SuccessContent)
+    assert "Internal secret" not in result.translated_text
+    assert all("Internal secret" not in line for line in result.summary_lines)
+
+
+def test_google_translate_processor_paragraph_fallback_reuses_guarded_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paragraphs = (
+        "Acme said the accelerator doubles inference throughput for large models.",
+        "The company plans to ship the chip to cloud providers early next year.",
+        "Analysts expect the launch to intensify competition in the AI chip market.",
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="".join(f"<p>{p}</p>" for p in paragraphs))
+
+    def no_trafilatura_body(_html: str) -> str:
+        return ""
+
+    monkeypatch.setattr(
+        "src.backend.app.collectors.content_extractor.extract_clean_body_with_trafilatura",
+        no_trafilatura_body,
+    )
+    requests = _patch_guarded_fetch(monkeypatch, handler)
+    processor = GoogleTranslateContentProcessor(enable_network_translation=True)
+    result = asyncio.run(processor.process(_short_foreign_article()))
+
+    assert len(requests) == 1
+    assert isinstance(result, SuccessContent)
+    assert "번역된 한국어 문장" in result.translated_text
+    assert all(any("가" <= ch <= "힣" for ch in line) for line in result.summary_lines)
+
+
+def test_fetch_article_body_returns_empty_when_trafilatura_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def exploding_extract(_html: str) -> str:
+        msg = "parser crashed"
+        raise RuntimeError(msg)
+
+    async def public_dns(_host: str, _port: int) -> tuple[str, ...]:
+        return ("93.184.216.34",)
+
+    monkeypatch.setattr(
+        "src.backend.app.collectors.content_extractor.extract_clean_body_with_trafilatura",
+        exploding_extract,
+    )
+    body = asyncio.run(
+        fetch_article_body_with_trafilatura(
+            HttpUrl("https://news.example/article/123"),
+            resolver=public_dns,
+            transport=httpx.MockTransport(lambda _request: httpx.Response(200, text="<p>x</p>")),
+        )
+    )
+    assert body == ""
+
+
+def test_fetch_article_html_decodes_declared_legacy_charset() -> None:
+    korean = "<p>삼성전자가 차세대 AI 반도체 양산 계획을 발표했다.</p>"
+
+    async def public_dns(_host: str, _port: int) -> tuple[str, ...]:
+        return ("93.184.216.34",)
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=korean.encode("euc-kr"),
+            headers={"content-type": "text/html; charset=euc-kr"},
+        )
+
+    html_text, _ = asyncio.run(
+        fetch_article_html_and_body(
+            HttpUrl("https://news.example/article/123"),
+            resolver=public_dns,
+            transport=httpx.MockTransport(handler),
+        )
+    )
+    assert "삼성전자가 차세대 AI 반도체" in html_text

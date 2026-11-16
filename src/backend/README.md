@@ -61,3 +61,12 @@ python -m uvicorn src.backend.app.api.main:app --reload
 .venv/bin/ruff format --check .
 .venv/bin/pyright
 ```
+
+## 통합 서버 진입점 (v1.0.3 1단계)
+
+위의 두 개별 서버 실행 예시 대신 저장소 루트에서 `python -m src.server migrate` 후
+`python -m uvicorn src.server:create_app --factory --reload`를 사용합니다.
+JWT_SECRET과 DATABASE_URL은 루트 README에 따라 설정합니다.
+통합 기본 DB는 `dait_integrated.db`이며 기존 KAN-10의 `dait.db`와 구분합니다.
+`src/dait/`는 실행 코드이며 공용 진입점이 이 경로를 우선 로드합니다.
+KAN-10 수집·AI worker는 보존하지만 아직 통합 앱의 생명주기에 연결하지 않습니다.

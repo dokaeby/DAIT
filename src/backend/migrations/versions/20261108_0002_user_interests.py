@@ -14,6 +14,9 @@ branch_labels = None
 depends_on = None
 
 
+# 입력: 사용자 테이블이 생성된 Alembic DB 상태.
+# 출력: 반환값 없음.
+# 동작: 사용자별 중복을 막는 관심사 연결 테이블을 생성한다.
 def upgrade() -> None:
     """user_interests를 만든다(SQLite·PostgreSQL 공통 문법만 사용).
 
@@ -36,6 +39,9 @@ def upgrade() -> None:
     )
 
 
+# 입력: 관심사 연결 테이블이 있는 Alembic DB 상태.
+# 출력: 반환값 없음.
+# 동작: 사용자 계정은 유지하고 관심사 연결 테이블만 제거한다.
 def downgrade() -> None:
     """user_interests만 지운다.
 

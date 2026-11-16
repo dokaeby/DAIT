@@ -1,28 +1,42 @@
 """FastAPI 앱을 조립한다. 라우터는 한 줄씩 등록하며 업무 로직은 두지 않는다."""
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import Response
+from starlette.types import Scope
 
-from dait.api.deps import get_throttles
+from dait.api.deps import get_one_time_store, get_throttles
 from dait.api.v1 import (
     auth_routes,
     health_routes,
     interest_routes,
     me_routes,
     news_routes,
+    scheduler_routes,
     settings_routes,
+    social_routes,
 )
 from dait.core.config import Settings, get_settings
 from dait.core.errors import register_error_handlers
 from dait.core.logging import configure_logging
 from dait.core.middleware import RequestContextMiddleware
+from dait.core.migrations import run_migrations
+from dait.repositories.one_time_store import OneTimeStore
+from dait.services.legacy_news_service import import_saved_news
 from dait.services.login_throttle import create_throttles
+from dait.services.schedule_cron_service import reconcile_all_safe as reconcile_schedule_cron_jobs
 
 
+# 입력: 선택적 앱 설정.
+# 출력: 회원 라우트와 공통 보안 계층이 조립된 FastAPI 앱.
+# 동작: 설정·로깅·오류 처리·로그인 제한·라우터를 한 앱에 연결한다.
 def create_app(settings: Settings | None = None) -> FastAPI:
     """설정에 맞는 FastAPI 앱을 만든다.
 
@@ -34,7 +48,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     config = settings if settings is not None else get_settings()
     configure_logging(config)
     docs = config.docs_enabled
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+        # 무료 플랜 Render는 preDeploy를 실행하지 않으므로 시작 시 스키마를 맞춘다.
+        await run_in_threadpool(run_migrations, config.database_url)
+        await run_in_threadpool(import_saved_news, config)
+        await run_in_threadpool(reconcile_schedule_cron_jobs, config)
+        yield
+
     app = FastAPI(
+        lifespan=lifespan,
         title="DAIT 회원 API",
         docs_url="/docs" if docs else None,
         redoc_url="/redoc" if docs else None,
@@ -50,28 +74,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
         )
     # 마지막에 추가한 미들웨어가 가장 바깥이라, CORS 사전 요청 응답에도 보안 헤더가 붙는다.
-    app.add_middleware(RequestContextMiddleware, csp=config.content_security_policy)
-    throttles = create_throttles()  # 앱마다 하나: 실패 기록은 프로세스 메모리에만 있다.
+    app.add_middleware(
+        RequestContextMiddleware,
+        csp=config.content_security_policy,
+        html_csp=(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+        ),
+    )
+    # 앱마다 하나: REDIS_URL이 있으면 실패 기록을 Redis에 공유하고, 없으면 메모리에 둔다.
+    throttles = create_throttles(config)
     app.dependency_overrides[get_throttles] = lambda: throttles
+    one_time_store = OneTimeStore(config.redis_url)  # 앱마다 하나: 메모리 대체 저장소 공유
+    app.dependency_overrides[get_one_time_store] = lambda: one_time_store
     app.include_router(health_routes.router)
     app.include_router(auth_routes.router)
+    app.include_router(social_routes.router)
     app.include_router(me_routes.router)
     app.include_router(interest_routes.router)
     app.include_router(news_routes.router)
     app.include_router(settings_routes.router)
+    app.include_router(scheduler_routes.router)
     frontend_dir = Path(__file__).resolve().parents[3] / "frontend" / "public"
     if frontend_dir.is_dir():
-        app.mount("/mockup", StaticFiles(directory=str(frontend_dir)), name="mockup-static")
+        app.mount(
+            "/mockup",
+            _RevalidatingStaticFiles(directory=str(frontend_dir)),
+            name="mockup-static",
+        )
 
         for route_path, filename in (
             ("/", "index.html"),
-            ("/detail.html", "detail.html"),
             ("/settings.html", "settings.html"),
+            ("/privacy.html", "privacy.html"),
+            ("/terms.html", "terms.html"),
             ("/app.js", "app.js"),
         ):
 
             def _serve(f: Path = frontend_dir / filename) -> FileResponse:
-                return FileResponse(path=str(f), media_type=_media_type(f))
+                return FileResponse(
+                    path=str(f), media_type=_media_type(f), headers={"Cache-Control": "no-cache"}
+                )
 
             app.add_api_route(
                 route_path,
@@ -80,6 +124,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 methods=["GET"],
             )
     return app
+
+
+class _RevalidatingStaticFiles(StaticFiles):
+    """버전 쿼리스트링을 빠뜨린 자산도 브라우저가 매번 재검증하도록 no-cache를 붙인다."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def _media_type(path: Path) -> str:

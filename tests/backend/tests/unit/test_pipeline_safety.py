@@ -244,4 +244,4 @@ class TestCacheRetry:
         """캐시 키에 검색어 원문이 들어가지 않는다."""
         key = cache_retry_service.list_cache_key("AI", "비밀검색어", "rank", 10, None)
         assert "비밀검색어" not in key
-        assert key.startswith("news:list:")
+        assert key.startswith("cache:news:list:")

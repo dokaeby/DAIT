@@ -83,6 +83,9 @@ _COMMON_PASSWORDS = frozenset(
 _MIN_LOCAL_PART = 3  # 이 길이보다 짧은 이메일 앞부분은 우연히 겹치기 쉬워 비교하지 않는다.
 
 
+# 입력: 평문 비밀번호와 가입 이메일.
+# 출력: 가입에 사용할 수 없는 비밀번호인지 여부.
+# 동작: 흔한 값과 이메일 앞부분 포함 여부를 대소문자 없이 확인한다.
 def is_weak_password(password: str, email: str) -> bool:
     """가입에 쓸 수 없는 비밀번호인지 판단한다.
 

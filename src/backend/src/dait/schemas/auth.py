@@ -21,13 +21,13 @@ from dait.schemas.interest import (
     empty_interests,
     empty_items,
 )
+from dait.schemas.nickname import Nickname
 from dait.schemas.user import UserPublic
 
 _EMAIL_MAX_LENGTH = 254  # RFC 5321 기준 주소 최대 길이
 _LENGTH_HINT = "비밀번호 (8~128자)"
 _EMAIL_TOO_LONG = "email too long"
 _MISMATCH = "password mismatch"
-_TERMS = "terms not accepted"
 
 
 class SignupRequest(BaseModel):
@@ -36,15 +36,34 @@ class SignupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     email: EmailStr
+    nickname: Nickname | None = None
     # SecretStr: 실수로 로그·repr에 찍혀도 *** 로만 보이게 한다.
     password: SecretStr = Field(min_length=8, max_length=128, description=_LENGTH_HINT)
     password_confirm: SecretStr = Field(min_length=8, max_length=128)
-    terms_accepted: bool
+    # 기존 클라이언트 요청은 호환하되 가입 조건으로 사용하지 않는다.
+    terms_accepted: bool | None = None
     # 선택 필드: 보내지 않으면 관심사 없이 가입한다(관심사 기능이 빠져도 가입 요청은 그대로 통한다).
     interests: list[InterestCode] = Field(default_factory=empty_interests, max_length=MAX_INTERESTS)
 
+    @field_validator("nickname", mode="before")
+    @classmethod
+    # 입력: 회원가입 요청의 닉네임 원본 값.
+    # 출력: 빈 문자열이면 None, 아니면 원본 값.
+    # 동작: 선택하지 않은 닉네임을 공개 모델의 없음 값으로 통일한다.
+    def _empty_nickname(cls, value: object) -> object:
+        """빈 닉네임 입력을 없음 값으로 바꾼다.
+
+        입력: value (회원가입 요청의 닉네임 원본 값)
+        출력: object (빈 문자열이면 None, 아니면 원본 값)
+        기능: 선택하지 않은 닉네임을 공개 모델의 없음 값으로 통일한다.
+        """
+        return None if isinstance(value, str) and not value.strip() else value
+
     @field_validator("interests")
     @classmethod
+    # 입력: 회원가입 요청에서 검증된 관심사 코드 목록.
+    # 출력: 중복이 없는 같은 관심사 코드 목록.
+    # 동작: 같은 관심사를 두 번 선택한 요청을 거부한다.
     def _no_duplicate_interests(cls, value: list[InterestCode]) -> list[InterestCode]:
         """가입 시 보낸 관심사에 중복이 없는지 확인한다.
 
@@ -56,6 +75,9 @@ class SignupRequest(BaseModel):
 
     @field_validator("email")
     @classmethod
+    # 입력: 형식 검증을 통과한 이메일.
+    # 출력: 길이 제한을 통과한 같은 이메일.
+    # 동작: 저장 가능한 최대 길이 254자를 넘는 이메일을 거부한다.
     def _check_email_length(cls, value: str) -> str:
         """이메일이 254자를 넘지 않는지 확인한다.
 
@@ -68,12 +90,15 @@ class SignupRequest(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _check_confirm_and_terms(self) -> Self:
-        """비밀번호 확인 일치와 약관 동의를 확인한다.
+    # 입력: 비밀번호와 비밀번호 확인이 검증된 회원가입 모델.
+    # 출력: 두 값이 일치하는 같은 회원가입 모델.
+    # 동작: 상수 시간 비교로 비밀번호 확인 불일치를 거부한다.
+    def _check_password_confirmation(self) -> Self:
+        """비밀번호 확인이 일치하는지 검사한다.
 
         입력: 없음(이미 검증된 필드들)
         출력: self
-        기능: 두 비밀번호가 다르거나 약관 미동의면 ValueError. 비교는 상수 시간으로 한다.
+        기능: 두 비밀번호가 다르면 ValueError. 비교는 상수 시간으로 한다.
         """
         same = hmac.compare_digest(
             self.password.get_secret_value().encode(),
@@ -81,8 +106,6 @@ class SignupRequest(BaseModel):
         )
         if not same:
             raise ValueError(_MISMATCH)
-        if not self.terms_accepted:
-            raise ValueError(_TERMS)
         return self
 
 
@@ -112,6 +135,7 @@ class AuthResponse(BaseModel):
 
     user: UserPublic
     tokens: TokenPair
+    onboarding_required: bool = False
     # 메인 화면이 로그인 직후 바로 쓰도록 DB의 관심사를 함께 내려준다(없으면 빈 목록).
     interests: list[InterestItem] = Field(default_factory=empty_items)
 
@@ -125,11 +149,12 @@ class RefreshRequest(BaseModel):
 
 
 class WithdrawRequest(BaseModel):
-    """회원탈퇴 요청. 본인 확인을 위해 비밀번호를 다시 받는다."""
+    """회원탈퇴 요청. 비밀번호 계정은 비밀번호를, 구글 전용 계정은 확인 문구를 받는다."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    password: SecretStr = Field(min_length=1, max_length=128)
+    password: SecretStr | None = Field(default=None, min_length=1, max_length=128)
+    confirm_text: Literal["탈퇴"] | None = None
 
 
 class ResultResponse(BaseModel):

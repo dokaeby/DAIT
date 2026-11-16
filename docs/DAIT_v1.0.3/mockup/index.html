@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DAIT 목업 · 오늘의 AI 뉴스</title>
+    <link rel="stylesheet" href="mockup.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="index.html" aria-label="DAIT 메인 목업">
+          <span class="brand-mark">DAIT</span>
+          <span class="brand-divider" aria-hidden="true"></span>
+          <span class="brand-copy">AI 뉴스 큐레이션 서비스</span>
+        </a>
+        <div class="header-actions">
+          <button class="icon-button" type="button" aria-label="알림 목업">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+              <path d="M10 21h4" />
+            </svg>
+          </button>
+          <a class="text-button" href="settings.html">
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+            </svg>
+            설정
+          </a>
+        </div>
+      </header>
+
+      <div class="app-body">
+        <aside class="sidebar" aria-label="주요 탐색 목업">
+          <nav class="nav-group">
+            <span class="nav-label">Discover</span>
+            <a class="nav-item active" href="index.html">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m3 11 9-8 9 8" />
+                <path d="M5 10v10h5v-6h4v6h5V10" />
+              </svg>
+              오늘의 AI 뉴스
+            </a>
+            <span class="nav-item muted">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+                <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" />
+              </svg>
+              AI·기술
+            </span>
+          </nav>
+          <nav class="nav-group">
+            <span class="nav-label">Library</span>
+            <span class="nav-item muted">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z" />
+              </svg>
+              관심 뉴스 · 단계 2
+            </span>
+            <span class="nav-item muted">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 3h12v18l-6-4-6 4Z" />
+              </svg>
+              저장한 뉴스 · 단계 2
+            </span>
+          </nav>
+          <p class="nav-note">목업 화면입니다. 검색·필터·버튼은 실제 데이터를 변경하지 않습니다.</p>
+        </aside>
+
+        <main class="main">
+          <div class="page-head">
+            <div>
+              <p class="eyebrow">Daily Intelligence</p>
+              <h1 class="page-title">오늘의 AI 뉴스</h1>
+              <p class="page-description">AI가 선별하고 원문에 근거해 요약한 오늘의 주요 뉴스입니다.</p>
+            </div>
+            <span class="date-chip">2026.11.04 · 업데이트 09:30</span>
+          </div>
+
+          <section aria-label="뉴스 검색 목업">
+            <div class="toolbar">
+              <label class="search-box">
+                <span class="sr-only" hidden>통합 검색</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-4-4" />
+                </svg>
+                <input class="search-input" type="search" placeholder="통합 검색 (키워드, 기업, 기술 등)" />
+              </label>
+              <button class="primary-button" type="button">통합 검색</button>
+            </div>
+            <div class="filter-row">
+              <div class="chips" aria-label="카테고리 목업">
+                <button class="chip active" type="button">전체</button>
+                <button class="chip" type="button">AI·기술</button>
+              </div>
+              <select class="select-like" aria-label="정렬 목업">
+                <option>랭킹순</option>
+                <option>최신순</option>
+              </select>
+            </div>
+          </section>
+
+          <div class="result-meta">
+            <strong>검증 완료 뉴스 3건</strong>
+            <span>랭킹 기준: 품질 · 최신성 · 출처 우선순위</span>
+          </div>
+
+          <section class="news-list" aria-label="AI 뉴스 카드 목업">
+            <article class="news-card">
+              <div class="rank" aria-label="1위">1</div>
+              <div class="news-main">
+                <h2 class="news-title">OpenAI, 차세대 멀티모달 모델 공개…추론과 도구 사용 정확도 향상</h2>
+                <div class="news-meta">
+                  <span>OpenAI Newsroom</span><span class="meta-dot"></span><time>2026.11.04 09:30</time>
+                  <span class="category-tag ai">AI·기술</span>
+                </div>
+              </div>
+              <div class="summary-box">
+                <p class="summary-title">✦ AI 3줄 요약</p>
+                <ul class="summary-list">
+                  <li>새 모델은 장문 추론과 복합 도구 사용 정확도를 높였다.</li>
+                  <li>텍스트·이미지·음성을 하나의 대화 흐름에서 처리한다.</li>
+                  <li>개발자 API는 단계적으로 제공될 예정이다.</li>
+                </ul>
+              </div>
+              <div class="card-actions">
+                <span class="status-tag ready">✓ 처리 완료</span>
+                <a class="primary-button" href="detail.html">상세 보기</a>
+                <button class="secondary-button" type="button">원문 열기</button>
+              </div>
+            </article>
+
+            <article class="news-card">
+              <div class="rank" aria-label="2위">2</div>
+              <div class="news-main">
+                <h2 class="news-title">Anthropic, Claude Code 장기 작업 성능 개선과 새로운 안전 제어 발표</h2>
+                <div class="news-meta">
+                  <span>Anthropic</span><span class="meta-dot"></span><time>2026.11.04 08:50</time>
+                  <span class="category-tag ai">AI·기술</span>
+                </div>
+              </div>
+              <div class="summary-box">
+                <p class="summary-title">✦ AI 3줄 요약</p>
+                <ul class="summary-list">
+                  <li>장기 코딩 작업의 상태 유지와 복구 능력이 개선됐다.</li>
+                  <li>조직 관리자가 도구 권한과 실행 범위를 더 세밀하게 제어한다.</li>
+                  <li>새 기능은 최신 Claude Code에서 순차 적용된다.</li>
+                </ul>
+              </div>
+              <div class="card-actions">
+                <span class="status-tag ready">✓ 처리 완료</span>
+                <a class="primary-button" href="detail.html">상세 보기</a>
+                <button class="secondary-button" type="button">원문 열기</button>
+              </div>
+            </article>
+
+            <article class="news-card">
+              <div class="rank" aria-label="3위">3</div>
+              <div class="news-main">
+                <h2 class="news-title">GitHub, 에이전트 기반 코드 검토 실험 공개…저장소 맥락 활용 확대</h2>
+                <div class="news-meta">
+                  <span>GitHub Blog</span><span class="meta-dot"></span><time>2026.11.03 22:10</time>
+                  <span class="category-tag ai">AI·기술</span>
+                </div>
+              </div>
+              <div class="summary-box">
+                <p class="summary-title">✦ AI 3줄 요약</p>
+                <ul class="summary-list">
+                  <li>저장소 규칙과 변경 이력을 반영하는 검토 실험을 공개했다.</li>
+                  <li>개발자는 제안 근거와 참조 파일을 함께 확인할 수 있다.</li>
+                  <li>초기 실험은 제한된 조직을 대상으로 진행된다.</li>
+                </ul>
+              </div>
+              <div class="card-actions">
+                <span class="status-tag partial">△ 일부 출처 지연</span>
+                <a class="primary-button" href="detail.html">상세 보기</a>
+                <button class="secondary-button" type="button">원문 열기</button>
+              </div>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <nav class="mobile-tabs" aria-label="모바일 탐색 목업">
+      <a class="mobile-tab active" href="index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8" /><path d="M5 10v10h5v-6h4v6h5V10" /></svg>
+        오늘의 뉴스
+      </a>
+      <a class="mobile-tab" href="detail.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>
+        상세 목업
+      </a>
+      <a class="mobile-tab" href="settings.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 0 1-.2 1.7l2 1.5-2 3.4-2.4-1a7 7 0 0 1-3 1.7L13 22H9l-.4-2.7a7 7 0 0 1-3-1.7l-2.4 1-2-3.4 2-1.5A7 7 0 0 1 3 12c0-.6.1-1.2.2-1.7l-2-1.5 2-3.4 2.4 1a7 7 0 0 1 3-1.7L9 2h4l.4 2.7a7 7 0 0 1 3 1.7l2.4-1 2 3.4-2 1.5c.1.5.2 1.1.2 1.7Z" /></svg>
+        설정
+      </a>
+    </nav>
+  </body>
+</html>

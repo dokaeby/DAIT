@@ -1,0 +1,26 @@
+{
+  "contract": "정적 화면 목업은 메인 뉴스 목록과 설정 화면으로 구성하며 별도 상세보기 화면 및 설정 알림 기능은 포함하지 않는다.",
+  "targetViewports": ["1440x900", "390x844"],
+  "renderedEvidence": [
+    {
+      "viewport": "1440x900",
+      "artifact": "index.html",
+      "observation": "검색, 필터와 뉴스 랭킹 카드가 가로 넘침 없이 표시된다."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "index.html",
+      "observation": "탐색 메뉴가 하단 탭으로 전환되고 뉴스 카드가 한 열로 표시된다."
+    },
+    {
+      "viewport": "1440x900",
+      "artifact": "settings.html",
+      "observation": "예약, 관심 조건, 목록 표시, 계정 관리 구역이 표시되며 알림 항목은 없다."
+    },
+    {
+      "viewport": "390x844",
+      "artifact": "settings.html",
+      "observation": "설정 구역은 가로형 메뉴로, 입력 필드는 한 열로 표시된다."
+    }
+  ]
+}

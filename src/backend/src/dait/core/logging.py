@@ -23,6 +23,9 @@ _SECRET_PAIR = re.compile(
 _EMAIL = re.compile(r"([\w.+-])[\w.+-]*@([\w-]+(?:\.[\w-]+)+)")
 
 
+# 입력: 로그에 기록하려는 문자열.
+# 출력: 인증정보·비밀번호·이메일이 가려진 문자열.
+# 동작: 알려진 민감정보 패턴을 로그에 남기기 전에 치환한다.
 def mask_sensitive(text: str) -> str:
     """로그 문자열에서 토큰, 비밀번호류 값, 이메일을 가린다.
 
@@ -38,6 +41,9 @@ def mask_sensitive(text: str) -> str:
 class MaskingFilter(logging.Filter):
     """모든 로그 레코드에 마스킹을 적용하고 request_id를 붙이는 필터."""
 
+    # 입력: logging이 만든 로그 레코드.
+    # 출력: 항상 참인 로그 통과 여부.
+    # 동작: 완성된 메시지를 마스킹하고 현재 request_id를 붙인다.
     def filter(self, record: logging.LogRecord) -> bool:
         """로그 레코드의 메시지를 마스킹하고 request_id를 달아 통과시킨다.
 
@@ -54,6 +60,9 @@ class MaskingFilter(logging.Filter):
 class JsonFormatter(logging.Formatter):
     """한 줄 JSON으로 로그를 만드는 포매터. 예외는 종류 이름만 남긴다."""
 
+    # 입력: 마스킹을 마친 로그 레코드.
+    # 출력: 한 줄 JSON 로그 문자열.
+    # 동작: 공개 가능한 필드와 예외 종류만 구조화해 직렬화한다.
     def format(self, record: logging.LogRecord) -> str:
         """로그 레코드를 JSON 문자열 한 줄로 바꾼다.
 
@@ -73,6 +82,9 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False)
 
 
+# 입력: 검증된 앱 설정.
+# 출력: 반환값 없음.
+# 동작: 실행 모드에 맞는 로그 수준·형식·민감정보 필터를 설정한다.
 def configure_logging(settings: Settings) -> None:
     """실행 모드에 맞춰 루트 로거를 설정한다.
 
@@ -103,6 +115,9 @@ def configure_logging(settings: Settings) -> None:
     logging.getLogger(AUDIT_LOGGER_NAME).setLevel(logging.INFO)
 
 
+# 입력: 보안 이벤트, 처리 결과, 선택적 사용자 ID와 클라이언트 IP.
+# 출력: 반환값 없음.
+# 동작: 비밀번호·토큰·이메일 없이 인증 관련 감사 로그를 남긴다.
 def audit(
     event: str, outcome: str, user_id: str | None = None, client_ip: str | None = None
 ) -> None:

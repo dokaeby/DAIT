@@ -233,7 +233,7 @@ def test_invalid_uuid_category_and_extra_ready_flag_are_rejected() -> None:
 
 def test_forged_success_cannot_be_used_as_ready() -> None:
     forged = SuccessContent.model_construct(
-        content_hash="a" * 64, summary_lines=("One.",), translated_text="translation"
+        content_hash="a" * 64, summary_lines=(), translated_text="translation"
     )
     with pytest.raises(ValidationError):
         RankingCandidate(id=UUID(int=1), published_at=TIME, source_priority=0, content=forged)

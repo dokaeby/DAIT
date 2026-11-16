@@ -14,7 +14,7 @@ import hmac
 import logging
 import secrets
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol, Self
 from uuid import UUID, uuid4
 
@@ -31,6 +31,7 @@ from pydantic import (
 from redis.asyncio import Redis
 from src.backend.app.core.taxonomy import (
     OFFICIAL_SOURCE_NAMES,
+    SUBTOPIC_GROUPS,
     CategoryType,
     matches_subtopic_or_query,
 )
@@ -196,6 +197,14 @@ class NewsListResponse(NewsModel):
 
 class NewsReader(Protocol):
     async def list_news(self) -> tuple[StoredNews, ...]: ...
+    async def list_candidates(
+        self,
+        *,
+        category: CategoryType,
+        cutoff: datetime | None,
+        like: str | None,
+        search_scope: Literal["title", "content", "all"],
+    ) -> tuple[StoredNews, ...]: ...
     async def get_by_id(self, news_id: UUID) -> StoredNews | None: ...
     def add_ready_invalidator(self, invalidator: ReadyInvalidator) -> None: ...
 
@@ -315,6 +324,8 @@ class _QueryBinding(NewsModel):
     q: str | None
     sort: Literal["rank", "latest"]
     page_size: int
+    fresh_hours: int | None
+    search_scope: Literal["title", "content", "all"]
     priorities: str
 
 
@@ -487,6 +498,8 @@ class NewsService:
             q=query.q,
             sort=query.sort,
             page_size=query.page_size,
+            fresh_hours=query.fresh_hours,
+            search_scope=query.search_scope,
             priorities=self._priority_fingerprint,
         )
         return hashlib.sha256(binding.model_dump_json().encode()).hexdigest()
@@ -514,34 +527,70 @@ class NewsService:
         signature = hmac.new(self._cursor_key, encoded.encode(), hashlib.sha256).hexdigest()
         return encoded + "." + signature
 
+    @staticmethod
+    def _search_like(query: NewsQuery) -> str | None:
+        """Return a SQL LIKE-safe fragment, or None when Python matching is required.
+
+        LIKE pre-filtering is only a superset optimization: it is skipped for
+        non-ASCII queries (Unicode casefold differs from SQL lower()), for
+        subtopic labels (keyword-group matches need no literal substring), and
+        for multi-word queries (Python matches across concatenated field
+        boundaries that no single column can contain).
+        """
+        q = query.q
+        if q is None or not q.isascii() or " " in q:
+            return None
+        if any(
+            group.category == query.category and group.label.casefold() == q.casefold()
+            for group in SUBTOPIC_GROUPS
+        ):
+            return None
+        escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return escaped.lower()
+
     async def _api_records(self, query: NewsQuery) -> tuple[tuple[StoredNews, ...], bool]:
-        stored = await self.repository.list_news()
+        cutoff = (
+            datetime.now(UTC) - timedelta(hours=query.fresh_hours)
+            if query.fresh_hours > 0
+            else None
+        )
+        stored = await self.repository.list_candidates(
+            category=query.category,
+            cutoff=cutoff,
+            like=self._search_like(query),
+            search_scope=query.search_scope,
+        )
         records = tuple(
             StoredNews.model_validate_json(entry.model_dump_json(warnings=False))
             for entry in stored
         )
+        def searchable_text(entry: StoredNews) -> str:
+            article = entry.record.article
+            content = entry.record.content
+            body_text = (
+                " ".join(content.summary_lines)
+                + " "
+                + (content.translated_text or "")
+                + " "
+                + (article.raw_text or "")
+            )
+            if query.search_scope == "title":
+                return article.title
+            if query.search_scope == "content":
+                return body_text
+            return article.title + " " + article.source_name + " " + body_text
+
         matched = tuple(
             entry
             for entry in records
             if entry.record.article.category == query.category
-            and matches_subtopic_or_query(
-                query.category,
-                query.q,
-                (
-                    entry.record.article.title
-                    + " "
-                    + entry.record.article.source_name
-                    + " "
-                    + " ".join(entry.record.content.summary_lines)
-                    + " "
-                    + (entry.record.content.translated_text or "")
-                ),
-            )
+            and matches_subtopic_or_query(query.category, query.q, searchable_text(entry))
         )
         visible = tuple(
             entry
             for entry in matched
             if isinstance(entry.record.content, SuccessContent)
+            and (cutoff is None or entry.record.article.published_at >= cutoff)
             and not any(
                 dummy in line
                 for line in entry.record.content.summary_lines

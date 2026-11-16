@@ -59,13 +59,13 @@ class LLMRequest(ContentModel):
 
 
 class GeneratedContent(ContentModel):
-    summary_lines: tuple[str, str, str]
+    summary_lines: tuple[str, ...]
     translated_text: str = Field(min_length=1, max_length=100000)
 
     @field_validator("summary_lines")
     @classmethod
-    def validate_sentences(cls, lines: tuple[str, str, str]) -> tuple[str, str, str]:
-        if len(lines) != 3:
+    def validate_sentences(cls, lines: tuple[str, ...]) -> tuple[str, ...]:
+        if not 1 <= len(lines) <= 3:
             raise ValueError(SENTENCE_ERROR)
         cleaned: list[str] = []
         for original in lines:
@@ -89,7 +89,7 @@ class GeneratedContent(ContentModel):
             ):
                 raise ValueError(SENTENCE_ERROR)
             cleaned.append(line)
-        return cleaned[0], cleaned[1], cleaned[2]
+        return tuple(cleaned)
 
     @field_validator("translated_text")
     @classmethod
@@ -103,6 +103,9 @@ class SuccessContent(GeneratedContent):
     status: Literal["SUCCESS"] = "SUCCESS"
     category: CategoryType = "AI"
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    engine: str = Field(default="", max_length=50)
+    model_id: str = Field(default="", max_length=200)
+    prompt_version: str = Field(default="", max_length=50)
 
 
 class InsufficientContent(ContentModel):
@@ -111,6 +114,9 @@ class InsufficientContent(ContentModel):
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     summary_lines: tuple[()] = ()
     translated_text: None = None
+    engine: str = Field(default="", max_length=50)
+    model_id: str = Field(default="", max_length=200)
+    prompt_version: str = Field(default="", max_length=50)
 
 
 type ContentResult = Annotated[SuccessContent | InsufficientContent, Field(discriminator="status")]

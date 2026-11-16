@@ -12,12 +12,13 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import TypeVar
 
+from pydantic import BaseModel
 from redis.exceptions import RedisError
 
 from dait.core.config import Settings
 from dait.repositories import redis_repository
 
-_LIST_TTL_SECONDS = 300  # 목록 캐시 5분
+_LIST_TTL_SECONDS = 900  # 목록 캐시 15분
 _DETAIL_TTL_SECONDS = 1800  # 상세 캐시 30분
 _JITTER_RATIO = 0.1  # TTL의 ±10% 지터로 만료 시각을 분산한다
 _LOCK_WAIT_SECONDS = 2.0
@@ -27,17 +28,9 @@ _POLL_SECONDS = 0.05
 _T = TypeVar("_T")
 
 
-class _RedisState:
-    """Redis 클라이언트와 장애 플래그를 한 곳에 묶는다(global 문 회피)."""
-
-    client: redis_repository.RedisLike | None = None
-    failed: bool = False
-
-
 _lock = threading.Lock()
 _memory_cache: dict[str, tuple[float, str]] = {}
 _memory_locks: dict[str, tuple[str, float]] = {}
-_redis_state = _RedisState()
 
 
 def _jittered_ttl(base_seconds: int) -> int:
@@ -48,15 +41,7 @@ def _jittered_ttl(base_seconds: int) -> int:
 
 def _get_redis(settings: Settings) -> redis_repository.RedisLike | None:
     """설정된 Redis 클라이언트를 지연 생성한다. 없거나 연결 실패면 None."""
-    if _redis_state.failed or not settings.redis_url:
-        return None
-    if _redis_state.client is None:
-        client = redis_repository.connect(settings.redis_url)
-        if client is None:
-            _redis_state.failed = True
-            return None
-        _redis_state.client = client
-    return _redis_state.client
+    return redis_repository.shared_client(settings.redis_url)
 
 
 def _redis_call[T](fn: Callable[[], T]) -> T | None:
@@ -128,7 +113,7 @@ def locked(
     기능: 캐시 stampede 방지용이다. 락 실패가 본 조회를 막지는 않는다.
           cache_key가 있으면 대기 중 그 키를 다시 확인해 선점자가 채운 값을 재사용하게 한다.
     """
-    key = f"dait:lock:{lock_name}"
+    key = f"lock:news:{lock_name}"
     token = redis_repository.new_lock_token()
     client = _get_redis(settings)
     if client is not None:
@@ -156,13 +141,40 @@ def locked(
             _memory_release(key, token)
 
 
+def cache_delete(settings: Settings, key: str) -> None:
+    """캐시 값을 지운다. 손상된 값을 제거할 때 쓴다. 실패해도 조용히 넘어간다."""
+    client = _get_redis(settings)
+    if client is not None:
+        _redis_call(lambda: client.delete(key))
+        return
+    with _lock:
+        _memory_cache.pop(key, None)
+
+
+def load_cached[T: BaseModel](settings: Settings, key: str, model: type[T]) -> T | None:
+    """캐시 값을 모델로 복원한다. 없거나 손상됐으면 None(미스와 동일하게 처리).
+
+    입력: settings, key (캐시 키), model (응답 모델 클래스)
+    출력: T 또는 None
+    기능: 캐시 페이로드가 깨져 있으면 지우고 미스로 돌려 본 조회가 다시 채우게 한다.
+          캐시 손상이 API 500으로 번지지 않게 하는 것이 목적이다.
+    """
+    raw = cache_get(settings, key)
+    if raw is None:
+        return None
+    try:
+        return model.model_validate_json(raw)
+    except ValueError:
+        cache_delete(settings, key)
+        return None
+
+
 def clear_memory_state() -> None:
     """테스트용: 메모리 캐시·락·Redis 상태를 초기화한다."""
     with _lock:
         _memory_cache.clear()
         _memory_locks.clear()
-    _redis_state.client = None
-    _redis_state.failed = False
+    redis_repository.reset_shared_client()
 
 
 def list_cache_key(category: str, query: str, sort: str, page_size: int, cursor: str | None) -> str:
@@ -170,12 +182,12 @@ def list_cache_key(category: str, query: str, sort: str, page_size: int, cursor:
     digest = hashlib.sha256(
         f"{category}|{query}|{sort}|{page_size}|{cursor or ''}".encode()
     ).hexdigest()[:24]
-    return f"news:list:{digest}"
+    return f"cache:news:list:{digest}"
 
 
 def detail_cache_key(news_id: str) -> str:
     """상세 캐시 키."""
-    return f"news:detail:{news_id}"
+    return f"cache:news:detail:language-v2:{news_id}"
 
 
 def list_ttl() -> int:

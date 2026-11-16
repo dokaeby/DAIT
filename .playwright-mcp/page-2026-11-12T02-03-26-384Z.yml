@@ -1,0 +1,421 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e3]:
+    - link "DAIT 뉴스 큐레이션" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+    - heading "오늘의 뉴스" [level=1] [ref=f1e5]
+    - navigation "주요 메뉴" [ref=f1e6]:
+      - generic [ref=f1e8]:
+        - button "회원가입" [ref=f1e9] [cursor=pointer]
+        - button "로그인" [ref=f1e10] [cursor=pointer]
+  - generic [ref=f1e11]:
+    - complementary [ref=f1e12]:
+      - generic [ref=f1e13]: 카테고리 & 키워드
+      - generic [ref=f1e14]:
+        - button "✦ AI (인공지능)" [ref=f1e15] [cursor=pointer]
+        - list [ref=f1e16]:
+          - listitem [ref=f1e17]:
+            - button "모델·연구" [ref=f1e18] [cursor=pointer]
+          - listitem [ref=f1e19]:
+            - button "AI 에이전트" [ref=f1e20] [cursor=pointer]
+          - listitem [ref=f1e21]:
+            - button "개발 도구" [ref=f1e22] [cursor=pointer]
+          - listitem [ref=f1e23]:
+            - button "오픈소스·로컬 모델" [ref=f1e24] [cursor=pointer]
+          - listitem [ref=f1e25]:
+            - button "AI 인프라" [ref=f1e26] [cursor=pointer]
+      - button "✦ 경제·비즈니스" [ref=f1e28] [cursor=pointer]
+      - button "✦ 사회·문화" [ref=f1e30] [cursor=pointer]
+    - main [ref=f1e31]:
+      - search [ref=f1e32]:
+        - searchbox "뉴스 검색" [ref=f1e33]
+        - button "검색" [ref=f1e34] [cursor=pointer]
+      - generic [ref=f1e35]:
+        - button "전체 보기" [ref=f1e36] [cursor=pointer]
+        - button "국내 뉴스 (14곳)" [ref=f1e37] [cursor=pointer]
+        - button "해외 뉴스 (3곳)" [ref=f1e38] [cursor=pointer]
+      - group "정렬" [ref=f1e39]:
+        - button "랭킹순" [ref=f1e40] [cursor=pointer]
+        - button "최신순" [ref=f1e41] [cursor=pointer]
+      - generic [ref=f1e42]:
+        - article [ref=f1e43]:
+          - generic [ref=f1e44]:
+            - generic [ref=f1e45]:
+              - text: 국내 언론
+              - strong [ref=f1e46]: 전자신문
+              - text: · 2026-11-08T10:11:48
+            - generic [ref=f1e47]: ✓ 분석 완료
+          - link "쿠팡·네이버서도 '한복'을 '한푸'로 판매…“中 억지주장에 빌미 제공”" [ref=f1e49] [cursor=pointer]:
+            - /url: /detail.html?id=ccf958c3-a115-49fa-9172-dee99c0afac1
+          - generic [ref=f1e51]:
+            - button "요약문 보기" [ref=f1e52] [cursor=pointer]
+            - generic [ref=f1e53]:
+              - link "상세 보기" [ref=f1e54] [cursor=pointer]:
+                - /url: /detail.html?id=ccf958c3-a115-49fa-9172-dee99c0afac1
+              - link "원문 보기 →" [ref=f1e55] [cursor=pointer]:
+                - /url: https://www.etnews.com/20261108000095
+        - article [ref=f1e56]:
+          - generic [ref=f1e57]:
+            - generic [ref=f1e58]:
+              - text: 국내 언론
+              - strong [ref=f1e59]: 서울경제
+              - text: · 2026-11-08T09:39:06
+            - generic [ref=f1e60]: ✓ 분석 완료
+          - link "아틀라스에 메모리 공급…자율주행·차세대 칩까지 동맹 넓힌다" [ref=f1e62] [cursor=pointer]:
+            - /url: /detail.html?id=35edc6b6-bdcf-43fd-b814-32c35452fd20
+          - generic [ref=f1e64]:
+            - button "요약문 보기" [ref=f1e65] [cursor=pointer]
+            - generic [ref=f1e66]:
+              - link "상세 보기" [ref=f1e67] [cursor=pointer]:
+                - /url: /detail.html?id=35edc6b6-bdcf-43fd-b814-32c35452fd20
+              - link "원문 보기 →" [ref=f1e68] [cursor=pointer]:
+                - /url: https://www.sedaily.com/article/20111673
+        - article [ref=f1e69]:
+          - generic [ref=f1e70]:
+            - generic [ref=f1e71]:
+              - text: 국내 언론
+              - strong [ref=f1e72]: 전자신문
+              - text: · 2026-11-08T09:38:33
+            - generic [ref=f1e73]: ✓ 분석 완료
+          - link "TSMC '메모리 반도체 사업 진출설' 공식 부인…“기존 파운드리 집중”" [ref=f1e75] [cursor=pointer]:
+            - /url: /detail.html?id=f2b1d9f8-3002-430e-8765-c1f701fe27f5
+          - generic [ref=f1e77]:
+            - button "요약문 보기" [ref=f1e78] [cursor=pointer]
+            - generic [ref=f1e79]:
+              - link "상세 보기" [ref=f1e80] [cursor=pointer]:
+                - /url: /detail.html?id=f2b1d9f8-3002-430e-8765-c1f701fe27f5
+              - link "원문 보기 →" [ref=f1e81] [cursor=pointer]:
+                - /url: https://www.etnews.com/20261108000094
+        - article [ref=f1e82]:
+          - generic [ref=f1e83]:
+            - generic [ref=f1e84]:
+              - text: 국내 언론
+              - strong [ref=f1e85]: AI타임스
+              - text: · 2026-11-08T09:14:24
+            - generic [ref=f1e86]: ✓ 분석 완료
+          - link "과학자들은 AI를 어떻게 쓸까…앤트로픽 \"데이터 분석 1위, 가설 생성 4%\"" [ref=f1e88] [cursor=pointer]:
+            - /url: /detail.html?id=b7533bc3-5953-42e5-aab8-1a20bd8200ef
+          - generic [ref=f1e90]:
+            - button "요약문 보기" [ref=f1e91] [cursor=pointer]
+            - generic [ref=f1e92]:
+              - link "상세 보기" [ref=f1e93] [cursor=pointer]:
+                - /url: /detail.html?id=b7533bc3-5953-42e5-aab8-1a20bd8200ef
+              - link "원문 보기 →" [ref=f1e94] [cursor=pointer]:
+                - /url: https://www.aitimes.com/news/articleView.html?idxno=217147
+        - article [ref=f1e95]:
+          - generic [ref=f1e96]:
+            - generic [ref=f1e97]:
+              - text: 국내 언론
+              - strong [ref=f1e98]: 디지털투데이
+              - text: · 2026-11-08T08:27:10
+            - generic [ref=f1e99]: ✓ 분석 완료
+          - link "中 최대 플래시 메모리 업체 YMTC, 새 공장 장비 국산 비중 70%까지 높인다" [ref=f1e101] [cursor=pointer]:
+            - /url: /detail.html?id=099bcb42-2110-4aef-8818-e772e1245e5d
+          - generic [ref=f1e103]:
+            - button "요약문 보기" [ref=f1e104] [cursor=pointer]
+            - generic [ref=f1e105]:
+              - link "상세 보기" [ref=f1e106] [cursor=pointer]:
+                - /url: /detail.html?id=099bcb42-2110-4aef-8818-e772e1245e5d
+              - link "원문 보기 →" [ref=f1e107] [cursor=pointer]:
+                - /url: https://www.digitaltoday.co.kr/news/articleView.html?idxno=713616
+        - article [ref=f1e108]:
+          - generic [ref=f1e109]:
+            - generic [ref=f1e110]:
+              - text: 국내 언론
+              - strong [ref=f1e111]: 디지털투데이
+              - text: · 2026-11-08T08:17:39
+            - generic [ref=f1e112]: ✓ 분석 완료
+          - link "AWS, 개발 업무 맡아 처리하는 '키로 봇' 출시" [ref=f1e114] [cursor=pointer]:
+            - /url: /detail.html?id=53a1e976-c3f1-4bf4-9fe6-6a9191e5ce10
+          - generic [ref=f1e116]:
+            - button "요약문 보기" [ref=f1e117] [cursor=pointer]
+            - generic [ref=f1e118]:
+              - link "상세 보기" [ref=f1e119] [cursor=pointer]:
+                - /url: /detail.html?id=53a1e976-c3f1-4bf4-9fe6-6a9191e5ce10
+              - link "원문 보기 →" [ref=f1e120] [cursor=pointer]:
+                - /url: https://www.digitaltoday.co.kr/news/articleView.html?idxno=713615
+        - article [ref=f1e121]:
+          - generic [ref=f1e122]:
+            - generic [ref=f1e123]:
+              - text: 국내 언론
+              - strong [ref=f1e124]: 한국경제
+              - text: · 2026-11-08T08:09:01
+            - generic [ref=f1e125]: ✓ 분석 완료
+          - link "챗GPT 국내 앱 이용자, 첫 1800만명 돌파" [ref=f1e127] [cursor=pointer]:
+            - /url: /detail.html?id=01231c92-56a3-4a39-876f-9e8a30983dd7
+          - generic [ref=f1e129]:
+            - button "요약문 보기" [ref=f1e130] [cursor=pointer]
+            - generic [ref=f1e131]:
+              - link "상세 보기" [ref=f1e132] [cursor=pointer]:
+                - /url: /detail.html?id=01231c92-56a3-4a39-876f-9e8a30983dd7
+              - link "원문 보기 →" [ref=f1e133] [cursor=pointer]:
+                - /url: https://www.hankyung.com/article/2026110831561
+        - article [ref=f1e134]:
+          - generic [ref=f1e135]:
+            - generic [ref=f1e136]:
+              - text: 국내 언론
+              - strong [ref=f1e137]: AI타임스
+              - text: · 2026-11-08T07:59:00
+            - generic [ref=f1e138]: ✓ 분석 완료
+          - link "앤트그룹, '링 3.2 플래시' 공개…시각 이해 평가서 클로드 오퍼스 5 앞서" [ref=f1e140] [cursor=pointer]:
+            - /url: /detail.html?id=b8b5a43f-3c1e-4c0e-9b31-e8c730bbe00a
+          - generic [ref=f1e142]:
+            - button "요약문 보기" [ref=f1e143] [cursor=pointer]
+            - generic [ref=f1e144]:
+              - link "상세 보기" [ref=f1e145] [cursor=pointer]:
+                - /url: /detail.html?id=b8b5a43f-3c1e-4c0e-9b31-e8c730bbe00a
+              - link "원문 보기 →" [ref=f1e146] [cursor=pointer]:
+                - /url: https://www.aitimes.com/news/articleView.html?idxno=217146
+        - article [ref=f1e147]:
+          - generic [ref=f1e148]:
+            - generic [ref=f1e149]:
+              - text: 국내 언론
+              - strong [ref=f1e150]: IT조선
+              - text: · 2026-11-08T07:26:58
+            - generic [ref=f1e151]: ✓ 분석 완료
+          - link "“로봇 기술 못 내준다”… 中 제동에 손정의 ‘피지컬 AI 제국’ 흔들" [ref=f1e153] [cursor=pointer]:
+            - /url: /detail.html?id=d0c552ad-316c-4f49-b408-6776332128e0
+          - generic [ref=f1e155]:
+            - button "요약문 보기" [ref=f1e156] [cursor=pointer]
+            - generic [ref=f1e157]:
+              - link "상세 보기" [ref=f1e158] [cursor=pointer]:
+                - /url: /detail.html?id=d0c552ad-316c-4f49-b408-6776332128e0
+              - link "원문 보기 →" [ref=f1e159] [cursor=pointer]:
+                - /url: https://it.chosun.com/news/articleView.html?idxno=3000000000502
+        - article [ref=f1e160]:
+          - generic [ref=f1e161]:
+            - generic [ref=f1e162]:
+              - text: 국내 언론
+              - strong [ref=f1e163]: 연합뉴스
+              - text: · 2026-11-08T05:53:26
+            - generic [ref=f1e164]: ✓ 분석 완료
+          - link "\"상품 추천 AI, 잘못된 결과 재학습하며 편향·오류 증폭\"" [ref=f1e166] [cursor=pointer]:
+            - /url: /detail.html?id=a0b774e5-5fe8-4cf3-8470-f1bf01087b5e
+          - generic [ref=f1e168]:
+            - button "요약문 보기" [ref=f1e169] [cursor=pointer]
+            - generic [ref=f1e170]:
+              - link "상세 보기" [ref=f1e171] [cursor=pointer]:
+                - /url: /detail.html?id=a0b774e5-5fe8-4cf3-8470-f1bf01087b5e
+              - link "원문 보기 →" [ref=f1e172] [cursor=pointer]:
+                - /url: https://www.yna.co.kr/view/AKR20261108029200057
+        - article [ref=f1e173]:
+          - generic [ref=f1e174]:
+            - generic [ref=f1e175]:
+              - text: 국내 언론
+              - strong [ref=f1e176]: 디지털투데이
+              - text: · 2026-11-08T05:53:14
+            - generic [ref=f1e177]: ✓ 분석 완료
+          - link "바이낸스 CFO 사임...초대형 해킹 9일 만" [ref=f1e179] [cursor=pointer]:
+            - /url: /detail.html?id=6b3abda9-bcba-44b2-916e-7b839f346c6f
+          - generic [ref=f1e181]:
+            - button "요약문 보기" [ref=f1e182] [cursor=pointer]
+            - generic [ref=f1e183]:
+              - link "상세 보기" [ref=f1e184] [cursor=pointer]:
+                - /url: /detail.html?id=6b3abda9-bcba-44b2-916e-7b839f346c6f
+              - link "원문 보기 →" [ref=f1e185] [cursor=pointer]:
+                - /url: https://www.digitaltoday.co.kr/news/articleView.html?idxno=713613
+        - article [ref=f1e186]:
+          - generic [ref=f1e187]:
+            - generic [ref=f1e188]:
+              - text: 국내 언론
+              - strong [ref=f1e189]: AI타임스
+              - text: · 2026-11-08T03:08:58
+            - generic [ref=f1e190]: ✓ 분석 완료
+          - link "앤트로픽, 40년 미스터리 단백질 연구 돌파구…3D 구조 첫 규명" [ref=f1e192] [cursor=pointer]:
+            - /url: /detail.html?id=772c8c31-7a7f-426c-a349-45d0ee56efad
+          - generic [ref=f1e194]:
+            - button "요약문 보기" [ref=f1e195] [cursor=pointer]
+            - generic [ref=f1e196]:
+              - link "상세 보기" [ref=f1e197] [cursor=pointer]:
+                - /url: /detail.html?id=772c8c31-7a7f-426c-a349-45d0ee56efad
+              - link "원문 보기 →" [ref=f1e198] [cursor=pointer]:
+                - /url: https://www.aitimes.com/news/articleView.html?idxno=217145
+        - article [ref=f1e199]:
+          - generic [ref=f1e200]:
+            - generic [ref=f1e201]:
+              - text: 국내 언론
+              - strong [ref=f1e202]: AI타임스
+              - text: · 2026-11-08T02:48:25
+            - generic [ref=f1e203]: ✓ 분석 완료
+          - link "AWS, 여러 AI 에이전트 지휘하는 '키로 봇' 출시" [ref=f1e205] [cursor=pointer]:
+            - /url: /detail.html?id=2e4d16bf-8a6c-40a3-9703-76dd24c05e68
+          - generic [ref=f1e207]:
+            - button "요약문 보기" [ref=f1e208] [cursor=pointer]
+            - generic [ref=f1e209]:
+              - link "상세 보기" [ref=f1e210] [cursor=pointer]:
+                - /url: /detail.html?id=2e4d16bf-8a6c-40a3-9703-76dd24c05e68
+              - link "원문 보기 →" [ref=f1e211] [cursor=pointer]:
+                - /url: https://www.aitimes.com/news/articleView.html?idxno=217141
+        - article [ref=f1e212]:
+          - generic [ref=f1e213]:
+            - generic [ref=f1e214]:
+              - text: 해외 외신
+              - strong [ref=f1e215]: TechCrunch
+              - text: · 2026-11-07T22:07:22
+            - generic [ref=f1e216]: ✓ 분석 완료
+          - generic [ref=f1e217]:
+            - link "After the midterms, things are looking rocky for Elon Musk and data centers" [ref=f1e218] [cursor=pointer]:
+              - /url: /detail.html?id=a27fdfa7-d1d9-460d-ae09-62ab5f0dcbec
+            - generic [ref=f1e220]: 중간고사 이후 Elon Musk와 데이터 센터의 상황은 험난해 보입니다.
+          - generic [ref=f1e221]:
+            - button "요약문 보기" [ref=f1e222] [cursor=pointer]
+            - generic [ref=f1e223]:
+              - link "상세 보기" [ref=f1e224] [cursor=pointer]:
+                - /url: /detail.html?id=a27fdfa7-d1d9-460d-ae09-62ab5f0dcbec
+              - link "원문 보기 →" [ref=f1e225] [cursor=pointer]:
+                - /url: https://techcrunch.com/2026/11/07/after-the-midterms-things-are-looking-rocky-for-elon-musk-and-data-centers/
+        - article [ref=f1e226]:
+          - generic [ref=f1e227]:
+            - generic [ref=f1e228]:
+              - text: 해외 외신
+              - strong [ref=f1e229]: TechCrunch
+              - text: · 2026-11-07T21:17:08
+            - generic [ref=f1e230]: ✓ 분석 완료
+          - generic [ref=f1e231]:
+            - link "Megaspeed exec was recruited to spy on Nvidia CEO, according to US intelligence memo" [ref=f1e232] [cursor=pointer]:
+              - /url: /detail.html?id=79600aec-d4bb-4bcf-a544-4383d86e1cd5
+            - generic [ref=f1e234]: 미국 정보국 메모에 따르면 Megaspeed 임원은 Nvidia CEO를 감시하기 위해 채용되었습니다.
+          - generic [ref=f1e235]:
+            - button "요약문 보기" [ref=f1e236] [cursor=pointer]
+            - generic [ref=f1e237]:
+              - link "상세 보기" [ref=f1e238] [cursor=pointer]:
+                - /url: /detail.html?id=79600aec-d4bb-4bcf-a544-4383d86e1cd5
+              - link "원문 보기 →" [ref=f1e239] [cursor=pointer]:
+                - /url: https://techcrunch.com/2026/11/07/chinese-exec-was-recruited-to-spy-on-nvidia-ceo-according-to-us-intelligence-memo/
+        - article [ref=f1e240]:
+          - generic [ref=f1e241]:
+            - generic [ref=f1e242]:
+              - text: 해외 외신
+              - strong [ref=f1e243]: The Verge
+              - text: · 2026-11-07T15:47:15
+            - generic [ref=f1e244]: ✓ 분석 완료
+          - generic [ref=f1e245]:
+            - link "NYT Cooking’s AI assistant saved my weeknight chicken, but almost ruined my cake" [ref=f1e246] [cursor=pointer]:
+              - /url: /detail.html?id=32ee7396-a205-4f6b-b1e8-ef306288da20
+            - generic [ref=f1e248]: NYT Cooking의 AI 비서가 내 주중 치킨을 구했지만 케이크를 거의 망칠 뻔했습니다.
+          - generic [ref=f1e249]:
+            - button "요약문 보기" [ref=f1e250] [cursor=pointer]
+            - generic [ref=f1e251]:
+              - link "상세 보기" [ref=f1e252] [cursor=pointer]:
+                - /url: /detail.html?id=32ee7396-a205-4f6b-b1e8-ef306288da20
+              - link "원문 보기 →" [ref=f1e253] [cursor=pointer]:
+                - /url: https://www.theverge.com/tech/1029489/nyt-cooking-ai-assistant-review
+        - article [ref=f1e254]:
+          - generic [ref=f1e255]:
+            - generic [ref=f1e256]:
+              - text: 해외 외신
+              - strong [ref=f1e257]: The Verge
+              - text: · 2026-11-07T14:12:11
+            - generic [ref=f1e258]: ✓ 분석 완료
+          - generic [ref=f1e259]:
+            - link "Costco members can get $5 off the reimagined Ocarina of Time" [ref=f1e260] [cursor=pointer]:
+              - /url: /detail.html?id=74145221-4b47-4aa1-b04c-ae67236f1d74
+            - generic [ref=f1e262]: 코스트코 회원은 시간의 오카리나를 5달러 할인받을 수 있습니다
+          - generic [ref=f1e263]:
+            - button "요약문 보기" [ref=f1e264] [cursor=pointer]
+            - generic [ref=f1e265]:
+              - link "상세 보기" [ref=f1e266] [cursor=pointer]:
+                - /url: /detail.html?id=74145221-4b47-4aa1-b04c-ae67236f1d74
+              - link "원문 보기 →" [ref=f1e267] [cursor=pointer]:
+                - /url: https://www.theverge.com/gadgets/1028917/legend-of-zelda-ocarina-of-time-remake-switch-2-costco-deal-sale
+        - article [ref=f1e268]:
+          - generic [ref=f1e269]:
+            - generic [ref=f1e270]:
+              - text: 국내 언론
+              - strong [ref=f1e271]: 바이라인네트워크
+              - text: · 2026-11-07T02:02:10
+            - generic [ref=f1e272]: ✓ 분석 완료
+          - link "‘로컬 AI 시대’, 엔비디아 ‘RTX 스파크’가 그리는 미래" [ref=f1e274] [cursor=pointer]:
+            - /url: /detail.html?id=1021d8c0-9cce-4913-a1a1-35062e1141f5
+          - generic [ref=f1e276]:
+            - button "요약문 보기" [ref=f1e277] [cursor=pointer]
+            - generic [ref=f1e278]:
+              - link "상세 보기" [ref=f1e279] [cursor=pointer]:
+                - /url: /detail.html?id=1021d8c0-9cce-4913-a1a1-35062e1141f5
+              - link "원문 보기 →" [ref=f1e280] [cursor=pointer]:
+                - /url: https://byline.network/2026/11/6-475/
+        - article [ref=f1e281]:
+          - generic [ref=f1e282]:
+            - generic [ref=f1e283]:
+              - text: 국내 언론
+              - strong [ref=f1e284]: 바이라인네트워크
+              - text: · 2026-11-07T02:01:06
+            - generic [ref=f1e285]: ✓ 분석 완료
+          - link "앱 홍수 시대, 이용자에게 어떻게 닿을까 (feat. 몰로코)" [ref=f1e287] [cursor=pointer]:
+            - /url: /detail.html?id=b4535564-cedd-4885-bb80-6154f08ed17e
+          - generic [ref=f1e289]:
+            - button "요약문 보기" [ref=f1e290] [cursor=pointer]
+            - generic [ref=f1e291]:
+              - link "상세 보기" [ref=f1e292] [cursor=pointer]:
+                - /url: /detail.html?id=b4535564-cedd-4885-bb80-6154f08ed17e
+              - link "원문 보기 →" [ref=f1e293] [cursor=pointer]:
+                - /url: https://byline.network/2026/11/06_291872773/
+        - article [ref=f1e294]:
+          - generic [ref=f1e295]:
+            - generic [ref=f1e296]:
+              - text: 해외 외신
+              - strong [ref=f1e297]: TechCrunch
+              - text: · 2026-11-07T01:40:28
+            - generic [ref=f1e298]: ✓ 분석 완료
+          - generic [ref=f1e299]:
+            - link "Crusoe sells troubled Wyoming data center project to Google" [ref=f1e300] [cursor=pointer]:
+              - /url: /detail.html?id=fe0b418c-dcab-4ff1-81cb-048b8638001f
+            - generic [ref=f1e302]: Crusoe, 문제가 있는 와이오밍 데이터 센터 프로젝트를 Google에 매각
+          - generic [ref=f1e303]:
+            - button "요약문 보기" [ref=f1e304] [cursor=pointer]
+            - generic [ref=f1e305]:
+              - link "상세 보기" [ref=f1e306] [cursor=pointer]:
+                - /url: /detail.html?id=fe0b418c-dcab-4ff1-81cb-048b8638001f
+              - link "원문 보기 →" [ref=f1e307] [cursor=pointer]:
+                - /url: https://techcrunch.com/2026/11/06/crusoe-sells-troubled-wyoming-data-center-project-to-google/
+        - article [ref=f1e308]:
+          - generic [ref=f1e309]:
+            - generic [ref=f1e310]:
+              - text: 해외 외신
+              - strong [ref=f1e311]: MIT Tech Review
+              - text: · 2026-11-06T13:10:00
+            - generic [ref=f1e312]: ✓ 분석 완료
+          - generic [ref=f1e313]:
+            - 'link "The Download: a humanoid cleans house and Samsung builds for the AI boom" [ref=f1e314] [cursor=pointer]':
+              - /url: /detail.html?id=26ade309-a81f-4f56-9dcb-856e1319be10
+            - generic [ref=f1e316]: "다운로드: 휴머노이드가 집을 청소하고 삼성이 AI 붐을 위해 제작함"
+          - generic [ref=f1e317]:
+            - button "요약문 보기" [ref=f1e318] [cursor=pointer]
+            - generic [ref=f1e319]:
+              - link "상세 보기" [ref=f1e320] [cursor=pointer]:
+                - /url: /detail.html?id=26ade309-a81f-4f56-9dcb-856e1319be10
+              - link "원문 보기 →" [ref=f1e321] [cursor=pointer]:
+                - /url: https://www.technologyreview.com/2026/11/06/1148154/the-download-humanoid-robot-cleaner-samsung-ai-chip-boom/
+        - article [ref=f1e322]:
+          - generic [ref=f1e323]:
+            - generic [ref=f1e324]:
+              - text: 해외 외신
+              - strong [ref=f1e325]: MIT Tech Review
+              - text: · 2026-11-06T10:00:00
+            - generic [ref=f1e326]: ✓ 분석 완료
+          - generic [ref=f1e327]:
+            - link "I watched a humanoid robot clean my apartment. It felt like a taste of the future." [ref=f1e328] [cursor=pointer]:
+              - /url: /detail.html?id=82c50aa0-a963-4158-b885-813a85219559
+            - generic [ref=f1e330]: 나는 인간형 로봇이 내 아파트를 청소하는 것을 보았습니다.
+          - generic [ref=f1e331]:
+            - button "요약문 보기" [ref=f1e332] [cursor=pointer]
+            - generic [ref=f1e333]:
+              - link "상세 보기" [ref=f1e334] [cursor=pointer]:
+                - /url: /detail.html?id=82c50aa0-a963-4158-b885-813a85219559
+              - link "원문 보기 →" [ref=f1e335] [cursor=pointer]:
+                - /url: https://www.technologyreview.com/2026/11/06/1148090/i-watched-a-humanoid-robot-clean-my-apartment-it-felt-like-a-taste-of-the-future/
+        - article [ref=f1e336]:
+          - generic [ref=f1e337]:
+            - generic [ref=f1e338]:
+              - text: 국내 언론
+              - strong [ref=f1e339]: 바이라인네트워크
+              - text: · 2026-11-06T09:37:34
+            - generic [ref=f1e340]: ✓ 분석 완료
+          - link "미토스 등장 반년, 프론티어 AI의 보안 능력은 얼마나 발전했나" [ref=f1e342] [cursor=pointer]:
+            - /url: /detail.html?id=85cdfa54-631e-410a-a853-6a1465c03cda
+          - generic [ref=f1e344]:
+            - button "요약문 보기" [ref=f1e345] [cursor=pointer]
+            - generic [ref=f1e346]:
+              - link "상세 보기" [ref=f1e347] [cursor=pointer]:
+                - /url: /detail.html?id=85cdfa54-631e-410a-a853-6a1465c03cda
+              - link "원문 보기 →" [ref=f1e348] [cursor=pointer]:
+                - /url: https://byline.network/2026/11/6-474/

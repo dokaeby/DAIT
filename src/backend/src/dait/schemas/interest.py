@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-MAX_INTERESTS = 15  # 소주제 전체 선택까지 허용
+MAX_INTERESTS = 30  # 소주제 전체 선택까지 허용
 _DUPLICATE_MESSAGE = "duplicate interest"
 
 
@@ -26,10 +26,40 @@ class InterestCode(StrEnum):
     SOCIETY_HEALTH = "society.health"
     SOCIETY_CLIMATE = "society.climate"
     SOCIETY_CULTURE = "society.culture"
+    EN_AI_MODELS = "en.ai.models"
+    EN_AI_AGENTS = "en.ai.agents"
+    EN_AI_DEVTOOLS = "en.ai.devtools"
+    EN_AI_OPENSOURCE = "en.ai.opensource"
+    EN_AI_INFRA = "en.ai.infra"
+    EN_ECONOMY_INDUSTRY = "en.economy.industry"
+    EN_ECONOMY_BUSINESS = "en.economy.business"
+    EN_ECONOMY_STARTUPS = "en.economy.startups"
+    EN_ECONOMY_MARKETS = "en.economy.markets"
+    EN_ECONOMY_JOBS = "en.economy.jobs"
+    EN_SOCIETY_POLICY = "en.society.policy"
+    EN_SOCIETY_EDUCATION = "en.society.education"
+    EN_SOCIETY_HEALTH = "en.society.health"
+    EN_SOCIETY_CLIMATE = "en.society.climate"
+    EN_SOCIETY_CULTURE = "en.society.culture"
 
 
 # 한글 이름은 표시용이라 바뀌어도 저장된 코드는 영향을 받지 않는다.
 INTEREST_NAMES: dict[InterestCode, str] = {
+    InterestCode.EN_AI_MODELS: "Models & Research",
+    InterestCode.EN_AI_AGENTS: "AI Agents",
+    InterestCode.EN_AI_DEVTOOLS: "Developer Tools",
+    InterestCode.EN_AI_OPENSOURCE: "Open Source & Local Models",
+    InterestCode.EN_AI_INFRA: "AI Infrastructure",
+    InterestCode.EN_ECONOMY_INDUSTRY: "Industry Trends",
+    InterestCode.EN_ECONOMY_BUSINESS: "Corporate & Management",
+    InterestCode.EN_ECONOMY_STARTUPS: "Startups & Ventures",
+    InterestCode.EN_ECONOMY_MARKETS: "Finance & Markets",
+    InterestCode.EN_ECONOMY_JOBS: "Jobs & Employment",
+    InterestCode.EN_SOCIETY_POLICY: "Policy & Administration",
+    InterestCode.EN_SOCIETY_EDUCATION: "Education",
+    InterestCode.EN_SOCIETY_HEALTH: "Health & Medicine",
+    InterestCode.EN_SOCIETY_CLIMATE: "Environment & Climate",
+    InterestCode.EN_SOCIETY_CULTURE: "Culture & Content",
     InterestCode.AI_MODELS: "모델·연구",
     InterestCode.AI_AGENTS: "AI 에이전트",
     InterestCode.AI_DEVTOOLS: "개발 도구",
@@ -46,7 +76,19 @@ INTEREST_NAMES: dict[InterestCode, str] = {
     InterestCode.SOCIETY_CLIMATE: "환경·기후",
     InterestCode.SOCIETY_CULTURE: "문화·콘텐츠",
 }
-GROUP_NAMES: dict[str, str] = {"ai": "AI", "economy": "경제·비즈니스", "society": "사회·문화"}
+GROUP_NAMES: dict[str, str] = {
+    "ai": "AI•인공지능",
+    "economy": "경제·비즈니스",
+    "society": "사회·문화",
+}
+
+GROUP_NAMES.update(
+    {
+        "en_ai": "AI & Technology (English)",
+        "en_economy": "Economy & Business (English)",
+        "en_society": "Society & Culture (English)",
+    }
+)
 
 
 class InterestItem(BaseModel):
@@ -59,6 +101,9 @@ class InterestItem(BaseModel):
     group: str
 
 
+# 입력: 없음.
+# 출력: 새 빈 관심사 코드 목록.
+# 동작: 요청 모델마다 공유되지 않는 기본 목록을 만든다.
 def empty_interests() -> list[InterestCode]:
     """빈 관심사 목록을 만든다.
 
@@ -69,6 +114,9 @@ def empty_interests() -> list[InterestCode]:
     return []
 
 
+# 입력: 없음.
+# 출력: 새 빈 관심사 응답 항목 목록.
+# 동작: 응답 모델마다 공유되지 않는 기본 목록을 만든다.
 def empty_items() -> list[InterestItem]:
     """빈 관심사 항목 목록을 만든다.
 
@@ -79,6 +127,9 @@ def empty_items() -> list[InterestItem]:
     return []
 
 
+# 입력: 검증된 관심사 코드 목록.
+# 출력: 중복이 없는 같은 관심사 코드 목록.
+# 동작: 같은 코드가 두 번 포함된 요청을 거부한다.
 def check_no_duplicates(values: list[InterestCode]) -> list[InterestCode]:
     """관심사 목록에 같은 코드가 두 번 들어 있지 않은지 확인한다.
 
@@ -126,6 +177,9 @@ class InterestsUpdateRequest(BaseModel):
 
     @field_validator("interests")
     @classmethod
+    # 입력: 관심사 변경 요청에서 검증된 코드 목록.
+    # 출력: 중복이 없는 같은 코드 목록.
+    # 동작: 공통 중복 검사 규칙으로 관심사 변경 요청을 검증한다.
     def _no_duplicates(cls, value: list[InterestCode]) -> list[InterestCode]:
         """중복 코드를 거부한다.
 

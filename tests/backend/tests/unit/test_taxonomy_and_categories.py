@@ -145,7 +145,7 @@ async def test_google_translate_processor_and_collector_monkeypatched(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def _fake_translate(text: str) -> str:
-        return f"[한국어번역] {text}"
+        return "[한국어번역] 한국어 번역 문장"
 
     monkeypatch.setattr(
         "src.backend.app.workers.ai_processor._translate_sync_with_deep_translator",
@@ -187,10 +187,7 @@ async def test_google_translate_processor_and_collector_monkeypatched(
 
     translating_collector = TranslatingNewsCollector(base, enable_network=True)
     translated_collection = await translating_collector.collect(src)
-    expected_title = (
-        "OpenAI launches autonomous coding agent"
-        " ||| [한국어번역] OpenAI launches autonomous coding agent"
-    )
+    expected_title = "OpenAI launches autonomous coding agent ||| [한국어번역] 한국어 번역 문장"
     assert translated_collection.articles[0].title == expected_title
 
 
@@ -271,19 +268,10 @@ async def test_application_crawls_rss_serves_categories_and_toggle_ui() -> None:
             index_res = await client.get("/")
             assert index_res.status_code == 200
             assert '<aside class="sidebar"' in index_res.text
-            assert "국내 뉴스 (14곳)" in index_res.text
-            assert "해외 뉴스 (3곳)" in index_res.text
-            # Home cards use unbracketed labels and separate original/translated title elements.
-            assert '"요약문 보기"' in index_res.text
-            assert '"요약문 닫기"' in index_res.text
-            assert 'class="btn-toggle"' in index_res.text
-            assert 'onclick="toggleSummary(' in index_res.text
-            assert 'class="summary-box"' in index_res.text
-            assert 'class="card-title-main"' in index_res.text
-            assert 'class="card-title-sub"' in index_res.text
-            assert "[한글 번역 보기]" not in index_res.text
-            assert "translation-toggle-btn" not in index_res.text
-            assert "국내 기사 (원문 한국어)" not in index_res.text
+            # v1.0.3 UI: 카테고리는 사이드바 동적 영역과 news-ui.js가 담당한다.
+            assert 'id="sidebar-categories"' in index_res.text
+            assert "news-ui.js" in index_res.text
+            assert "settings.html" in index_res.text
 
             css_res = await client.get("/mockup/mockup.css")
             assert css_res.status_code == 200
@@ -292,8 +280,18 @@ async def test_application_crawls_rss_serves_categories_and_toggle_ui() -> None:
             assert "display: none;" in css_res.text
             assert "calc(1.3rem * 0.7)" in css_res.text
 
+            # 백그라운드 크롤링이 끝날 때까지 수집 상태를 폴링한다.
+            for _ in range(100):
+                status_res = await client.get("/v1/collection/status")
+                assert status_res.status_code == 200
+                if not status_res.json().get("collecting"):
+                    break
+                await asyncio.sleep(0.05)
+
             for category in ("AI", "ECONOMY", "SOCIETY"):
-                response = await client.get(f"/v1/news?category={category}&sort=rank&page_size=20")
+                response = await client.get(
+                    f"/v1/news?category={category}&sort=rank&page_size=20&fresh_hours=0"
+                )
                 assert response.status_code == 200
                 parsed = NewsListResponse.model_validate_json(response.text)
                 assert len(parsed.items) >= 1
@@ -304,7 +302,7 @@ async def test_application_crawls_rss_serves_categories_and_toggle_ui() -> None:
                     )
 
             hk_res = await client.get(
-                "/v1/news?category=ECONOMY&q=산업 동향&sort=rank&page_size=10"
+                "/v1/news?category=ECONOMY&q=산업 동향&sort=rank&page_size=10&fresh_hours=0"
             )
             assert hk_res.status_code == 200
             hk_parsed = NewsListResponse.model_validate_json(hk_res.text)

@@ -1,36 +1,99 @@
 # DAIT 소스 구조
 
-실행 코드는 백엔드와 프론트엔드로 나누고, 기존 설계 가이드는 보존한다.
+현재 실행 방법은 루트 README.md를 우선합니다.
 
-| 경로 | 역할 | 상태 |
-|---|---|---|
-| backend/app/api/ | FastAPI 진입점·뉴스 목록/상세 API | 실행 코드 |
-| backend/app/collectors/ | RSS 수집·기사 본문 추출 | 실행 코드 |
-| backend/app/core/ | 뉴스 분류·제목 번역 규칙 | 실행 코드 |
-| backend/app/repositories/ | SQLAlchemy 비동기 DB 접근 | 실행 코드 |
-| backend/app/schemas/ | Pydantic 데이터 모델 | 실행 코드 |
-| backend/app/services/ | 뉴스 조회·캐시·랭킹 | 실행 코드 |
-| backend/app/workers/ | 수집·번역·요약 처리 | 실행 코드 |
-| frontend/public/index.html | 뉴스 목록·검색·필터·요약 토글 | 실행 화면 |
-| frontend/public/detail.html | 뉴스 상세·원문·번역·요약 | 실행 화면 |
-| frontend/public/mockup.css | 공통 테마·반응형 스타일 | 실행 스타일 |
-| backend/src/dait/ | 기존 기능별 개발 가이드 | 미구현 가이드 |
-| backend/migrations/ | 마이그레이션 가이드 | 미구현 가이드 |
-| frontend/src/ | Python·TypeScript 라우팅·API·기능별 개발 가이드 | 미구현 가이드 |
+| 경로 | 역할 |
+|---|---|
+| server.py | 통합 서버 factory, 명시적 Alembic 마이그레이션 |
+| backend/src/dait/ | 실행 가능한 회원·관심사·뉴스·설정·예약 API와 서비스·저장소 |
+| backend/migrations/ | 통합 DB 스키마 변경 이력 |
+| backend/app/ | 별도 뉴스 수집·번역·요약 파이프라인 (통합 서버 미연결) |
+| frontend/public/ | 통합 서버에서 제공하는 실제 화면 |
+| frontend/src/ | 기존 개발 가이드 |
 
-## 실행과 테스트
+기존 안내와 달리 backend/src/dait/와 backend/migrations/는 실행 코드입니다.
+통합 서버는 backend/src를 명시적으로 패키지 검색 경로에 추가하므로 다른 위치에 설치된 v1.0.2 패키지보다 우선합니다.
+서버·마이그레이션은 저장소 루트에서 실행하고 동일한 DATABASE_URL을 사용합니다.
 
-프로젝트 루트에서 의존성을 설치한 Python 환경으로 실행한다.
+```powershell
+python -m src.server migrate
+python -m uvicorn src.server:create_app --factory --reload
+python -m pytest tests/backend/tests -q
+```
 
-    python -m uvicorn src.backend.app.api.main:app --reload
-    python -m pytest tests/backend/tests -q
+2단계에서 frontend/public에 v1.0.2 스타일의 메인·카드·상세 팝업을 이식했습니다.
 
-백엔드는 /, /detail.html, /mockup/* 에서 frontend/public 파일을 제공한다. 기존 API 주소 /v1/news 등은 유지한다. 프론트엔드는 별도 빌드 과정이 없다.
+## 2단계 UI 이식
 
-- tests/backend/tests/: 백엔드 테스트 및 미구현 기능 테스트 가이드.
-- tests/frontend/tests/: 브라우저 흐름 테스트 가이드.
-- 루트 pyproject.toml, requirements.txt, uv.lock: 공통 Python 의존성·검사 설정.
-- 루트 Procfile: 배포 실행 명령.
-- docs/의 목업·데모: 설계·참고 자료. 실제 화면 수정은 frontend/public/에서 진행한다.
+v1.0.2의 design.css와 app.css를 local-design.css, local-app.css로 보존해 적용했습니다.
+index.html, news-ui.js, news-ui.css가 현재 통합 뉴스 API에 연결된 메인·카드·상세 팝업을 제공합니다.
+app.js의 기존 인증과 settings.html의 설정 연결은 유지합니다.
+검색은 현재 키워드 검색이며 의미 검색·관심사 맞춤 추천·요약 재시도는 후속 단계입니다.
+원본 스타일을 수정할 때는 공통 원본 두 파일보다 news-ui.css에서 통합 화면 차이를 조정합니다.
 
-기존 backend/src/dait/와 frontend/src/ 파일은 실제 구현이 아닌 개발 가이드다.
+브라우저 회귀 검증: Playwright가 설치된 Node 환경에서
+`node --test tests/frontend/tests/news_ui.test.cjs`.
+격리된 테스트 API로 카드·입력 이스케이프·상세·페이지 추가·카테고리·빈 결과·오류 복구와
+1440/390px 화면을 확인합니다. 실제 서버·DB·AI 연동 검증을 대신하지 않습니다.
+
+## 3단계 설정 화면 연결
+
+- `app.js`: 이메일 저장 문구, 기존 이메일·토큰 인증 유지.
+- `settings.html`, `settings-ui.js`, `settings-ui.css`: 기존 설정·예약 기능을 유지하고 서버 카탈로그 기반 관심사 선택·전체 선택·해제·계정별 저장 추가.
+- GET `/v1/interests/catalog`, GET/PUT `/v1/me/interests`의 기존 Pydantic 계약을 사용. 빈 목록 저장은 선택 해제로 처리.
+- 관심사 저장 실패 시 입력 유지, 재조회 실패 시 저장 차단, 재시도 제공. 중복 제출 차단.
+- 예약 수정은 기존 카테고리·출처·사용 여부를 유지. 외부 값은 textContent로 표시.
+- 새 환경변수·DB 변경·마이그레이션·라이브러리 추가 없음. 백엔드 계층 변경 없음.
+- 관심사에 따른 뉴스 목록 개인화는 4단계 작업이며 현재 저장만 연결. 이메일 2차 인증·소셜 로그인·알림 발송은 이번 작업 범위에 포함하지 않음.
+- 검증: 격리된 Chrome 테스트로 저장/재조회, 빈 선택 저장, 오류 복구, 중복 제출, 설정 저장, 예약 수정 보존, HTML 입력 비실행, 비로그인 접근과 모바일 폭 확인.
+- 실행 환경의 `.venv`가 이전 Python 경로를 참조하여 pytest·pyright는 실행 전 중단. 전체 품질 게이트 통과로 판정하지 않음.
+
+## 기본 뉴스 목록 연결
+
+통합 서버 시작 시 `LEGACY_NEWS_DB`(기본 `dait.db`)의 저장된 성공 기사·요약을 읽기 전용으로 조회해 통합 DATABASE_URL로 가져옵니다.
+Pydantic 검증과 HTTPS 공개 조건을 통과한 결과만 READY로 저장합니다. SOCIETY는 통합 분류 POLITICS로 대응합니다.
+원본 DB와 계정 데이터는 변경하지 않으며 URL 기준 중복 삽입을 차단하고 이미 저장된 결과는 덮어쓰지 않습니다.
+기본 목록은 AI 카테고리의 최신 최대 10개이며 같은 ID의 상세·요약·원문 링크로 연결됩니다.
+이 기능은 저장 결과 연결입니다. 신규 RSS 수집·AI 실행·개인화 검색은 별도 후속 작업입니다.
+원본에 모델·생성 시각·언어 메타데이터가 없는 경우 임의로 채우지 않습니다(언어 und).
+로컬 실제 서버 검증: 총 68건 연결, AI 목록 10건. Chrome·Edge 카드/상세/원문 링크 확인.
+Firefox 자동화 바이너리 부재로 미검증. pytest·Pyright는 기존 .venv의 Python 경로 문제로 미실행.
+DB 스키마 변경은 없습니다. `LEGACY_NEWS_DB`를 명시하면 다른 원본 경로를 사용할 수 있습니다.
+
+## 상세 팝업 UI 변경
+
+상세 화면은 메인 팝업 하나로 제공합니다. `/detail.html`과 해당 정적 HTML 파일을 제거했으며 뉴스 상세 JSON API `/v1/news/{id}`는 유지합니다.
+v1.0.2의 article-hero·detail-grid·panel·key-points 스타일로 요약/번역/원본 정보/처리 정보를 배치했습니다.
+원문 열기, 링크 복사, 상태 표시, 닫기 버튼·Escape, 외부 클릭 시 유지 동작을 보존합니다.
+격리된 Chrome·Edge 테스트에서 PC/모바일 팝업, 번호형 요약, 원문 URL, 링크 복사, 외부 클릭 유지·닫기를 확인했습니다.
+Firefox는 자동화 바이너리 부재로 미검증. 실제 localhost 서버는 연결 거부 상태여서 실제 기사 화면의 최종 확인은 남아 있습니다.
+환경변수·DB 스키마·마이그레이션 변경 없음.
+
+## 비로그인 메인 목록 제한
+
+비로그인 뉴스 API는 최신순 최대 10건만 반환하고 추가 커서는 거부합니다. 공개 응답의 has_more/next_cursor도 비활성화합니다.
+로그인 사용자의 기존 페이지 조회는 유지하며 프론트엔드 API 호출에 기존 인증 헬퍼를 사용합니다.
+메인 정렬 셀렉트는 제거했고 최신순으로 조회합니다. 건수는 전체 DB 수가 아닌 실제 표시 카드 수로 `최신 뉴스 N건`을 표시합니다.
+비로그인 더 보기는 숨기고 추가 클릭도 차단합니다. 카테고리·키워드 검색·상세 팝업·원문 링크는 유지합니다.
+추가 라이브러리·환경변수·DB 마이그레이션은 없습니다.
+
+## 메인 표기·사이드바·비로그인 안내 보완
+
+AI 대분류/칩/모바일 표기를 `AI•인공지능`으로 통일했습니다.
+선택 카테고리와 펼침 상태를 분리하여 소주제 선택 후에도 대주제를 접고 다시 펼칠 수 있습니다. 접기 동작은 검색 조건과 결과를 바꾸지 않습니다.
+관심 카테고리/설정의 비로그인 안내는 콘텐츠 카드 중앙에 강조 표시하고, `/` 기본 메인으로 돌아가는 버튼을 제공합니다.
+프론트엔드만 변경했으며 새 환경변수·라이브러리·마이그레이션·백엔드 계층 변경은 없습니다.
+
+## 사이드바 대주제와 펼침 버튼 분리
+
+대주제 이름 버튼은 해당 카테고리 목록을 조회하고 검색어를 초기화합니다.
+별도 테두리 화살표 버튼은 펼침 상태만 바꾸며 URL·검색어·선택 카테고리·API 요청을 변경하지 않습니다.
+각 화살표에 aria-label, aria-controls, aria-expanded를 적용하고 키보드 Enter 조작을 지원합니다.
+펼침 상태는 카테고리 선택과 독립적으로 관리합니다. 프론트엔드만 변경했으며 DB·환경변수 변경은 없습니다.
+
+## 화살표 정렬·한국어 기사 번역 제외
+
+사이드바 행은 nowrap flex로 고정하고 문구의 가상 화살표를 제거했습니다. 별도 화살표는 16px SVG를 32×36px 버튼 중앙에 배치합니다. 관련 정적 파일에 버전 쿼리를 붙여 이전 CSS 캐시와의 혼합을 방지합니다.
+통합 상세 API는 ko 원문에 translated_text를 제공하지 않고 translation_status=SKIPPED로 반환합니다. UI에서도 번역 패널을 숨기며 요약·원문 링크는 유지합니다.
+언어 und인 기존 데이터는 등록된 해외 출처만 번역 대상으로 취급하며, 국내·미확인 출처는 제외합니다. 기존 DB의 저장 결과를 삭제하거나 새 번역을 요청하지 않습니다.
+상세 캐시 키를 변경해 이전 번역 노출 응답을 재사용하지 않습니다. DB 스키마·환경변수 변경 없음.

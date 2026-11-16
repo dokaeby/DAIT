@@ -24,6 +24,8 @@ class NewsQuery(ApiModel):
     sort: Literal["rank", "latest"] = "rank"
     page_size: int = Field(default=10, ge=1, le=50)
     cursor: str | None = Field(default=None, min_length=1, max_length=2048)
+    fresh_hours: int = Field(default=24, ge=0, le=24 * 30)
+    search_scope: Literal["title", "content", "all"] = "all"
 
     @field_validator("page_size", mode="before")
     @classmethod
@@ -45,7 +47,7 @@ class NewsListItem(ApiModel):
     source_name: str = Field(min_length=1, max_length=200)
     published_at: datetime
     category: CategoryType = "AI"
-    summary_lines: tuple[str, str, str]
+    summary_lines: tuple[str, ...]
     processing_status: Literal["READY"] = "READY"
     original_url: HttpUrl
     is_partial: bool = False
@@ -67,7 +69,7 @@ class NewsListItem(ApiModel):
 
     @field_validator("summary_lines")
     @classmethod
-    def three_sentences(cls, value: tuple[str, str, str]) -> tuple[str, str, str]:
+    def three_sentences(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         return GeneratedContent.validate_sentences(value)
 
 
@@ -121,7 +123,7 @@ class NewsArticle(ApiModel):
 
 
 class NewsContent(ApiModel):
-    summary_lines: tuple[str, str, str] | tuple[()]
+    summary_lines: tuple[str, ...]
     translated_text: str | None
     processed_at: datetime | None
     content_status: Literal["READY", "INSUFFICIENT"]
@@ -136,17 +138,13 @@ class NewsContent(ApiModel):
     def valid_content(self) -> Self:
         if self.content_status == "READY":
             if (
-                len(self.summary_lines) != 3
+                not 1 <= len(self.summary_lines) <= 3
                 or not self.translated_text
                 or not self.translated_text.strip()
             ):
                 raise ValueError(INVALID_RESPONSE)
             GeneratedContent(
-                summary_lines=(
-                    self.summary_lines[0],
-                    self.summary_lines[1],
-                    self.summary_lines[2],
-                ),
+                summary_lines=self.summary_lines,
                 translated_text=self.translated_text,
             )
         elif self.summary_lines or self.translated_text is not None:

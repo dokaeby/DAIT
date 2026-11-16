@@ -49,6 +49,7 @@ class HttpClient(Protocol):
         params: Mapping[str, str] | None = None,
         content: bytes | None = None,
         json: Mapping[str, object] | None = None,
+        follow_redirects: bool = True,
     ) -> httpx2.Response: ...
 
 

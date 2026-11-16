@@ -194,3 +194,59 @@ git push origin HEAD:main
   - `python -m pytest -q --tb=short`: **288 passed in 6.52s**. 실패 0개. 7~9절에 기록된 UI 테스트 실패는 이 변경으로 해소됨.
   - 보안/로그: 제품 코드는 변경하지 않았으며 새 네트워크 호출·민감정보 로그·Any/dict/print 사용을 추가하지 않음.
 - 반영: 테스트·문서 전용 커밋으로 origin/main에 fast-forward 푸시. `[skip render]`로 불필요한 애플리케이션 재배포를 건너뜀; 운영 코드는 9절에서 검증한 배포와 동일.
+
+## 2026-11-12 뉴스 파이프라인 정정 사항
+
+### 번역 실패 기사 저장 차단 (`workers/ai_processor.py`)
+- `TranslatingNewsCollector`에서 해외/비한글 기사 제목 번역 실패 시 해당 기사를 수집 결과에서 제외. 기존에는 번역 없이 원문 제목 그대로 저장되어 ` ||| ` 구분자 없는 미번역 기사가 영구 잔존했음. 제외된 기사는 `COMPLETED` 처리되지 않아 다음 수집 주기에 자동 재시도됨. `enable_network=False`(오프라인/테스트)에서는 기존 동작 유지.
+
+### LLM 경로 원문 본문 보강 (`workers/cloud_llm.py`)
+- `CloudLLMContentProcessor.process()`에서 RSS 본문이 600자 미만이면 `fetch_article_body_with_trafilatura()`로 원문 기사 페이지를 추가 fetch해 더 긴 본문을 사용. 기존에는 Groq/xAI 경로가 RSS 요약문만으로 요약해 `GoogleTranslateContentProcessor` 대비 본문이 얕았음.
+
+### 신선도 필터 기본값 (`schemas/news.py`, `services/news_service.py`)
+- `NewsQuery.fresh_hours` 기본값을 `None`(전체)에서 `24`(최근 24시간)로 변경. `0`을 지정하면 필터 해제(전체 조회). 커서 바인딩에 이미 포함되어 필터별 페이지네이션 분리 유지.
+
+### 기타 이번 세션 정정 (이전 커밋/작업분)
+- 프론트엔드 `POLITICS`→`SOCIETY` 카테고리 통일 (`index.html`, `detail.html`)
+- `/app.js` 정적 라우트 추가 (404 해소)
+- 해외 탭 자동 페이지 누적 로딩 (첫 페이지 필터 한계 해소)
+- 시작 시 stale 재수집 + 주기 수집(`DAIT_COLLECT_INTERVAL_SECONDS`, 기본 6h) + `POST /v1/news/refresh` + `/v1/collection/status` 추가
+- `load_dotenv()` 추가로 로컬 `.env`의 `DAIT_*` 변수 자동 로드
+- `main.py`에 `has_untranslated_global` 검사 → 스키마 리셋 경로 존재(주의: 광범위 초기화이므로 향후 타겟 재처리로 교체 검토)
+
+### 스키마 리셋 → 타겟 삭제로 교체 (`api/main.py`, `repositories/news_repository.py`)
+- `_bootstrap_if_empty`에서 레거시 더미/미번역 해외 기사를 발견하면 기존에는 `drop_all`+`create_all`로 DB 전체를 초기화했음. 이제 `_is_invalid_record()`로 문제 레코드의 `canonical_url`만 추출해 `NewsRepository.delete_records()`로 해당 뉴스·content_results(CASCADE)·processing_claims 행만 삭제. 삭제된 URL은 claim도 함께 제거되어 다음 크롤링 주기에 정상 재수집·재처리됨. 스키마 불일치 예외 시에만 기존 리셋 경로 유지.
+
+### engine/model_id 영속화 + 폴백 재처리 + 검색 범위 + 본문 번역 (2026-11-12 추가)
+- `content_results`에 `engine`, `model_id` 컬럼 추가. `initialize()`의 `_ensure_content_columns()`가 기존 테이블에 `ALTER TABLE ADD COLUMN`으로 마이그레이션(컬럼 존재 검사 후 추가). `SuccessContent`/`InsufficientContent`에 `engine`/`model_id` 필드 추가(기본값 `""`로 구 데이터 호환).
+- 프로세서별 engine 기록: cloud_llm → `grok`/`regex-fallback`+model_id, GoogleTranslate → `google-translate`/`gtx`, 레거시 LLM 경로 → `llm`/model_version.
+- **폴백 재처리**: `_ManagedRuntime._reprocess_fallbacks()`가 매 크롤링 후 `engine='regex-fallback'` SUCCESS 기사와 engine 미기록(`''`) 해외 기사를 최대 10건씩 재처리. `NewsRepository.update_content()`가 기존 행의 content_results만 갱신(raw_text 재사용, 피드 재수집 불필요). `regex-fallback` 외에 `''`+해외 소스인 이유: 구 데이터는 translated_body가 없어 본문 번역이 필요.
+- **본문 번역 우선**: `GrokSummaryCompletion`/`_BatchItem`/`ProcessedContent`에 `translated_body` 추가. 프롬프트(단건+배치)가 해외 기사에 본문 전체 한국어 번역과 본문 맥락의 제목 번역을 요청. `translated_text = translated_body || translated_title || summary_lines` 순으로 저장. LLM 실패 폴백의 해외 기사는 요약 3문장을 Google Translate로 번역해 저장(기존엔 영문 문장이 그대로 저장됐음).
+- **검색 범위 선택**: `NewsQuery.search_scope`(`title`/`content`/`all`, 기본 `all`) 추가. title=제목만, content=요약+번역문+원문본문(raw_text), all=제목+매체+내용 전체. 커서 바인딩에 포함. 프론트엔드 검색창에 범위 선택 셀렉트 추가(전체/제목/내용).
+- **SQLite 트랜잭션 직렬화**: `:memory:` 등 단일 커넥션 SQLite에서 크롤링 쓰기와 조회의 `BEGIN IMMEDIATE`가 겹쳐 "cannot start a transaction within a transaction" 500 오류가 나던 문제 수정 — `_session()` 컨텍스트 매니저가 sqlite 방언일 때만 `asyncio.Lock`으로 트랜잭션을 직렬화(PostgreSQL은 영향 없음).
+- 테스트 수정: `fresh_hours` 기본값 24 도입에 따라 fixture 기사(11/8)가 필터링되는 테스트에 `fresh_hours=0` 명시, 크롤링 완료 대기 폴링 추가, 번역 실패 시 기사 스킵 동작에 맞게 assertion 갱신.
+- 의존성: alembic/httpx2/argon2-cffi/email-validator 설치로 pytest 543개 전체 통과, ruff·pyright 0 errors.
+
+### prompt_version 추적 + 재처리 조건 개선 + 상세 본문 번역 표시 (2026-11-12 추가)
+- `content_results`에 `prompt_version` 컬럼 추가(동일 마이그레이션 경로). `SuccessContent`/`InsufficientContent`에 필드 추가, 프로세서별 기록(cloud→`PROMPT_VERSION`, google→`google-translate-v1`, llm→policy.prompt_version).
+- `PROMPT_VERSION`을 `grok-summary-v2`→`v3`로 범프 — translated_body 도입으로 출력 스키마가 바뀌어 인메모리 캐시 키도 자동 무효화됨.
+- `_reprocess_fallbacks` 조건 개선: `engine='regex-fallback'` 전체 + 해외 소스 중 `prompt_version != PROMPT_VERSION`인 기사. 구 데이터(engine='') 해외 기사도 prompt_version 불일치로 자동 포함되어 translated_body가 순차 채워짐.
+- `translated_body`/`translated_title` 출력 상한 50,000자 검증 추가(토큰 폭주 방지).
+- `detail.html`: 해외 기사 상세에 `translated_text`(본문 번역)가 200자 초과 시 "[본문 번역 보기]" 접이식 섹션 표시.
+
+### 검색·목록 DB 레벨 필터링 + 인덱스 (2026-11-12 추가)
+- `NewsRepository.list_candidates()` 추가: 카테고리·발행일 컷오프(fresh_hours)·`status='SUCCESS'`·검색 LIKE를 SQL WHERE로 수행하고 `news ⋈ content_results` 조인 결과만 반환. 기존 `list_news()`는 전체 로드용으로 유지.
+- 인덱스: `ix_news_category_published(category, published_at)`, `ix_news_published_at(published_at)` — `NewsRow.__table_args__` 선언 + `_ensure_indexes()`의 `CREATE INDEX IF NOT EXISTS`로 기존 DB에도 런타임 마이그레이션.
+- `NewsService._api_records()`가 `list_candidates`를 사용하도록 변경. SQL LIKE는 **superset 최적화**일 뿐이며, 서비스의 Python 재검증(카테고리·subtopic 매칭·SuccessContent·dummy 문구·cutoff)이 최종 결과를 결정 — false positive는 허용, false negative는 없음.
+- LIKE 프리필터 생략 조건(`_search_like`): 비ASCII 쿼리(SQL `lower()`와 Python `casefold()`의 유니코드 차이), subtopic 라벨(키워드 그룹 매칭은 리터럴 부분문자열이 아님). 이 경우 전체 후보를 읽되 Python 필터는 동일하게 적용.
+- LIKE 이스케이프: `\`, `%`, `_` 이스케이프 후 소문자화, `func.lower(column).like(pattern, escape="\\")` — SQLite/PostgreSQL 공통.
+- `NewsReader` 프로토콜에 `list_candidates` 추가, `test_news_service.py`의 FakeRepository는 필터 미적용 superset 반환으로 구현.
+- 검증: pytest 543 passed, ruff PASS, pyright 0 errors. 실측: `search_scope=title/content/all` 차등 응답(HBM 3/4/4건), 한글 쿼리(비ASCII→Python 경로) 7건, 커서 페이지네이션·latest 정렬 정상.
+- 참고: pytest 임시 디렉터리 권한 오류(WinError 5, `Temp\pytest-of-Playdata`)는 환경 문제로 `--basetemp` 우회. `pyproject.toml`의 `asyncio_default_fixture_loop_scope` 미설정 deprecation 경고는 미해결.
+
+### 리뷰 후속 수정 — 검색 정확성 + 운영 효율 (2026-11-12 추가)
+- **다중 단어 검색 false negative 수정** (`news_service.py`): Python 검색은 필드들을 공백으로 이어붙인 문자열에서 부분일치하므로 `"AI chip"` 같은 쿼리가 필드 경계를 걸쳐 매칭될 수 있다. SQL LIKE는 단일 컬럼만 검색해 이를 놓칠 수 있어, `_search_like`가 공백 포함 쿼리에는 LIKE 프리필터를 적용하지 않도록 변경(단일 단어만 SQL 축소, 나머지는 Python 필터).
+- **`/v1/collection/status` COUNT 쿼리** (`news_repository.py`, `api/main.py`): 폴링마다 `list_news()`로 전 행을 읽던 것을 `count_news()`(`SELECT COUNT(*)`)로 교체.
+- **폴백 재처리 기간 제한** (`api/main.py`): `engine='regex-fallback'` 기사는 발행 후 72시간 이내만 재시도 — 24시간 신선도 필터 밖의 오래된 기사가 매 크롤링 주기 LLM 토큰을 소모하던 문제 해소. 해외 `prompt_version` 백필은 처리되면 자연 종료되므로 기간 제한 없음.
+- **INSUFFICIENT 해외 기사 삭제 루프 차단** (`api/main.py`): `_is_invalid_record`가 SuccessContent가 아닌 기사를 invalid로 판정하지 않도록 수정 — 본문 추출이 계속 실패하는 기사가 시작 때마다 삭제→재수집→재실패를 반복하던 문제 해소.
+- **refresh 예외 로깅** (`api/main.py`): 수동 갱신 백그라운드 태스크의 예외를 done_callback에서 `logger.warning`으로 기록(기존엔 무음 처리).

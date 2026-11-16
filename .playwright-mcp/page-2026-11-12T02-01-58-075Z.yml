@@ -1,0 +1,39 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - link "DAIT 뉴스 큐레이션" [ref=e4] [cursor=pointer]:
+      - /url: /
+    - heading "오늘의 뉴스" [level=1] [ref=e5]
+    - navigation "주요 메뉴" [ref=e6]:
+      - generic [ref=e8]:
+        - button "회원가입" [ref=e9] [cursor=pointer]
+        - button "로그인" [ref=e10] [cursor=pointer]
+  - generic [ref=e11]:
+    - complementary [ref=e12]:
+      - generic [ref=e13]: 카테고리 & 키워드
+      - generic [ref=e14]:
+        - button "✦ AI (인공지능)" [ref=e15] [cursor=pointer]
+        - list [ref=e16]:
+          - listitem [ref=e17]:
+            - button "모델·연구" [ref=e18] [cursor=pointer]
+          - listitem [ref=e19]:
+            - button "AI 에이전트" [ref=e20] [cursor=pointer]
+          - listitem [ref=e21]:
+            - button "개발 도구" [ref=e22] [cursor=pointer]
+          - listitem [ref=e23]:
+            - button "오픈소스·로컬 모델" [ref=e24] [cursor=pointer]
+          - listitem [ref=e25]:
+            - button "AI 인프라" [ref=e26] [cursor=pointer]
+      - button "✦ 경제·비즈니스" [ref=e28] [cursor=pointer]
+      - button "✦ 사회·문화" [ref=e30] [cursor=pointer]
+    - main [ref=e31]:
+      - search [ref=e32]:
+        - searchbox "뉴스 검색" [ref=e33]
+        - button "검색" [ref=e34] [cursor=pointer]
+      - generic [ref=e35]:
+        - button "전체 보기" [ref=e36] [cursor=pointer]
+        - button "국내 뉴스 (14곳)" [ref=e37] [cursor=pointer]
+        - button "해외 뉴스 (3곳)" [ref=e38] [cursor=pointer]
+      - group "정렬" [ref=e39]:
+        - button "랭킹순" [ref=e40] [cursor=pointer]
+        - button "최신순" [ref=e41] [cursor=pointer]
+      - generic [ref=e42]: 최신 기사를 분석 중입니다...

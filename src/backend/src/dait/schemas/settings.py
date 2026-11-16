@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from dait.schemas.interest import MAX_INTERESTS, InterestCode
 from dait.schemas.news import ACTIVE_CATEGORIES, NewsCategory
 
 MAX_KEYWORDS = 20
@@ -103,6 +104,9 @@ class ScheduleCriteria(BaseModel):
     keywords: list[Keyword] = Field(default_factory=list, max_length=MAX_KEYWORDS)
     source_ids: list[SourceId] = Field(default_factory=list, max_length=MAX_SOURCE_IDS)
     categories: list[NewsCategory] = Field(min_length=1, max_length=10)
+    # None이면 검색 시점에 예약 소유자의 저장 관심사(user_interests)를 따른다.
+    # 명시적 목록(빈 목록 포함)은 그 스냅샷만 쓰고, []는 관심사 검색을 끈다.
+    interests: list[InterestCode] | None = Field(default=None, max_length=MAX_INTERESTS)
 
     @field_validator("keywords")
     @classmethod

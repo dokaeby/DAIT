@@ -26,6 +26,9 @@ end
 """
 
 
+# 입력: Redis URL과 연결 제한 시간.
+# 출력: 연결 확인을 마친 Redis 클라이언트 또는 없음.
+# 동작: 라이브러리·연결 장애를 호출부의 메모리 대체 경로로 변환한다.
 def connect(redis_url: str, timeout: float = 2.0) -> RedisLike | None:
     """Redis 클라이언트를 만들고 ping으로 연결을 확인한다.
 
@@ -45,6 +48,47 @@ def connect(redis_url: str, timeout: float = 2.0) -> RedisLike | None:
         return cast(RedisLike, client)
     except (redis.RedisError, OSError):
         return None
+
+
+class _SharedState:
+    """공유 클라이언트와 장애 플래그를 한 곳에 묶는다(global 문 회피)."""
+
+    client: RedisLike | None = None
+    failed: bool = False
+
+
+_shared = _SharedState()
+
+
+# 입력: 선택적 Redis URL과 연결 제한 시간.
+# 출력: 프로세스가 공유하는 Redis 클라이언트 또는 없음.
+# 동작: 최초 사용 때 한 번 연결하고 장애 시 메모리 대체 경로를 유지한다.
+def shared_client(redis_url: str | None, timeout: float = 2.0) -> RedisLike | None:
+    """프로セ스에서 공유하는 Redis 클라이언트를 지연 생성한다.
+
+    입력: redis_url (None이면 미설정), timeout (초)
+    출력: RedisLike 또는 None (미설정·연결 실패·redis-py 없음)
+    기능: 한 번 연결에 실패하면 프로세스가 끝날 때까지 fallback으로 둔다.
+          cache·throttle 등 여러 서비스가 같은 연결을 나눠 쓴다.
+    """
+    if _shared.failed or not redis_url:
+        return None
+    if _shared.client is None:
+        client = connect(redis_url, timeout)
+        if client is None:
+            _shared.failed = True
+            return None
+        _shared.client = client
+    return _shared.client
+
+
+# 입력: 없음.
+# 출력: 반환값 없음.
+# 동작: 테스트 격리를 위해 공유 Redis 연결과 장애 상태를 초기화한다.
+def reset_shared_client() -> None:
+    """테스트용: 공유 클라이언트와 장애 플래그를 초기화한다."""
+    _shared.client = None
+    _shared.failed = False
 
 
 def new_lock_token() -> str:

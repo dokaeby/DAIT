@@ -30,6 +30,9 @@ class AccessClaims(BaseModel):
     exp: int
 
 
+# 입력: 사용자가 입력한 평문 비밀번호.
+# 출력: 솔트를 포함한 argon2id 해시.
+# 동작: 평문을 저장하지 않도록 매번 새 솔트로 비밀번호를 해시한다.
 def hash_password(raw: str) -> str:
     """비밀번호를 argon2id 해시로 바꾼다.
 
@@ -40,6 +43,9 @@ def hash_password(raw: str) -> str:
     return _hasher.hash(raw)
 
 
+# 입력: 입력된 평문과 저장된 비밀번호 해시 또는 None.
+# 출력: 비밀번호 일치 여부.
+# 동작: 사용자가 없어도 더미 해시를 검증해 응답 시간 차이를 줄인다.
 def verify_password(raw: str, password_hash: str | None) -> bool:
     """평문 비밀번호가 해시와 맞는지 확인한다.
 
@@ -55,6 +61,9 @@ def verify_password(raw: str, password_hash: str | None) -> bool:
     return matched and password_hash is not None
 
 
+# 입력: 사용자 ID, JWT 서명 키, 유효 시간, 발급 기준 시각.
+# 출력: HS256으로 서명된 access JWT.
+# 동작: 개인정보 없이 사용자·토큰 ID와 발급·만료 시각만 토큰에 넣는다.
 def create_access_token(user_id: str, secret: str, minutes: int, now: datetime) -> str:
     """짧은 수명의 access JWT를 만든다.
 
@@ -71,6 +80,9 @@ def create_access_token(user_id: str, secret: str, minutes: int, now: datetime) 
     return jwt.encode(payload, secret, algorithm=_JWT_ALGORITHM)
 
 
+# 입력: access JWT와 서명 키.
+# 출력: 검증된 access 토큰 클레임.
+# 동작: HS256 서명·만료·필수 필드를 검증하고 실패를 공통 인증 오류로 바꾼다.
 def decode_access_token(token: str, secret: str) -> AccessClaims:
     """access JWT의 서명과 만료를 검증하고 값을 꺼낸다.
 
@@ -91,6 +103,9 @@ def decode_access_token(token: str, secret: str) -> AccessClaims:
         raise InvalidTokenError from exc
 
 
+# 입력: 없음.
+# 출력: URL에 안전한 256비트 refresh 토큰 원문.
+# 동작: 암호학적 난수로 토큰을 만들고 클라이언트에 한 번만 제공한다.
 def new_refresh_token() -> str:
     """추측할 수 없는 refresh 토큰 원문을 만든다.
 
@@ -101,6 +116,9 @@ def new_refresh_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+# 입력: refresh 토큰 원문.
+# 출력: 저장용 SHA-256 해시.
+# 동작: DB 유출 시 원문 토큰을 사용할 수 없도록 단방향 해시한다.
 def hash_refresh_token(token: str) -> str:
     """refresh 토큰 원문의 저장용 해시를 만든다.
 

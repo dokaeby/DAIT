@@ -26,6 +26,9 @@ class AppError(Exception):
     code: str = "INTERNAL_ERROR"
     message: str = "서버 내부 오류가 발생했습니다."
 
+    # 입력: 하위 도메인 예외가 정의한 공개 메시지.
+    # 출력: 초기화된 도메인 예외.
+    # 동작: 내부 원인을 노출하지 않고 공개 메시지만 예외 문자열로 설정한다.
     def __init__(self) -> None:
         """공개 메시지를 예외 문자열로 쓴다.
 
@@ -44,12 +47,15 @@ class NotReadyError(AppError):
     message = "서비스가 아직 준비되지 않았습니다."
 
 
-class SignupFailedError(AppError):
-    """가입을 마무리하지 못했을 때(이미 쓰는 이메일 포함). 이유를 구체적으로 알려 주지 않는다."""
+# 입력: 이미 저장된 이메일로 들어온 회원가입 요청.
+# 출력: HTTP 409에 사용할 공개 오류 코드와 안내 문구.
+# 동작: 사용자가 가입된 이메일임을 확인하고 다른 주소를 선택하게 한다.
+class EmailAlreadyRegisteredError(AppError):
+    """이미 가입된 이메일로 다시 가입하려 할 때."""
 
     status_code = 409
-    code = "SIGNUP_FAILED"
-    message = "가입을 완료할 수 없습니다. 입력 내용을 확인해 주세요."
+    code = "EMAIL_ALREADY_REGISTERED"
+    message = "이미 가입된 이메일입니다."
 
 
 class WeakPasswordError(AppError):
@@ -58,6 +64,14 @@ class WeakPasswordError(AppError):
     status_code = 422
     code = "WEAK_PASSWORD"
     message = "너무 흔한 비밀번호입니다. 다른 비밀번호를 사용해 주세요."
+
+
+class NicknameTakenError(AppError):
+    """표시용 닉네임만 중복 여부를 공개하며 이메일 가입 오류는 일반화한다."""
+
+    status_code = 409
+    code = "NICKNAME_TAKEN"
+    message = "이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해 주세요."
 
 
 class InvalidCredentialsError(AppError):
@@ -108,6 +122,22 @@ class ScheduleNotFoundError(AppError):
     message = "요청한 예약을 찾을 수 없습니다."
 
 
+class SchedulerAuthError(AppError):
+    """내부 스케줄러 tick 호출의 비밀값이 없거나 틀렸다."""
+
+    status_code = 401
+    code = "AUTHENTICATION_FAILED"
+    message = "인증에 실패했습니다."
+
+
+class CronJobOrgUnavailableError(AppError):
+    """cron-job.org 연동이 설정됐지만 외부 등록/수정/삭제에 실패했을 때."""
+
+    status_code = 502
+    code = "CRON_JOB_ORG_UNAVAILABLE"
+    message = "예약 실행 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+
 class InvalidTokenError(AppError):
     """토큰이 만료·변조됐거나 형식이 맞지 않을 때."""
 
@@ -116,6 +146,25 @@ class InvalidTokenError(AppError):
     message = "인증 정보가 올바르지 않습니다."
 
 
+class SocialLoginDisabledError(AppError):
+    """구글 설정(GOOGLE_*)이 없어 구글 로그인이 꺼져 있을 때."""
+
+    status_code = 404
+    code = "SOCIAL_LOGIN_DISABLED"
+    message = "사용할 수 없는 기능입니다."
+
+
+class RecentLoginRequiredError(AppError):
+    """비밀번호 없는 계정이 탈퇴하려는데 로그인한 지 오래됐거나 확인 문구가 다를 때."""
+
+    status_code = 403
+    code = "RECENT_LOGIN_REQUIRED"
+    message = "보안을 위해 다시 로그인한 뒤 확인 문구를 입력해 주세요."
+
+
+# 입력: HTTP 상태 코드, 공개 오류 코드, 사용자 안내 문구.
+# 출력: request_id가 포함된 통일된 JSON 오류 응답.
+# 동작: 내부 예외 정보 없이 공개 가능한 오류 정보만 직렬화한다.
 def error_response(status_code: int, code: str, message: str) -> Response:
     """통일된 형식의 오류 응답을 만든다.
 
@@ -135,6 +184,9 @@ _HTTP_MESSAGES = {
 }
 
 
+# 입력: 현재 HTTP 요청과 처리 중 발생한 예외.
+# 출력: 통일된 JSON 오류 응답.
+# 동작: 도메인·검증·HTTP 예외를 공개 오류 형식으로 변환한다.
 async def handle_error(request: Request, exc: Exception) -> Response:
     """FastAPI가 잡은 예외를 통일된 오류 응답으로 바꾼다.
 
@@ -152,6 +204,9 @@ async def handle_error(request: Request, exc: Exception) -> Response:
     raise exc
 
 
+# 입력: 오류 처리를 등록할 FastAPI 앱.
+# 출력: 반환값 없음.
+# 동작: 도메인·검증·HTTP 예외를 공통 핸들러에 연결한다.
 def register_error_handlers(app: FastAPI) -> None:
     """앱에 전역 예외 핸들러를 등록한다.
 

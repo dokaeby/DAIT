@@ -4,11 +4,13 @@ import asyncio
 import socket
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 import pytest
 from pydantic import HttpUrl, ValidationError
 from redis.asyncio import Redis
+from src.backend.app.core.taxonomy import CategoryType
 from src.backend.app.repositories.news_repository import (
     ReadyInvalidator,
     RepositoryError,
@@ -102,6 +104,18 @@ class FakeRepository:
         if self.after_list is not None:
             await self.after_list()
         return snapshot
+
+    async def list_candidates(
+        self,
+        *,
+        category: CategoryType,
+        cutoff: datetime | None,
+        like: str | None,
+        search_scope: Literal["title", "content", "all"],
+    ) -> tuple[StoredNews, ...]:
+        # Fake는 필터를 적용하지 않고 전체를 반환한다 — 서비스의 Python 재검증이
+        # 최종 결과를 결정하므로 superset 반환으로 충분하다.
+        return await self.list_news()
 
     async def get_by_id(self, news_id: UUID) -> StoredNews | None:
         self.detail_calls += 1
@@ -662,7 +676,7 @@ async def test_existing_db_title_is_corrected_using_stored_summary_without_retra
     stored = _stored_midterms_mistranslation()
     repository, cache = FakeRepository((stored,)), FakeCache()
     app = service(repository, cache)
-    listed = await app.query_news(NewsQuery())
+    listed = await app.query_news(NewsQuery(fresh_hours=0))
     assert "중간선거 이후" in listed.items[0].title
     assert "중간고사" not in listed.items[0].title
     detail = await app.get_api_detail(str(stored.id))
